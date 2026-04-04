@@ -3,12 +3,52 @@ name: Build & Test
 on:
   push:
     branches: [main]
+    paths:
+      - "packages/**"
+      - "src/Clustral.ControlPlane/**"
+      - "src/Clustral.Agent/**"
+      - "src/Clustral.Cli/**"
+      - "src/Clustral.Web/**"
+      - "Clustral.slnx"
+      - ".github/workflows/build.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "packages/**"
+      - "src/Clustral.ControlPlane/**"
+      - "src/Clustral.Agent/**"
+      - "src/Clustral.Cli/**"
+      - "src/Clustral.Web/**"
+      - "Clustral.slnx"
+      - ".github/workflows/build.yml"
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            dotnet:
+              - "packages/**"
+              - "src/Clustral.ControlPlane/**"
+              - "src/Clustral.Agent/**"
+              - "src/Clustral.Cli/**"
+              - "Clustral.slnx"
+            web:
+              - "src/Clustral.Web/**"
+              - "packages/**"
+
   build-dotnet:
     name: Build & Test (.NET)
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +68,8 @@ jobs:
 
   build-web:
     name: Build (Web)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
