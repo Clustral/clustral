@@ -1,45 +1,41 @@
 import { UserManager, type UserManagerSettings, WebStorageStateStore } from "oidc-client-ts";
 
-interface ClustralConfig {
-  oidcAuthority: string;
-  oidcClientId: string;
-  oidcScopes: string;
-}
+// Client config — baked at build time, overridable per deployment via env vars.
+const OIDC_CLIENT_ID = import.meta.env.VITE_OIDC_CLIENT_ID ?? "clustral-web";
+const OIDC_SCOPES = import.meta.env.VITE_OIDC_SCOPES ?? "openid email profile";
 
 let _userManager: UserManager | null = null;
 let _initPromise: Promise<UserManager> | null = null;
 
 /**
- * Fetches OIDC settings from the ControlPlane at runtime, so the Web UI
- * doesn't need build-time env vars and works with any deployment.
+ * Fetches the Keycloak authority URL from the ControlPlane at runtime,
+ * so the published Docker image works with any Keycloak deployment.
  */
-async function fetchConfig(): Promise<ClustralConfig> {
-  // Try the discovery endpoint (same-origin, proxied by nginx).
+async function fetchAuthority(): Promise<string> {
   for (const path of ["/api/v1/config", "/.well-known/clustral-configuration"]) {
     try {
       const res = await fetch(path);
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const config = await res.json();
+        if (config.oidcAuthority) return config.oidcAuthority;
+      }
     } catch {
       // Try next.
     }
   }
 
   // Fallback for local dev without the ControlPlane running.
-  return {
-    oidcAuthority: "http://localhost:8080/realms/clustral",
-    oidcClientId: "clustral-web",
-    oidcScopes: "openid email profile",
-  };
+  return "http://localhost:8080/realms/clustral";
 }
 
-function createUserManager(config: ClustralConfig): UserManager {
+function createUserManager(authority: string): UserManager {
   const settings: UserManagerSettings = {
-    authority: config.oidcAuthority,
-    client_id: config.oidcClientId,
+    authority,
+    client_id: OIDC_CLIENT_ID,
     redirect_uri: `${window.location.origin}/callback`,
     post_logout_redirect_uri: `${window.location.origin}/login`,
     response_type: "code",
-    scope: config.oidcScopes,
+    scope: OIDC_SCOPES,
     automaticSilentRenew: true,
     userStore: new WebStorageStateStore({ store: sessionStorage }),
   };
@@ -48,14 +44,14 @@ function createUserManager(config: ClustralConfig): UserManager {
 
 /**
  * Returns the singleton UserManager, initializing it on first call
- * by fetching OIDC config from the ControlPlane.
+ * by fetching the Keycloak authority from the ControlPlane.
  */
 export async function getUserManager(): Promise<UserManager> {
   if (_userManager) return _userManager;
 
   if (!_initPromise) {
-    _initPromise = fetchConfig().then((config) => {
-      _userManager = createUserManager(config);
+    _initPromise = fetchAuthority().then((authority) => {
+      _userManager = createUserManager(authority);
       return _userManager;
     });
   }
