@@ -29,7 +29,8 @@ node_modules/
 dist/
 .env.local
 .env.*.local
-bun.lock
+# Keep bun.lock committed for reproducible builds
+# bun.lock
 
 # Docker
 docker-compose.override.yml
