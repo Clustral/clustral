@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package clustral.v1;
+
+option csharp_namespace = "Clustral.V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// AuthService issues and validates short-lived credentials used by:
+//   - End users:  `clustral kube login` exchanges a Keycloak token for a
+//     kubeconfig credential that the Clustral kubectl proxy accepts.
+//   - Agents:     `clustral-agent` exchanges its bootstrap token for a long-
+//     lived agent credential presented on every TunnelService connection.
+service AuthService {
+  // IssueKubeconfigCredential is called by `clustral kube login`.
+  // The caller presents a valid Keycloak OIDC access token; the control plane
+  // verifies it and issues a short-lived Clustral kubeconfig credential that
+  // encodes the target cluster and the caller's identity.
+  rpc IssueKubeconfigCredential(IssueKubeconfigCredentialRequest) returns (IssueKubeconfigCredentialResponse);
+
+  // ValidateKubeconfigCredential is called internally by the ControlPlane
+  // kubectl proxy handler to authenticate incoming kubectl requests.
+  rpc ValidateKubeconfigCredential(ValidateKubeconfigCredentialRequest) returns (ValidateKubeconfigCredentialResponse);
+
+  // IssueAgentCredential is called by the Agent on first boot.
+  // It exchanges the one-time bootstrap token (from ClusterService.Register)
+  // for a long-lived agent credential stored on disk by the Agent.
+  rpc IssueAgentCredential(IssueAgentCredentialRequest) returns (IssueAgentCredentialResponse);
+
+  // RotateAgentCredential renews an agent credential before it expires.
+  // The current valid credential is required to prove possession.
+  rpc RotateAgentCredential(RotateAgentCredentialRequest) returns (RotateAgentCredentialResponse);
+
+  // RevokeCredential immediately invalidates any credential by ID.
+  // Typically called on `clustral logout` or when a cluster is deregistered.
+  rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+}
+
+// -----------------------------------------------------------------------------
+// Shared identity / credential messages
+// -----------------------------------------------------------------------------
+
+// Principal describes the authenticated subject attached to a credential.
+message Principal {
+  // Keycloak subject claim (sub).
+  string subject = 1;
+
+  // Display name or email, informational only.
+  string display_name = 2;
+
+  // Roles/groups resolved from the Keycloak token at issuance time.
+  repeated string roles = 3;
+}
+
+// CredentialKind distinguishes the two credential types so the validation
+// path can apply the correct policy.
+enum CredentialKind {
+  CREDENTIAL_KIND_UNSPECIFIED = 0;
+  CREDENTIAL_KIND_USER_KUBECONFIG = 1;
+  CREDENTIAL_KIND_AGENT = 2;
+}
+
+// -----------------------------------------------------------------------------
+// IssueKubeconfigCredential
+// -----------------------------------------------------------------------------
+
+message IssueKubeconfigCredentialRequest {
+  // Keycloak OIDC access token in JWT format.
+  // The control plane verifies signature, expiry, and audience.
+  string oidc_access_token = 1;
+
+  // Target cluster. The caller must have at least read access to this cluster.
+  string cluster_id = 2;
+
+  // Requested lifetime. The control plane may issue a shorter-lived credential
+  // at its discretion (e.g. capped at 8 hours). Omit to use the server default.
+  google.protobuf.Duration requested_ttl = 3;
+}
+
+message IssueKubeconfigCredentialResponse {
+  // Opaque credential ID for tracking and revocation.
+  string credential_id = 1;
+
+  // Short-lived bearer token to embed in the kubeconfig exec credential.
+  // Clients treat this as opaque; the control plane validates it on each
+  // kubectl request.
+  string token = 2;
+
+  google.protobuf.Timestamp issued_at  = 3;
+  google.protobuf.Timestamp expires_at = 4;
+
+  // Convenience: the granted lifetime, useful for the CLI to display.
+  google.protobuf.Duration ttl = 5;
+
+  // Identity confirmed at issuance — CLI may display this to the user.
+  Principal principal = 6;
+}
+
+// -----------------------------------------------------------------------------
+// ValidateKubeconfigCredential
+// -----------------------------------------------------------------------------
+
+message ValidateKubeconfigCredentialRequest {
+  // Token extracted from the incoming kubectl request's Authorization header.
+  string token = 1;
+
+  // Cluster the request is targeting, used to enforce credential scope.
+  string cluster_id = 2;
+}
+
+message ValidateKubeconfigCredentialResponse {
+  bool valid = 1;
+
+  // Populated when valid = true.
+  Principal principal    = 2;
+  string    credential_id = 3;
+  google.protobuf.Timestamp expires_at = 4;
+
+  // Populated when valid = false.
+  InvalidationReason reason = 5;
+}
+
+enum InvalidationReason {
+  INVALIDATION_REASON_UNSPECIFIED = 0;
+  INVALIDATION_REASON_EXPIRED     = 1;
+  INVALIDATION_REASON_REVOKED     = 2;
+  INVALIDATION_REASON_NOT_FOUND   = 3;
+  INVALIDATION_REASON_WRONG_CLUSTER = 4;
+}
+
+// -----------------------------------------------------------------------------
+// IssueAgentCredential
+// -----------------------------------------------------------------------------
+
+message IssueAgentCredentialRequest {
+  string cluster_id      = 1;
+
+  // One-time bootstrap token from RegisterClusterResponse.
+  string bootstrap_token = 2;
+
+  // Agent's public key (PEM-encoded Ed25519) for mutual-TLS or token binding.
+  // Must match the key submitted at registration time.
+  string agent_public_key_pem = 3;
+}
+
+message IssueAgentCredentialResponse {
+  string credential_id = 1;
+
+  // Long-lived bearer token the Agent presents via gRPC metadata on every
+  // TunnelService.OpenTunnel call.
+  string token = 2;
+
+  google.protobuf.Timestamp issued_at  = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// -----------------------------------------------------------------------------
+// RotateAgentCredential
+// -----------------------------------------------------------------------------
+
+message RotateAgentCredentialRequest {
+  string cluster_id = 1;
+
+  // The current, still-valid agent token.
+  string current_token = 2;
+}
+
+message RotateAgentCredentialResponse {
+  string credential_id = 1;
+  string token         = 2;
+  google.protobuf.Timestamp issued_at  = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// -----------------------------------------------------------------------------
+// RevokeCredential
+// -----------------------------------------------------------------------------
+
+message RevokeCredentialRequest {
+  string credential_id = 1;
+  CredentialKind kind  = 2;
+
+  // Optional: human-readable reason stored in the audit log.
+  string reason = 3;
+}
+
+message RevokeCredentialResponse {
+  bool revoked = 1;
+
+  // Timestamp at which the revocation took effect.
+  google.protobuf.Timestamp revoked_at = 2;
+}

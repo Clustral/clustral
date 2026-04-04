@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package clustral.v1;
+
+option csharp_namespace = "Clustral.V1";
+
+import "google/protobuf/timestamp.proto";
+
+// TunnelService is the core transport layer between the Agent and the
+// ControlPlane.  The Agent opens a single persistent bidirectional stream
+// (OpenTunnel) and the ControlPlane multiplexes individual kubectl HTTP
+// requests over it using a lightweight framing protocol.
+//
+// Flow:
+//   1. Agent connects and sends an initial AgentHello frame.
+//   2. ControlPlane acknowledges with a TunnelHello frame.
+//   3. For each proxied kubectl request the ControlPlane sends one or more
+//      HttpRequestFrame messages identified by a request_id.
+//   4. The Agent forwards the request to the in-cluster API server and streams
+//      back one or more HttpResponseFrame messages with the same request_id.
+//   5. Either side may send a PingFrame; the other side replies with a
+//      PongFrame to keep the connection alive and detect half-open streams.
+//   6. To cancel an in-flight request the ControlPlane sends a CancelFrame.
+service TunnelService {
+  // OpenTunnel is the single long-lived bidirectional stream per Agent.
+  // The stream is authenticated via the agent credential in the gRPC metadata
+  // (Authorization: Bearer <agent-token>).
+  rpc OpenTunnel(stream TunnelClientMessage) returns (stream TunnelServerMessage);
+}
+
+// -----------------------------------------------------------------------------
+// Envelope messages — each direction has a single top-level wrapper so that
+// the stream is self-describing and extensible without breaking changes.
+// -----------------------------------------------------------------------------
+
+// Messages sent by the Agent → ControlPlane.
+message TunnelClientMessage {
+  oneof payload {
+    AgentHello      hello    = 1;
+    HttpResponseFrame http_response = 2;
+    PingFrame       ping     = 3;
+    PongFrame       pong     = 4;
+  }
+}
+
+// Messages sent by the ControlPlane → Agent.
+message TunnelServerMessage {
+  oneof payload {
+    TunnelHello     hello    = 1;
+    HttpRequestFrame  http_request  = 2;
+    CancelFrame     cancel   = 3;
+    PingFrame       ping     = 4;
+    PongFrame       pong     = 5;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Handshake
+// -----------------------------------------------------------------------------
+
+message AgentHello {
+  // Cluster ID this agent is serving (obtained at registration time).
+  string cluster_id = 1;
+
+  // Semantic version of the agent binary (e.g. "0.1.0").
+  string agent_version = 2;
+
+  // Kubernetes API server version the agent discovered locally.
+  string kubernetes_version = 3;
+
+  google.protobuf.Timestamp sent_at = 4;
+}
+
+message TunnelHello {
+  // Echoed back so the agent can confirm which cluster was matched.
+  string cluster_id = 1;
+
+  // ISO-8601 server time; agents may use this for clock-skew detection.
+  google.protobuf.Timestamp server_time = 2;
+}
+
+// -----------------------------------------------------------------------------
+// HTTP proxying
+// -----------------------------------------------------------------------------
+
+// HttpRequestFrame carries a single kubectl HTTP request (or a chunk of a
+// streaming request body) from the ControlPlane to the Agent.
+message HttpRequestFrame {
+  // Monotonically increasing ID scoped to this tunnel stream.
+  // All frames belonging to one HTTP exchange share the same request_id.
+  string request_id = 1;
+
+  // Present only on the first frame of a request.
+  HttpRequestHead head = 2;
+
+  // Raw body bytes for this chunk. May be empty on the first (head-only) frame
+  // or on a terminal frame where end_of_body is true.
+  bytes body_chunk = 3;
+
+  // True on the last body frame. Signals the Agent to flush and send the
+  // request to the API server.
+  bool end_of_body = 4;
+}
+
+message HttpRequestHead {
+  // HTTP method in upper-case (GET, POST, PATCH, …).
+  string method = 1;
+
+  // Path + query string relative to the API server root (e.g. "/api/v1/pods").
+  string path = 2;
+
+  // HTTP headers forwarded from the original kubectl request.
+  // Content-Length, Transfer-Encoding, and hop-by-hop headers are stripped.
+  repeated HttpHeader headers = 3;
+}
+
+// HttpResponseFrame carries the API server response back to the ControlPlane.
+message HttpResponseFrame {
+  string request_id = 1;
+
+  // Present only on the first frame of a response.
+  HttpResponseHead head = 2;
+
+  bytes body_chunk = 3;
+
+  // True on the last body frame (or immediately after the head for empty bodies).
+  bool end_of_body = 4;
+
+  // Set when the Agent encountered a local error before the API server
+  // responded (e.g. connection refused, TLS error).
+  TunnelError error = 5;
+}
+
+message HttpResponseHead {
+  int32 status_code = 1;
+  repeated HttpHeader headers = 2;
+}
+
+message HttpHeader {
+  string name  = 1;
+  string value = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Control frames
+// -----------------------------------------------------------------------------
+
+message CancelFrame {
+  // The ControlPlane sends this to abort a proxied request (e.g. the kubectl
+  // client disconnected). The Agent should stop forwarding and discard buffers.
+  string request_id = 1;
+}
+
+message PingFrame {
+  // Arbitrary payload echoed back in the PongFrame for RTT measurement.
+  bytes payload = 1;
+  google.protobuf.Timestamp sent_at = 2;
+}
+
+message PongFrame {
+  bytes payload = 1;
+  google.protobuf.Timestamp original_sent_at = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Error
+// -----------------------------------------------------------------------------
+
+message TunnelError {
+  TunnelErrorCode code    = 1;
+  string          message = 2;
+}
+
+enum TunnelErrorCode {
+  TUNNEL_ERROR_UNSPECIFIED          = 0;
+  TUNNEL_ERROR_API_SERVER_UNREACHABLE = 1;
+  TUNNEL_ERROR_TLS_HANDSHAKE_FAILED = 2;
+  TUNNEL_ERROR_REQUEST_TIMEOUT      = 3;
+  TUNNEL_ERROR_UNAUTHORIZED         = 4;
+}

@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Clustral.Cli</RootNamespace>
+    <AssemblyName>clustral</AssemblyName>
+
+    <!--
+      NativeAOT — produces a self-contained native binary with no .NET runtime
+      dependency.  Enable during publish:
+        dotnet publish -r osx-arm64 -c Release
+      Keep <PublishAot> enabled at build time so the compiler enforces
+      AOT-safety rules (no unbounded reflection, no dynamic).
+    -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+
+
+    <!--
+      Suppress the YamlDotNet reflection warning surfaced through Clustral.Sdk.
+      KubeconfigWriter is the only reflection-heavy path; its DynamicDependency
+      attributes are added there.  Any new reflection usage in this project must
+      be explicitly annotated instead of suppressing globally.
+    -->
+    <NoWarn>IL2026;IL3050</NoWarn>
+  </PropertyGroup>
+
+  <!-- macOS: NativeAOT linker needs OpenSSL from Homebrew -->
+  <!-- macOS: NativeAOT linker needs Homebrew libs (OpenSSL, brotli) -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <LinkerArg Include="-L/opt/homebrew/lib" />
+    <LinkerArg Include="-L/opt/homebrew/opt/openssl@3/lib" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../packages/Clustral.Sdk/Clustral.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>

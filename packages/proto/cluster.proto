@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package clustral.v1;
+
+option csharp_namespace = "Clustral.V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// ClusterService manages the lifecycle of clusters registered with the
+// Clustral control plane. Called by the Web UI, CLI, and the Agent on startup.
+service ClusterService {
+  // Register records a new cluster. Called by the Agent on first boot.
+  // Returns the assigned cluster ID and a registration token the Agent
+  // must present on subsequent connections.
+  rpc Register(RegisterClusterRequest) returns (RegisterClusterResponse);
+
+  // List returns all clusters visible to the caller, optionally filtered.
+  rpc List(ListClustersRequest) returns (ListClustersResponse);
+
+  // Get returns a single cluster by ID.
+  rpc Get(GetClusterRequest) returns (Cluster);
+
+  // UpdateStatus is called by the Agent heartbeat to report liveness and
+  // Kubernetes version. Not exposed to end users.
+  rpc UpdateStatus(UpdateClusterStatusRequest) returns (google.protobuf.Empty);
+
+  // Deregister removes a cluster. Existing tunnel sessions are terminated.
+  rpc Deregister(DeregisterClusterRequest) returns (google.protobuf.Empty);
+}
+
+// -----------------------------------------------------------------------------
+// Domain messages
+// -----------------------------------------------------------------------------
+
+message Cluster {
+  // Opaque stable identifier assigned by the control plane on registration.
+  string id = 1;
+
+  // Human-readable name, unique per tenant.
+  string name = 2;
+
+  // Optional free-text description.
+  string description = 3;
+
+  // Kubernetes API server version reported by the Agent (e.g. "v1.30.1").
+  string kubernetes_version = 4;
+
+  ClusterStatus status = 5;
+
+  google.protobuf.Timestamp registered_at = 6;
+  google.protobuf.Timestamp last_seen_at  = 7;
+
+  // Arbitrary key/value labels for grouping and filtering.
+  map<string, string> labels = 8;
+}
+
+enum ClusterStatus {
+  CLUSTER_STATUS_UNSPECIFIED = 0;
+  CLUSTER_STATUS_PENDING     = 1; // Registered but Agent has not connected yet.
+  CLUSTER_STATUS_CONNECTED   = 2; // Agent tunnel is active.
+  CLUSTER_STATUS_DISCONNECTED = 3; // Agent was connected but dropped.
+}
+
+// -----------------------------------------------------------------------------
+// Request / response messages
+// -----------------------------------------------------------------------------
+
+message RegisterClusterRequest {
+  // Desired display name. Must be unique within the tenant.
+  string name = 1;
+
+  string description = 2;
+
+  // Public key (PEM-encoded) used by the Agent to prove its identity over the
+  // TunnelService stream. The control plane stores this for later verification.
+  string agent_public_key_pem = 3;
+
+  map<string, string> labels = 4;
+}
+
+message RegisterClusterResponse {
+  // Stable cluster ID; store in the Agent's Helm values / environment.
+  string cluster_id = 1;
+
+  // One-time bootstrap token. The Agent exchanges this for a long-lived
+  // credential via AuthService.IssueAgentCredential.
+  string bootstrap_token = 2;
+}
+
+message ListClustersRequest {
+  // Filter by label key=value pairs. All supplied labels must match (AND).
+  map<string, string> label_selector = 1;
+
+  // Filter by status. Pass CLUSTER_STATUS_UNSPECIFIED to return all.
+  ClusterStatus status_filter = 2;
+
+  // Standard pagination.
+  int32  page_size  = 3;
+  string page_token = 4;
+}
+
+message ListClustersResponse {
+  repeated Cluster clusters = 1;
+
+  // Empty when there are no more pages.
+  string next_page_token = 2;
+}
+
+message GetClusterRequest {
+  string cluster_id = 1;
+}
+
+message UpdateClusterStatusRequest {
+  string cluster_id          = 1;
+  ClusterStatus status       = 2;
+  string kubernetes_version  = 3;
+}
+
+message DeregisterClusterRequest {
+  string cluster_id = 1;
+}

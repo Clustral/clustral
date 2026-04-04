@@ -1,0 +1,86 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ClusterRole for the Clustral Agent
+#
+# The Agent acts as a transparent kubectl proxy: it forwards arbitrary
+# Kubernetes API requests on behalf of users who have been authenticated
+# at the Clustral ControlPlane.  Because the Agent itself is the principal
+# that makes k8s API calls, its ServiceAccount must hold the permissions
+# that would otherwise be granted to the proxied users.
+#
+# ⚠️  SECURITY NOTE
+# This ClusterRole grants broad read/write access.  Before deploying to
+# production, replace it with a tighter role that matches your actual
+# authorization model, or implement per-user impersonation by forwarding
+# user identity via the k8s Impersonation API (recommended for production).
+# See: https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clustral-agent
+  labels:
+    app.kubernetes.io/name: clustral-agent
+    app.kubernetes.io/component: agent
+rules:
+  # Core API — pods, services, configmaps, secrets, namespaces
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/exec
+      - pods/portforward
+      - services
+      - endpoints
+      - configmaps
+      - secrets
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+      - persistentvolumes
+      - events
+      - serviceaccounts
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Apps — deployments, replicasets, statefulsets, daemonsets
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Batch — jobs, cronjobs
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Networking
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # RBAC (read-only — do not grant write access to cluster RBAC)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+
+  # Custom Resource Definitions (read-only)
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources:
+      - customresourcedefinitions
+    verbs: ["get", "list", "watch"]
+
+  # Storage
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch"]

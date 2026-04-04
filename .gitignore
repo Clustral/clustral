@@ -1,0 +1,38 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+*.nupkg
+*.snupkg
+publish/
+out/
+
+# NativeAOT
+*.o
+*.exports
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+Thumbs.db
+
+# Node / Web
+node_modules/
+dist/
+.env.local
+.env.*.local
+bun.lock
+
+# Docker
+docker-compose.override.yml
+
+# Clustral local state
+.clustral/
