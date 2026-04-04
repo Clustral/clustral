@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { UserInfo } from "@/types/api";
-import { userManager } from "@/lib/oidc";
+import { getUserManager } from "@/lib/oidc";
 
 interface AuthState {
   token: string | null;
@@ -43,23 +43,27 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   login: async () => {
-    await userManager.signinRedirect();
+    const um = await getUserManager();
+    await um.signinRedirect();
   },
 
   logout: async () => {
     set({ token: null, user: null, loading: false });
-    await userManager.signoutRedirect();
+    const um = await getUserManager();
+    await um.signoutRedirect();
   },
 
   handleCallback: async () => {
-    const user = await userManager.signinRedirectCallback();
+    const um = await getUserManager();
+    const user = await um.signinRedirectCallback();
     const token = user.access_token;
     set({ token, user: decodeUserInfo(token), loading: false });
   },
 
   restoreSession: async () => {
     try {
-      const user = await userManager.getUser();
+      const um = await getUserManager();
+      const user = await um.getUser();
       if (user && !user.expired) {
         set({ token: user.access_token, user: decodeUserInfo(user.access_token), loading: false });
       } else {
@@ -71,11 +75,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }));
 
-// Listen for silent-renew token updates.
-userManager.events.addAccessTokenExpired(() => {
-  useAuthStore.getState().clearAuth();
-});
-
-userManager.events.addUserLoaded((user) => {
-  useAuthStore.getState().setAuth(user.access_token);
+// Set up event listeners once the UserManager is initialized.
+getUserManager().then((um) => {
+  um.events.addAccessTokenExpired(() => {
+    useAuthStore.getState().clearAuth();
+  });
+  um.events.addUserLoaded((user) => {
+    useAuthStore.getState().setAuth(user.access_token);
+  });
 });
