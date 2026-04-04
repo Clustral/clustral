@@ -95,11 +95,12 @@
       "fullScopeAllowed": true,
       "redirectUris": [
         "http://localhost:5173/*",
-        "http://localhost:3000/*"
+        "http://localhost:3000/*",
+        "https://localhost:3000/*",
+        "https://*:3000/*"
       ],
       "webOrigins": [
-        "http://localhost:5173",
-        "http://localhost:3000"
+        "*"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
