@@ -217,14 +217,17 @@ web:
 # Authenticate — discovers OIDC settings from the ControlPlane automatically
 clustral login app.clustral.example
 
-# Local dev
-clustral login localhost:3000
+# List available clusters
+clustral kube ls
 
-# Get kubeconfig credentials for a cluster
+# Connect to a cluster (writes kubeconfig)
 clustral kube login <cluster-id>
 
 # kubectl works transparently
-kubectl get namespaces
+kubectl get pods -A
+
+# Sign out — revokes credentials, removes kubeconfig contexts
+clustral logout
 ```
 
 The CLI auto-discovers OIDC settings via `GET /.well-known/clustral-configuration`. No OIDC provider URL needed.
@@ -270,34 +273,131 @@ For Docker Desktop Kubernetes, use `host.docker.internal`:
 
 ## How It Works
 
-### Authentication (Web)
+Clustral provides secure, tunneled `kubectl` access to Kubernetes clusters without requiring inbound firewall rules, VPNs, or bastion hosts. It works by placing a lightweight agent inside each cluster that opens an outbound connection to a central control plane. Users authenticate via their organization's identity provider and get short-lived credentials that route `kubectl` commands through this tunnel.
 
-1. User opens `https://<ip>:3000` and clicks "Sign in with SSO"
-2. Next.js server redirects to the OIDC provider (Keycloak, Auth0, etc.)
-3. User authenticates → provider redirects back to Next.js callback
-4. NextAuth.js handles the token exchange server-side (no CORS issues)
-5. Session is stored server-side, access token forwarded to API calls
+### The Big Picture
 
-### Authentication (CLI)
+```
+ Developer workstation                  Clustral ControlPlane               Target cluster
+┌──────────────────────┐     HTTPS     ┌─────────────────────┐   gRPC      ┌──────────────┐
+│                      │    (REST)     │                     │  tunnel     │              │
+│  clustral login      │──────────────▶│  Authenticate user  │◀───────────│  Agent pod   │
+│  clustral kube login │──────────────▶│  Issue credential   │            │  (outbound   │
+│  kubectl get pods    │──────────────▶│  Proxy through      │───────────▶│   only)      │
+│                      │               │  tunnel             │            │              │──▶ k8s API
+└──────────────────────┘               └─────────────────────┘            └──────────────┘
+                                              ▲
+                                              │ OIDC
+                                       ┌──────┴──────┐
+                                       │   Keycloak  │
+                                       │   Auth0     │
+                                       │   Okta      │
+                                       │   Azure AD  │
+                                       └─────────────┘
+```
 
-1. User runs `clustral login <url>`
-2. CLI fetches OIDC settings from `GET /.well-known/clustral-configuration`
-3. Browser opens for OIDC login (Authorization Code + PKCE)
-4. JWT is stored in `~/.clustral/token`
+### Step-by-step: Getting access to a cluster
 
-### kubectl Access
+**1. Admin registers a cluster**
 
-1. User runs `clustral kube login <cluster-id>`
-2. CLI exchanges JWT for a short-lived credential via the ControlPlane REST API
-3. Credential is written to `~/.kube/config` (existing contexts are preserved)
-4. `kubectl` commands route through the ControlPlane tunnel to the agent
+Through the Web UI or API, an admin registers a new cluster. Clustral generates a one-time bootstrap token.
 
-### Agent Tunnel
+**2. Agent is deployed to the cluster**
 
-1. Agent (deployed in-cluster) opens a persistent gRPC bidirectional stream to the ControlPlane
-2. kubectl HTTP requests are multiplexed over the stream — no inbound ports needed
-3. Agent authenticates to the k8s API with its own ServiceAccount
-4. Cluster status is tracked: Connected while tunnel is open, Disconnected when agent stops
+The agent is deployed as a Kubernetes pod using the bootstrap token. On first boot, it exchanges the bootstrap token for a long-lived agent credential and opens a persistent gRPC bidirectional stream (tunnel) to the ControlPlane. The cluster status changes to "Connected".
+
+```
+Agent → gRPC OpenTunnel → ControlPlane
+Agent sends AgentHello (cluster ID, k8s version)
+ControlPlane sends TunnelHello (ack)
+Stream stays open — the agent reconnects automatically with exponential backoff if disconnected.
+```
+
+**3. User authenticates**
+
+```bash
+$ clustral login app.example.com
+```
+
+The CLI discovers OIDC settings from the ControlPlane (`GET /.well-known/clustral-configuration`), opens the browser for SSO login (Authorization Code + PKCE), and stores the JWT in `~/.clustral/token`.
+
+The Web UI does the same via NextAuth.js server-side — the user clicks "Sign in with SSO" and the OIDC flow happens entirely on the server (no CORS issues).
+
+**4. User gets kubectl credentials**
+
+```bash
+$ clustral kube ls
+  CLUSTER                  ID                                     STATUS         K8S VERSION
+> production               a1b2c3d4-...                           Connected      v1.30.2
+
+$ clustral kube login a1b2c3d4-...
+Kubeconfig updated. Context: clustral-a1b2c3d4-...
+```
+
+The CLI exchanges the JWT for a short-lived kubeconfig credential via `POST /api/v1/auth/kubeconfig-credential`. The credential and server URL are written to `~/.kube/config` — existing contexts are preserved, never overwritten.
+
+**5. kubectl traffic flows through the tunnel**
+
+```bash
+$ kubectl get pods -A
+```
+
+```
+kubectl
+  → sends request to ControlPlane (via server URL in kubeconfig)
+  → KubectlProxyMiddleware validates the short-lived credential
+  → looks up the TunnelSession for the target cluster
+  → wraps the HTTP request in an HttpRequestFrame (protobuf)
+  → sends it through the gRPC tunnel to the Agent
+  → Agent forwards to the in-cluster Kubernetes API server
+  → response flows back through the tunnel
+  → kubectl displays the result
+```
+
+The agent authenticates to the k8s API with its own ServiceAccount — the user's Clustral credential never reaches the cluster. Multiple kubectl requests are multiplexed over the single gRPC stream using request IDs.
+
+**6. User logs out**
+
+```bash
+$ clustral logout
+  Revoked credential for clustral-a1b2c3d4-...
+  Removed kubeconfig context: clustral-a1b2c3d4-...
+Logged out.
+```
+
+The CLI revokes all kubeconfig credentials server-side, removes all `clustral-*` entries from `~/.kube/config`, and clears the stored JWT.
+
+### Security model
+
+| Layer | Mechanism |
+|---|---|
+| User → ControlPlane | OIDC JWT (from any provider) |
+| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw) |
+| Agent → ControlPlane | Long-lived agent credential (issued via bootstrap token, rotatable) |
+| Agent → k8s API | In-cluster ServiceAccount token (auto-rotated by kubelet) |
+| Tunnel transport | gRPC over HTTP/2 (TLS in production) |
+| Agent connectivity | Outbound only — no inbound firewall rules needed |
+
+### Token lifecycle
+
+```
+Bootstrap token (one-time, from registration)
+  → exchanged for agent credential (1 year, rotatable)
+    → agent uses it to open gRPC tunnel
+
+OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
+  → exchanged for kubeconfig credential (8 hours default, configurable)
+    → used by kubectl to authenticate proxy requests
+    → revoked on logout
+```
+
+### What happens when the agent disconnects
+
+- The TunnelServiceImpl `finally` block sets the cluster status to "Disconnected"
+- The TunnelSession is removed from the in-memory registry
+- kubectl requests for that cluster return `502: Cluster agent is not connected`
+- The agent's reconnect loop kicks in with exponential backoff + jitter
+- When reconnected, the cluster status returns to "Connected"
 
 ## Repository Layout
 
