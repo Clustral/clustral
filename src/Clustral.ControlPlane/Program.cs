@@ -41,30 +41,33 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opts =>
     {
-        opts.Authority            = keycloakOpts.Authority;
         opts.RequireHttpsMetadata = keycloakOpts.RequireHttpsMetadata;
         opts.Audience             = string.IsNullOrEmpty(keycloakOpts.Audience)
             ? keycloakOpts.ClientId
             : keycloakOpts.Audience;
 
-        // In Docker Compose the token issuer is localhost:8080 but the container
-        // must fetch JWKS from keycloak:8080.  MetadataAddress overrides where
-        // the middleware fetches discovery metadata from.
         if (!string.IsNullOrEmpty(keycloakOpts.MetadataAddress))
+        {
+            // When MetadataAddress is set, the ControlPlane fetches JWKS from
+            // an internal URL but the token issuer varies depending on how the
+            // user accessed Keycloak (localhost vs LAN IP vs hostname).
+            // Set Authority to null and use MetadataAddress only — this
+            // prevents the JwtBearer middleware from doing its own issuer
+            // validation against the Authority URL.
+            opts.Authority       = null;
             opts.MetadataAddress = keycloakOpts.MetadataAddress;
-
-        // When MetadataAddress is set, the ControlPlane fetches JWKS from an
-        // internal URL but the token issuer may vary depending on how the user
-        // accessed Keycloak (localhost vs IP vs hostname).  Disable strict issuer
-        // validation — the JWKS key check already proves token authenticity.
-        var relaxIssuer = !string.IsNullOrEmpty(keycloakOpts.MetadataAddress);
+        }
+        else
+        {
+            opts.Authority = keycloakOpts.Authority;
+        }
 
         opts.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer           = !relaxIssuer,
+            ValidateIssuer           = false,   // issuer varies by access URL
             ValidateAudience         = true,
             ValidateLifetime         = true,
-            ValidateIssuerSigningKey = true,
+            ValidateIssuerSigningKey = true,    // JWKS key check proves authenticity
             ClockSkew                = TimeSpan.FromSeconds(30),
         };
     });

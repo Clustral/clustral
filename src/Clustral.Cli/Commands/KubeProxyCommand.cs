@@ -242,22 +242,31 @@ internal static class KubeProxyCommand
 
             // Send upstream.
             using var response = await httpClient.SendAsync(request, ct);
-
-            // Write HTTP response back to the SSL stream.
-            var statusLine = $"HTTP/1.1 {(int)response.StatusCode} {response.ReasonPhrase}\r\n";
             var responseBody = await response.Content.ReadAsByteArrayAsync(ct);
 
-            using var writer2 = new StreamWriter(sslStream, leaveOpen: true) { AutoFlush = false };
-            await writer2.WriteAsync(statusLine);
+            // Build raw HTTP response.
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"HTTP/1.1 {(int)response.StatusCode} {response.ReasonPhrase}\r\n");
 
             foreach (var (name, values) in response.Headers)
-                await writer2.WriteAsync($"{name}: {string.Join(", ", values)}\r\n");
+            {
+                if (name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                sb.Append($"{name}: {string.Join(", ", values)}\r\n");
+            }
             foreach (var (name, values) in response.Content.Headers)
-                await writer2.WriteAsync($"{name}: {string.Join(", ", values)}\r\n");
+            {
+                if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                sb.Append($"{name}: {string.Join(", ", values)}\r\n");
+            }
 
-            await writer2.WriteAsync($"Content-Length: {responseBody.Length}\r\n");
-            await writer2.WriteAsync("\r\n");
-            await writer2.FlushAsync(ct);
+            sb.Append($"Content-Length: {responseBody.Length}\r\n");
+            sb.Append("Connection: close\r\n");
+            sb.Append("\r\n");
+
+            var headerBytes = System.Text.Encoding.ASCII.GetBytes(sb.ToString());
+            await sslStream.WriteAsync(headerBytes, ct);
 
             if (responseBody.Length > 0)
                 await sslStream.WriteAsync(responseBody, ct);
