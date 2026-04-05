@@ -164,6 +164,37 @@ public sealed class AuthController(
         return Ok(new RevokeCredentialResponse(Revoked: true, RevokedAt: now));
     }
 
+    // POST /api/v1/auth/revoke-by-token
+    /// <summary>
+    /// Revokes a kubeconfig credential by its raw token value.
+    /// Used by the CLI during <c>clustral logout</c>.
+    /// </summary>
+    [HttpPost("revoke-by-token")]
+    [ProducesResponseType<RevokeCredentialResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevokeByToken(
+        [FromBody] RevokeByTokenRequest request,
+        CancellationToken ct)
+    {
+        var hash = HashToken(request.Token);
+        var credential = await db.AccessTokens
+            .Find(t => t.TokenHash == hash && t.Kind == CredentialKind.UserKubeconfig)
+            .FirstOrDefaultAsync(ct);
+
+        if (credential is null)
+            return NotFound();
+
+        var now = DateTimeOffset.UtcNow;
+        var update = Builders<AccessToken>.Update
+            .Set(t => t.RevokedAt, now)
+            .Set(t => t.RevokedReason, "logout");
+        await db.AccessTokens.UpdateOneAsync(t => t.Id == credential.Id, update, cancellationToken: ct);
+
+        logger.LogInformation("Credential {CredentialId} revoked via logout", credential.Id);
+
+        return Ok(new RevokeCredentialResponse(Revoked: true, RevokedAt: now));
+    }
+
     // -------------------------------------------------------------------------
 
     private static string GenerateToken()

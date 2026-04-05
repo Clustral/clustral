@@ -28,6 +28,12 @@ public sealed record IssueKubeconfigCredentialResponse(
 
 public sealed record RevokeCredentialRequest(string? Reason = null);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/auth/revoke-by-token
+// ─────────────────────────────────────────────────────────────────────────────
+
+public sealed record RevokeByTokenRequest([Required] string Token);
+
 public sealed record RevokeCredentialResponse(
     bool           Revoked,
     DateTimeOffset RevokedAt);
