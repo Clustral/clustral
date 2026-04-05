@@ -8,23 +8,37 @@ let _userManager: UserManager | null = null;
 let _initPromise: Promise<UserManager> | null = null;
 
 /**
- * Fetches the Keycloak authority URL from the ControlPlane at runtime,
- * so the published Docker image works with any Keycloak deployment.
+ * Resolves the OIDC authority URL.
+ *
+ * In production/on-prem: Keycloak is proxied through nginx at /auth/* on the
+ * same origin, avoiding CORS and mixed-content issues. The authority URL
+ * becomes e.g. https://192.168.88.x:3000/auth/realms/clustral.
+ *
+ * We fetch the realm name from the ControlPlane config and build a same-origin
+ * authority URL. Falls back to direct Keycloak for localhost dev.
  */
-async function fetchAuthority(): Promise<string> {
+async function resolveAuthority(): Promise<string> {
+  // Try fetching the ControlPlane config to get the realm name.
   for (const path of ["/api/v1/config", "/.well-known/clustral-configuration"]) {
     try {
       const res = await fetch(path);
-      if (res.ok) {
-        const config = await res.json();
-        if (config.oidcAuthority) return config.oidcAuthority;
+      if (!res.ok) continue;
+      const config = await res.json();
+      if (config.oidcAuthority) {
+        // Extract the realm path from the authority URL.
+        // e.g. "http://keycloak:8080/realms/clustral" → "/realms/clustral"
+        const url = new URL(config.oidcAuthority);
+        const realmPath = url.pathname; // "/realms/clustral"
+
+        // Use same-origin proxied path: /auth/realms/clustral
+        return `${window.location.origin}/auth${realmPath}`;
       }
     } catch {
       // Try next.
     }
   }
 
-  // Fallback for local dev without the ControlPlane running.
+  // Fallback for local dev (direct Keycloak access via localhost).
   return "http://localhost:8080/realms/clustral";
 }
 
@@ -44,13 +58,13 @@ function createUserManager(authority: string): UserManager {
 
 /**
  * Returns the singleton UserManager, initializing it on first call
- * by fetching the Keycloak authority from the ControlPlane.
+ * by resolving the OIDC authority.
  */
 export async function getUserManager(): Promise<UserManager> {
   if (_userManager) return _userManager;
 
   if (!_initPromise) {
-    _initPromise = fetchAuthority().then((authority) => {
+    _initPromise = resolveAuthority().then((authority) => {
       _userManager = createUserManager(authority);
       return _userManager;
     });
