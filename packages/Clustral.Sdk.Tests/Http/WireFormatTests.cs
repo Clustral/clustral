@@ -63,18 +63,10 @@ public class WireFormatTests
         Assert.True(groupLines.Count > 0,
             $"No Impersonate-Group headers found. Raw request:\n{rawRequest}");
 
-        // Report the actual format.
-        if (groupLines.Count == 1)
-        {
-            Assert.Fail(
-                $".NET HttpClient combines multi-value headers into ONE comma-separated line.\n" +
-                $"Line: {groupLines[0]}\n" +
-                $"This breaks k8s impersonation. Need a workaround.");
-        }
-        else
-        {
-            // Separate headers — this is what k8s needs.
-            Assert.Equal(2, groupLines.Count);
-        }
+        // .NET HttpClient combines multi-value headers into ONE comma-separated
+        // line. This is expected and is why the Agent uses ImpersonationHandler
+        // (raw HTTP) instead of HttpClient for k8s API requests.
+        Assert.Single(groupLines);
+        Assert.Contains(",", groupLines[0]); // Confirms comma-separated — the bug we work around
     }
 }
