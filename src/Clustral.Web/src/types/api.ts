@@ -52,3 +52,48 @@ export interface UserInfo {
   email: string;
   name: string;
 }
+
+// ── Roles ────────────────────────────────────────────────────────────────────
+
+export interface Role {
+  id: string;
+  name: string;
+  description: string;
+  kubernetesGroups: string[];
+  createdAt: string;
+}
+
+export interface RoleListResponse {
+  roles: Role[];
+}
+
+// ── Users (managed) ──────────────────────────────────────────────────────────
+
+export interface ManagedUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+}
+
+export interface UserListResponse {
+  users: ManagedUser[];
+}
+
+// ── Role Assignments ─────────────────────────────────────────────────────────
+
+export interface RoleAssignment {
+  id: string;
+  userId: string;
+  roleId: string;
+  roleName: string;
+  clusterId: string;
+  clusterName: string;
+  assignedAt: string;
+  assignedBy: string;
+}
+
+export interface RoleAssignmentListResponse {
+  assignments: RoleAssignment[];
+}

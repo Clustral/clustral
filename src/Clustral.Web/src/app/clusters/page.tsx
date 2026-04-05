@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { useClusters, clusterKeys } from "@/hooks/useClusters";
 import { ClusterCard } from "@/components/ClusterCard";
 import { ConnectSteps } from "@/components/ConnectSteps";
 import { RegisterClusterDialog } from "@/components/RegisterClusterDialog";
+import { NavHeader } from "@/components/NavHeader";
 import { deleteCluster } from "@/lib/api";
 import type { Cluster } from "@/types/api";
-import { LogOut, RefreshCw, Server, Plus } from "lucide-react";
+import { RefreshCw, Server, Plus } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function ClustersPage() {
@@ -45,30 +46,7 @@ export default function ClustersPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            <span className="text-lg font-semibold">Clustral</span>
-          </div>
-          <div className="flex items-center gap-4">
-            {session?.user?.email && (
-              <span className="text-sm text-muted-foreground">
-                {session.user.email}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      <NavHeader />
 
       {/* Body */}
       <main className="mx-auto max-w-6xl px-6 py-8">

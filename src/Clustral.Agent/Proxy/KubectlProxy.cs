@@ -120,8 +120,8 @@ public sealed class KubectlProxy
         var request = new HttpRequestMessage(method, head.Path);
 
         // Translate Clustral impersonation headers to k8s Impersonation API headers.
-        string? impersonateUser  = null;
-        string? impersonateGroup = null;
+        string? impersonateUser = null;
+        var impersonateGroups = new List<string>();
 
         foreach (var h in head.Headers)
         {
@@ -132,7 +132,7 @@ public sealed class KubectlProxy
             }
             if (h.Name.Equals("X-Clustral-Impersonate-Group", StringComparison.OrdinalIgnoreCase))
             {
-                impersonateGroup = h.Value;
+                impersonateGroups.Add(h.Value);
                 continue;
             }
 
@@ -150,8 +150,8 @@ public sealed class KubectlProxy
         if (impersonateUser is not null)
         {
             request.Headers.TryAddWithoutValidation("Impersonate-User", impersonateUser);
-            if (impersonateGroup is not null)
-                request.Headers.TryAddWithoutValidation("Impersonate-Group", impersonateGroup);
+            foreach (var group in impersonateGroups)
+                request.Headers.TryAddWithoutValidation("Impersonate-Group", group);
         }
 
         if (frame.BodyChunk.Length > 0 || method == HttpMethod.Post || method == HttpMethod.Put

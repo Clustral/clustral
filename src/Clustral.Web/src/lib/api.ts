@@ -1,4 +1,13 @@
-import type { ClusterListResponse, RegisterClusterRequest, RegisterClusterResponse } from "@/types/api";
+import type {
+  ClusterListResponse,
+  RegisterClusterRequest,
+  RegisterClusterResponse,
+  RoleListResponse,
+  UserListResponse,
+  RoleAssignmentListResponse,
+  Role,
+  RoleAssignment,
+} from "@/types/api";
 
 const BASE = "/api/v1";
 
@@ -63,5 +72,70 @@ export function registerCluster(
   return apiFetch<RegisterClusterResponse>("/clusters", token, {
     method: "POST",
     body: JSON.stringify(request),
+  });
+}
+
+// ── Roles ────────────────────────────────────────────────────────────────────
+
+export function fetchRoles(token: string): Promise<RoleListResponse> {
+  return apiFetch<RoleListResponse>("/roles", token);
+}
+
+export function createRole(
+  token: string,
+  request: { name: string; description: string; kubernetesGroups: string[] },
+): Promise<Role> {
+  return apiFetch<Role>("/roles", token, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function updateRole(
+  token: string,
+  id: string,
+  request: { name?: string; description?: string; kubernetesGroups?: string[] },
+): Promise<Role> {
+  return apiFetch<Role>(`/roles/${id}`, token, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function deleteRole(token: string, id: string): Promise<void> {
+  await apiFetch<void>(`/roles/${id}`, token, { method: "DELETE" });
+}
+
+// ── Users ────────────────────────────────────────────────────────────────────
+
+export function fetchUsers(token: string): Promise<UserListResponse> {
+  return apiFetch<UserListResponse>("/users", token);
+}
+
+export function fetchUserAssignments(
+  token: string,
+  userId: string,
+): Promise<RoleAssignmentListResponse> {
+  return apiFetch<RoleAssignmentListResponse>(`/users/${userId}/assignments`, token);
+}
+
+export function assignRole(
+  token: string,
+  userId: string,
+  request: { roleId: string; clusterId: string },
+): Promise<RoleAssignment> {
+  return apiFetch<RoleAssignment>(`/users/${userId}/assignments`, token, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function removeAssignment(
+  token: string,
+  userId: string,
+  assignmentId: string,
+): Promise<void> {
+  await apiFetch<void>(`/users/${userId}/assignments/${assignmentId}`, token, {
+    method: "DELETE",
   });
 }

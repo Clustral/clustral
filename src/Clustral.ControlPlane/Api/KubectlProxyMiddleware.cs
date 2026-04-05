@@ -115,18 +115,45 @@ public sealed class KubectlProxyMiddleware
             return;
         }
 
-        // ── 1b. Look up the owning user for impersonation ─────────────────
-        string? impersonateUser  = null;
-        string? impersonateEmail = null;
+        // ── 1b. Look up user + role assignment for impersonation ─────────
+        string? impersonateUser = null;
+        var impersonateGroups = new List<string> { "system:authenticated" };
+
         if (credential.UserId.HasValue)
         {
             var user = await db.Users
                 .Find(u => u.Id == credential.UserId.Value)
                 .FirstOrDefaultAsync(ct);
+
             if (user is not null)
             {
-                impersonateUser  = user.Email ?? user.KeycloakSubject;
-                impersonateEmail = user.Email;
+                impersonateUser = user.Email ?? user.KeycloakSubject;
+
+                // Look up the role assignment for this user + cluster.
+                var assignment = await db.RoleAssignments
+                    .Find(a => a.UserId == user.Id && a.ClusterId == clusterId)
+                    .FirstOrDefaultAsync(ct);
+
+                if (assignment is null)
+                {
+                    httpContext.Response.StatusCode = 403;
+                    await httpContext.Response.WriteAsync(
+                        "No role assigned for this cluster. Ask an admin to assign you a role.");
+                    return;
+                }
+
+                var role = await db.Roles
+                    .Find(r => r.Id == assignment.RoleId)
+                    .FirstOrDefaultAsync(ct);
+
+                if (role is not null)
+                {
+                    foreach (var group in role.KubernetesGroups)
+                    {
+                        if (!impersonateGroups.Contains(group))
+                            impersonateGroups.Add(group);
+                    }
+                }
             }
         }
 
@@ -174,11 +201,14 @@ public sealed class KubectlProxyMiddleware
                 Name  = "X-Clustral-Impersonate-User",
                 Value = impersonateUser,
             });
-            head.Headers.Add(new HttpHeader
+            foreach (var group in impersonateGroups)
             {
-                Name  = "X-Clustral-Impersonate-Group",
-                Value = "system:authenticated",
-            });
+                head.Headers.Add(new HttpHeader
+                {
+                    Name  = "X-Clustral-Impersonate-Group",
+                    Value = group,
+                });
+            }
         }
 
         // Read request body.

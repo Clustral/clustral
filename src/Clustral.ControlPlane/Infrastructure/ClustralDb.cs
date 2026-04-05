@@ -16,9 +16,11 @@ public sealed class ClustralDb
         _database = client.GetDatabase(databaseName);
     }
 
-    public IMongoCollection<Cluster>     Clusters     => _database.GetCollection<Cluster>("clusters");
-    public IMongoCollection<User>        Users        => _database.GetCollection<User>("users");
-    public IMongoCollection<AccessToken> AccessTokens => _database.GetCollection<AccessToken>("access_tokens");
+    public IMongoCollection<Cluster>        Clusters        => _database.GetCollection<Cluster>("clusters");
+    public IMongoCollection<User>           Users           => _database.GetCollection<User>("users");
+    public IMongoCollection<AccessToken>    AccessTokens    => _database.GetCollection<AccessToken>("access_tokens");
+    public IMongoCollection<Role>           Roles           => _database.GetCollection<Role>("roles");
+    public IMongoCollection<RoleAssignment> RoleAssignments => _database.GetCollection<RoleAssignment>("role_assignments");
 
     /// <summary>
     /// Creates unique indexes required for correctness.
@@ -49,5 +51,19 @@ public sealed class ClustralDb
             new CreateIndexModel<AccessToken>(
                 Builders<AccessToken>.IndexKeys.Ascending(t => t.ClusterId),
                 new CreateIndexOptions { Name = "ix_access_tokens_cluster_id" }));
+
+        // roles.name — unique
+        await Roles.Indexes.CreateOneAsync(
+            new CreateIndexModel<Role>(
+                Builders<Role>.IndexKeys.Ascending(r => r.Name),
+                new CreateIndexOptions { Unique = true, Name = "ix_roles_name" }));
+
+        // role_assignments.(user_id, cluster_id) — unique, one role per user per cluster
+        await RoleAssignments.Indexes.CreateOneAsync(
+            new CreateIndexModel<RoleAssignment>(
+                Builders<RoleAssignment>.IndexKeys
+                    .Ascending(a => a.UserId)
+                    .Ascending(a => a.ClusterId),
+                new CreateIndexOptions { Unique = true, Name = "ix_role_assignments_user_cluster" }));
     }
 }
