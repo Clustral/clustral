@@ -51,7 +51,6 @@ internal static class KubeLoginCommand
     {
         var kube = new Command("kube", "Manage kubeconfig credentials for Clustral clusters.");
         kube.AddCommand(BuildLoginSubcommand());
-        kube.AddCommand(KubeProxyCommand.Build());
         return kube;
     }
 
@@ -138,17 +137,14 @@ internal static class KubeLoginCommand
         }
 
         // ── Write kubeconfig entry ────────────────────────────────────────────
-        // kubectl v1.32+ requires HTTPS to send credentials. The Next.js
-        // container serves HTTPS with a self-signed cert on the same port.
-        var cpUri     = new Uri(controlPlaneUrl.TrimEnd('/'));
-        var serverUrl = $"https://{cpUri.Host}:{cpUri.Port}/api/proxy/{clusterId}";
+        var serverUrl = $"{controlPlaneUrl.TrimEnd('/')}/api/proxy/{clusterId}";
 
         var entry = new ClustralKubeconfigEntry(
             ContextName:           contextName,
             ServerUrl:             serverUrl,
             Token:                 credential.Token,
             ExpiresAt:             credential.ExpiresAt,
-            InsecureSkipTlsVerify: true);
+            InsecureSkipTlsVerify: insecure);
 
         try
         {
