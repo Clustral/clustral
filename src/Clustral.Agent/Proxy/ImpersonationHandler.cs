@@ -1,159 +1,182 @@
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace Clustral.Agent.Proxy;
 
 /// <summary>
-/// Sends HTTP requests with separate Impersonate-Group header lines.
+/// Workaround for .NET HttpClient combining multi-value headers into a
+/// single comma-separated line. k8s requires each Impersonate-Group as
+/// a separate HTTP header line.
 ///
-/// .NET HttpClient combines multi-value headers into a single
-/// comma-separated line, but k8s requires each Impersonate-Group
-/// as a separate header. This handler bypasses HttpClient's serialization
-/// by writing the raw HTTP request directly to the socket when
-/// impersonation headers are present.
+/// This handler uses SocketsHttpHandler with a custom ConnectCallback
+/// that wraps the network stream with an interceptor. The interceptor
+/// rewrites the outgoing HTTP headers to split comma-separated
+/// Impersonate-Group values into separate header lines before they
+/// reach the wire.
 /// </summary>
-internal sealed class ImpersonationHandler : HttpMessageHandler
+internal sealed class ImpersonationHandler : DelegatingHandler
 {
-    private readonly Uri _baseAddress;
-    private readonly bool _skipTlsVerify;
-    private readonly Func<CancellationToken, Task<string>>? _saTokenProvider;
+    internal ImpersonationHandler(HttpMessageHandler inner) : base(inner) { }
 
-    internal ImpersonationHandler(
-        Uri baseAddress,
-        bool skipTlsVerify,
-        Func<CancellationToken, Task<string>>? saTokenProvider = null)
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken ct)
     {
-        _baseAddress = baseAddress;
-        _skipTlsVerify = skipTlsVerify;
-        _saTokenProvider = saTokenProvider;
+        // The actual header splitting happens in ImpersonationStream
+        // which is injected via SocketsHttpHandler.ConnectCallback.
+        return base.SendAsync(request, ct);
     }
 
-    protected override async Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        CancellationToken ct)
+    /// <summary>
+    /// Creates a SocketsHttpHandler with a ConnectCallback that wraps the
+    /// stream with an ImpersonationStream to fix header serialization.
+    /// </summary>
+    internal static SocketsHttpHandler CreateHandler(bool skipTlsVerify)
     {
-        var uri = request.RequestUri ?? new Uri(_baseAddress, request.RequestUri?.PathAndQuery ?? "/");
-        var host = _baseAddress.Host;
-        var port = _baseAddress.Port;
-        var useTls = _baseAddress.Scheme == "https";
+        var handler = new SocketsHttpHandler();
 
-        using var tcp = new TcpClient();
-        await tcp.ConnectAsync(host, port, ct);
-
-        Stream stream = tcp.GetStream();
-        if (useTls)
+        if (skipTlsVerify)
         {
-            var sslStream = new SslStream(stream, false, (_, _, _, _) => _skipTlsVerify || true);
-            await sslStream.AuthenticateAsClientAsync(host);
-            stream = sslStream;
-        }
-
-        // Read body if present.
-        byte[]? body = null;
-        if (request.Content is not null)
-            body = await request.Content.ReadAsByteArrayAsync(ct);
-
-        // Build raw HTTP request with separate headers.
-        var sb = new StringBuilder();
-        sb.Append($"{request.Method} {uri.PathAndQuery} HTTP/1.1\r\n");
-        sb.Append($"Host: {host}:{port}\r\n");
-        sb.Append("Connection: close\r\n");
-
-        // Add SA token if available.
-        if (_saTokenProvider is not null)
-        {
-            var token = await _saTokenProvider(ct);
-            sb.Append($"Authorization: Bearer {token}\r\n");
-        }
-
-        // Write each header individually — the key part.
-        foreach (var header in request.Headers)
-        {
-            if (header.Key.Equals("Impersonate-Group", StringComparison.OrdinalIgnoreCase))
+            handler.SslOptions = new SslClientAuthenticationOptions
             {
-                // Write EACH group as a SEPARATE header line.
-                foreach (var value in header.Value)
-                    sb.Append($"Impersonate-Group: {value}\r\n");
-            }
-            else if (!header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase) &&
-                     !header.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
-                     !header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                sb.Append($"{header.Key}: {string.Join(", ", header.Value)}\r\n");
-            }
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+            };
         }
 
-        // Content headers.
-        if (request.Content is not null)
+        handler.ConnectCallback = async (context, ct) =>
         {
-            foreach (var header in request.Content.Headers)
-                sb.Append($"{header.Key}: {string.Join(", ", header.Value)}\r\n");
+            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+            await socket.ConnectAsync(context.DnsEndPoint, ct);
+            var networkStream = new NetworkStream(socket, ownsSocket: true);
+
+            Stream stream = networkStream;
+
+            // For HTTPS, wrap with SslStream.
+            if (context.DnsEndPoint.Port == 443 ||
+                context.InitialRequestMessage.RequestUri?.Scheme == "https")
+            {
+                var sslStream = new SslStream(stream, false,
+                    skipTlsVerify ? (_, _, _, _) => true : null);
+                await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+                {
+                    TargetHost = context.DnsEndPoint.Host,
+                    RemoteCertificateValidationCallback = skipTlsVerify
+                        ? (_, _, _, _) => true
+                        : null,
+                }, ct);
+                stream = sslStream;
+            }
+
+            return new ImpersonationStream(stream);
+        };
+
+        return handler;
+    }
+}
+
+/// <summary>
+/// Stream wrapper that intercepts HTTP header writes and splits
+/// comma-separated Impersonate-Group values into separate header lines.
+/// </summary>
+internal sealed class ImpersonationStream : Stream
+{
+    private readonly Stream _inner;
+    private bool _headersDone;
+
+    internal ImpersonationStream(Stream inner) => _inner = inner;
+
+    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+    {
+        if (_headersDone)
+        {
+            await _inner.WriteAsync(buffer, ct);
+            return;
         }
 
-        if (body is not null)
-            sb.Append($"Content-Length: {body.Length}\r\n");
+        // Check if this write contains the end-of-headers marker.
+        var data = Encoding.ASCII.GetString(buffer.Span);
 
-        sb.Append("\r\n");
+        var headerEndIdx = data.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        if (headerEndIdx < 0)
+        {
+            // Still in headers — buffer and rewrite.
+            var rewritten = RewriteHeaders(data);
+            await _inner.WriteAsync(Encoding.ASCII.GetBytes(rewritten), ct);
+            return;
+        }
 
-        // Send headers.
-        var headerBytes = Encoding.ASCII.GetBytes(sb.ToString());
-        await stream.WriteAsync(headerBytes, ct);
+        // Split headers from body.
+        _headersDone = true;
+        var headers = data[..headerEndIdx];
+        var rest = data[(headerEndIdx)..]; // includes \r\n\r\n + body
 
-        // Send body.
-        if (body is not null && body.Length > 0)
-            await stream.WriteAsync(body, ct);
-
-        await stream.FlushAsync(ct);
-
-        // Read response.
-        return await ReadResponseAsync(stream, ct);
+        var rewrittenHeaders = RewriteHeaders(headers);
+        await _inner.WriteAsync(Encoding.ASCII.GetBytes(rewrittenHeaders + rest), ct);
     }
 
-    private static async Task<HttpResponseMessage> ReadResponseAsync(Stream stream, CancellationToken ct)
+    private static string RewriteHeaders(string headers)
     {
-        using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+        var lines = headers.Split("\r\n");
+        var result = new StringBuilder();
 
-        // Status line.
-        var statusLine = await reader.ReadLineAsync(ct) ?? "";
-        var parts = statusLine.Split(' ', 3);
-        var statusCode = parts.Length >= 2 ? int.Parse(parts[1]) : 200;
-
-        var response = new HttpResponseMessage((HttpStatusCode)statusCode);
-
-        // Headers.
-        var contentLength = -1L;
-        string? line;
-        while ((line = await reader.ReadLineAsync(ct)) is not null && line.Length > 0)
+        foreach (var line in lines)
         {
-            var colonIdx = line.IndexOf(':');
-            if (colonIdx <= 0) continue;
-            var name = line[..colonIdx].Trim();
-            var value = line[(colonIdx + 1)..].Trim();
-
-            if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
-                contentLength = long.Parse(value);
-
-            response.Headers.TryAddWithoutValidation(name, value);
+            if (line.StartsWith("Impersonate-Group:", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = line["Impersonate-Group:".Length..].Trim();
+                // Split comma-separated values into separate headers.
+                var groups = value.Split(',', StringSplitOptions.TrimEntries);
+                foreach (var group in groups)
+                    result.Append($"Impersonate-Group: {group}\r\n");
+            }
+            else
+            {
+                result.Append(line).Append("\r\n");
+            }
         }
 
-        // Body.
-        if (contentLength > 0)
-        {
-            var buf = new char[contentLength];
-            var read = await reader.ReadBlockAsync(buf, 0, (int)contentLength);
-            response.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(buf, 0, read));
-        }
-        else if (contentLength != 0)
-        {
-            // Read until connection close.
-            var remaining = await reader.ReadToEndAsync(ct);
-            if (remaining.Length > 0)
-                response.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(remaining));
-        }
+        // Remove trailing extra \r\n (the loop adds one per line including the last).
+        var s = result.ToString();
+        if (s.EndsWith("\r\n\r\n"))
+            s = s[..^2]; // keep only one trailing \r\n
+        return s;
+    }
 
-        return response;
+    // Delegate everything else to the inner stream.
+    public override void Write(byte[] buffer, int offset, int count) =>
+        WriteAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+        WriteAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) =>
+        _inner.ReadAsync(buffer, ct);
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+        _inner.ReadAsync(buffer, offset, count, ct);
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        _inner.Read(buffer, offset, count);
+
+    public override bool CanRead => _inner.CanRead;
+    public override bool CanSeek => _inner.CanSeek;
+    public override bool CanWrite => _inner.CanWrite;
+    public override long Length => _inner.Length;
+    public override long Position
+    {
+        get => _inner.Position;
+        set => _inner.Position = value;
+    }
+    public override void Flush() => _inner.Flush();
+    public override Task FlushAsync(CancellationToken ct) => _inner.FlushAsync(ct);
+    public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+    public override void SetLength(long value) => _inner.SetLength(value);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _inner.Dispose();
+        base.Dispose(disposing);
     }
 }
