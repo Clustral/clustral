@@ -69,10 +69,34 @@ public sealed class KubeconfigWriter
 
         UpsertNamedEntry(doc, "clusters", entry.ContextName, clusterData);
 
-        UpsertNamedEntry(doc, "users", entry.ContextName, new Dictionary<object, object>
+        // Use exec credential plugin instead of a static token.
+        // kubectl v1.32+ refuses to send bearer tokens over plain HTTP,
+        // but exec plugins bypass this restriction.
+        var userData = new Dictionary<object, object>
         {
-            ["token"] = entry.Token,
-        });
+            ["exec"] = new Dictionary<object, object>
+            {
+                ["apiVersion"] = "client.authentication.k8s.io/v1beta1",
+                ["command"] = "sh",
+                ["args"] = new List<object>
+                {
+                    "-c",
+                    $"printf '{{\"apiVersion\":\"client.authentication.k8s.io/v1beta1\",\"kind\":\"ExecCredential\",\"status\":{{\"token\":\"{entry.Token}\"}}}}'",
+                },
+                ["interactiveMode"] = "Never",
+            },
+        };
+
+        // Remove any existing static token — kubectl ignores exec if token is present.
+        var users = GetList(doc, "users");
+        var existingUser = users.OfType<Dictionary<object, object>>()
+            .FirstOrDefault(e => e.TryGetValue("name", out var n) && n is string s && s == entry.ContextName);
+        if (existingUser?.TryGetValue("user", out var raw) == true && raw is Dictionary<object, object> existingUserData)
+        {
+            existingUserData.Remove("token");
+        }
+
+        UpsertNamedEntry(doc, "users", entry.ContextName, userData);
 
         UpsertNamedEntry(doc, "contexts", entry.ContextName, new Dictionary<object, object>
         {
