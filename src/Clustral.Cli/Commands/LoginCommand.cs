@@ -30,17 +30,22 @@ internal static class LoginCommand
         "--insecure",
         "Skip TLS verification (local dev only).");
 
+    private static readonly Option<bool> ForceOption = new(
+        "--force",
+        "Force re-authentication even if already logged in.");
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public static Command Build()
     {
         var cmd = new Command("login",
             "Authenticate via the ControlPlane. " +
-            "Discovers Keycloak automatically and opens the browser for SSO login.");
+            "Shows current session if already logged in. Use --force to re-authenticate.");
 
         cmd.AddArgument(ControlPlaneArg);
         cmd.AddOption(PortOption);
         cmd.AddOption(InsecureOption);
+        cmd.AddOption(ForceOption);
 
         cmd.SetHandler(HandleAsync);
 
@@ -56,6 +61,7 @@ internal static class LoginCommand
         var config   = CliConfig.Load();
         var insecure = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var port     = ctx.ParseResult.GetValueForOption(PortOption)     ?? config.CallbackPort;
+        var force    = ctx.ParseResult.GetValueForOption(ForceOption);
 
         // ── Resolve ControlPlane URL ──────────────────────────────────────
         var cpUrl = ctx.ParseResult.GetValueForArgument(ControlPlaneArg);
@@ -87,6 +93,24 @@ internal static class LoginCommand
             ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
             : new HttpClientHandler();
         using var http = new HttpClient(httpHandler);
+
+        // ── Check for existing valid session ──────────────────────────────
+        if (!force)
+        {
+            var cache = new TokenCache();
+            var existingToken = await cache.ReadAsync(ct);
+
+            if (existingToken is not null)
+            {
+                var expiry = DecodeJwtExpiry(existingToken);
+                if (expiry.HasValue && expiry.Value > DateTimeOffset.UtcNow)
+                {
+                    // Session still valid — show profile and exit.
+                    await DisplayProfileAsync(http, cpUrl, existingToken, ct);
+                    return;
+                }
+            }
+        }
 
         // ── Discover OIDC configuration from ControlPlane ─────────────────
         Console.Error.WriteLine($"Connecting to {cpUrl}...");
