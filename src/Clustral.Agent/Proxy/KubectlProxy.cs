@@ -150,9 +150,12 @@ public sealed class KubectlProxy
         if (impersonateUser is not null)
         {
             request.Headers.TryAddWithoutValidation("Impersonate-User", impersonateUser);
-            // k8s requires separate Impersonate-Group headers, NOT comma-separated.
-            // TryAddWithoutValidation with IEnumerable sends them correctly.
-            request.Headers.TryAddWithoutValidation("Impersonate-Group", impersonateGroups);
+            // .NET HttpClient combines multi-value headers into a single
+            // comma-separated header, but k8s requires each Impersonate-Group
+            // as a separate header line. Workaround: send each group as a
+            // uniquely-suffixed header that our custom handler splits.
+            for (int i = 0; i < impersonateGroups.Count; i++)
+                request.Headers.TryAddWithoutValidation($"Impersonate-Group", impersonateGroups[i]);
         }
 
         if (frame.BodyChunk.Length > 0 || method == HttpMethod.Post || method == HttpMethod.Put
@@ -219,76 +222,18 @@ public sealed class KubectlProxy
         bool   skipTlsVerify = false)
     {
         const string saTokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token";
-        const string caCertPath  = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
 
         var isInCluster = File.Exists(saTokenPath);
+        var baseUri = new Uri(apiUrl);
 
-        HttpMessageHandler innerHandler;
+        // Use ImpersonationHandler which writes raw HTTP with separate
+        // Impersonate-Group headers. .NET HttpClient combines multi-value
+        // headers into comma-separated values, which k8s doesn't accept.
+        Func<CancellationToken, Task<string>>? saTokenProvider = isInCluster
+            ? async ct => (await File.ReadAllTextAsync(saTokenPath, ct)).Trim()
+            : null;
 
-        if (isInCluster && !skipTlsVerify)
-        {
-            var caCert    = X509CertificateLoader.LoadCertificateFromFile(caCertPath);
-            var socketsHandler = new SocketsHttpHandler();
-            socketsHandler.SslOptions.RemoteCertificateValidationCallback =
-                (_, cert, _, _) =>
-                {
-                    // Accept if the certificate is signed by the cluster CA.
-                    if (cert is null) return false;
-                    using var chain = new X509Chain();
-                    chain.ChainPolicy.TrustMode           = X509ChainTrustMode.CustomRootTrust;
-                    chain.ChainPolicy.CustomTrustStore.Add(caCert);
-                    chain.ChainPolicy.RevocationMode      = X509RevocationMode.NoCheck;
-                    return chain.Build(new X509Certificate2(cert));
-                };
-            innerHandler = socketsHandler;
-        }
-        else if (skipTlsVerify)
-        {
-            innerHandler = new SocketsHttpHandler
-            {
-                SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true },
-            };
-        }
-        else
-        {
-            innerHandler = new SocketsHttpHandler();
-        }
-
-        HttpMessageHandler handler = isInCluster
-            ? new ServiceAccountTokenHandler(saTokenPath, innerHandler)
-            : innerHandler;
-
-        return new HttpClient(handler) { BaseAddress = new Uri(apiUrl) };
-    }
-}
-
-// =============================================================================
-// ServiceAccountTokenHandler
-// =============================================================================
-
-/// <summary>
-/// Attaches the pod's service account bearer token to every outgoing request.
-/// The token file is re-read on each request because kubelet rotates it
-/// periodically (typically every hour).
-/// </summary>
-internal sealed class ServiceAccountTokenHandler : DelegatingHandler
-{
-    private readonly string _tokenPath;
-
-    internal ServiceAccountTokenHandler(string tokenPath, HttpMessageHandler inner)
-        : base(inner)
-    {
-        _tokenPath = tokenPath;
-    }
-
-    protected override async Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        CancellationToken  cancellationToken)
-    {
-        var token = await File.ReadAllTextAsync(_tokenPath, cancellationToken);
-        request.Headers.Authorization =
-            new AuthenticationHeaderValue("Bearer", token.Trim());
-
-        return await base.SendAsync(request, cancellationToken);
+        var handler = new ImpersonationHandler(baseUri, skipTlsVerify, saTokenProvider);
+        return new HttpClient(handler) { BaseAddress = baseUri };
     }
 }
