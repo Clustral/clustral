@@ -115,6 +115,21 @@ public sealed class KubectlProxyMiddleware
             return;
         }
 
+        // ── 1b. Look up the owning user for impersonation ─────────────────
+        string? impersonateUser  = null;
+        string? impersonateEmail = null;
+        if (credential.UserId.HasValue)
+        {
+            var user = await db.Users
+                .Find(u => u.Id == credential.UserId.Value)
+                .FirstOrDefaultAsync(ct);
+            if (user is not null)
+            {
+                impersonateUser  = user.Email ?? user.KeycloakSubject;
+                impersonateEmail = user.Email;
+            }
+        }
+
         // ── 2. Find tunnel session ───────────────────────────────────────────
         var sessions = httpContext.RequestServices.GetRequiredService<TunnelSessionManager>();
         var session = sessions.GetSession(clusterId);
@@ -147,6 +162,22 @@ public sealed class KubectlProxyMiddleware
             {
                 Name  = name,
                 Value = string.Join(", ", values!),
+            });
+        }
+
+        // Inject impersonation headers so the agent can forward user identity
+        // to the k8s API server via the Impersonation API.
+        if (impersonateUser is not null)
+        {
+            head.Headers.Add(new HttpHeader
+            {
+                Name  = "X-Clustral-Impersonate-User",
+                Value = impersonateUser,
+            });
+            head.Headers.Add(new HttpHeader
+            {
+                Name  = "X-Clustral-Impersonate-Group",
+                Value = "system:authenticated",
             });
         }
 

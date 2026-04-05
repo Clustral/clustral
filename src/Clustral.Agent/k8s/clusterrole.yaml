@@ -1,18 +1,26 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # ClusterRole for the Clustral Agent
 #
-# The Agent acts as a transparent kubectl proxy: it forwards arbitrary
-# Kubernetes API requests on behalf of users who have been authenticated
-# at the Clustral ControlPlane.  Because the Agent itself is the principal
-# that makes k8s API calls, its ServiceAccount must hold the permissions
-# that would otherwise be granted to the proxied users.
+# The Agent uses the Kubernetes Impersonation API to forward user identity
+# from the Clustral ControlPlane to the k8s API server. This means the
+# Agent's ServiceAccount only needs the "impersonate" verb — actual
+# authorization is enforced by k8s RBAC based on the impersonated user.
 #
-# ⚠️  SECURITY NOTE
-# This ClusterRole grants broad read/write access.  Before deploying to
-# production, replace it with a tighter role that matches your actual
-# authorization model, or implement per-user impersonation by forwarding
-# user identity via the k8s Impersonation API (recommended for production).
-# See: https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation
+# Cluster admins must create RoleBindings/ClusterRoleBindings for each
+# Clustral user (by email) to grant them the appropriate k8s permissions.
+#
+# Example — grant a user read access to a namespace:
+#
+#   kubectl create rolebinding dev-reader \
+#     --clusterrole=view \
+#     --user=dev@clustral.local \
+#     --namespace=default
+#
+# Example — grant a user cluster-admin access:
+#
+#   kubectl create clusterrolebinding admin-full \
+#     --clusterrole=cluster-admin \
+#     --user=admin@clustral.local
 # ──────────────────────────────────────────────────────────────────────────────
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -22,72 +30,18 @@ metadata:
     app.kubernetes.io/name: clustral-agent
     app.kubernetes.io/component: agent
 rules:
-  # Core API — pods, services, configmaps, secrets, namespaces
+  # Impersonation — allows the agent to act as any user or group.
+  # The k8s API server then enforces RBAC for the impersonated identity.
   - apiGroups: [""]
     resources:
-      - pods
-      - pods/log
-      - pods/exec
-      - pods/portforward
-      - services
-      - endpoints
-      - configmaps
-      - secrets
-      - namespaces
-      - nodes
-      - persistentvolumeclaims
-      - persistentvolumes
-      - events
+      - users
+      - groups
       - serviceaccounts
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["impersonate"]
 
-  # Apps — deployments, replicasets, statefulsets, daemonsets
-  - apiGroups: ["apps"]
+  # Required for the agent's own heartbeat (ClusterService.UpdateStatus).
+  # This is the agent calling as itself, not impersonating.
+  - apiGroups: [""]
     resources:
-      - deployments
-      - replicasets
-      - statefulsets
-      - daemonsets
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # Batch — jobs, cronjobs
-  - apiGroups: ["batch"]
-    resources:
-      - jobs
-      - cronjobs
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # Networking
-  - apiGroups: ["networking.k8s.io"]
-    resources:
-      - ingresses
-      - networkpolicies
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  # RBAC (read-only — do not grant write access to cluster RBAC)
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources:
-      - roles
-      - rolebindings
-      - clusterroles
-      - clusterrolebindings
-    verbs: ["get", "list", "watch"]
-
-  # Custom Resource Definitions (read-only)
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources:
-      - customresourcedefinitions
-    verbs: ["get", "list", "watch"]
-
-  # Storage
-  - apiGroups: ["storage.k8s.io"]
-    resources:
-      - storageclasses
-    verbs: ["get", "list", "watch"]
-
-  # Metrics
-  - apiGroups: ["metrics.k8s.io"]
-    resources:
-      - pods
       - nodes
     verbs: ["get", "list"]

@@ -36,6 +36,9 @@ public sealed class KubectlProxy
         "TE", "Trailers", "Transfer-Encoding", "Upgrade",
         // Strip user's Clustral token — agent presents its own identity to k8s.
         "Authorization",
+        // Clustral internal headers — translated to k8s Impersonate-* below.
+        "X-Clustral-Impersonate-User",
+        "X-Clustral-Impersonate-Group",
     };
 
     private readonly HttpClient _httpClient;
@@ -116,8 +119,23 @@ public sealed class KubectlProxy
         var method  = new HttpMethod(head.Method);
         var request = new HttpRequestMessage(method, head.Path);
 
+        // Translate Clustral impersonation headers to k8s Impersonation API headers.
+        string? impersonateUser  = null;
+        string? impersonateGroup = null;
+
         foreach (var h in head.Headers)
         {
+            if (h.Name.Equals("X-Clustral-Impersonate-User", StringComparison.OrdinalIgnoreCase))
+            {
+                impersonateUser = h.Value;
+                continue;
+            }
+            if (h.Name.Equals("X-Clustral-Impersonate-Group", StringComparison.OrdinalIgnoreCase))
+            {
+                impersonateGroup = h.Value;
+                continue;
+            }
+
             if (_hopByHopHeaders.Contains(h.Name))
                 continue;
 
@@ -126,6 +144,14 @@ public sealed class KubectlProxy
                 continue;
 
             request.Headers.TryAddWithoutValidation(h.Name, h.Value);
+        }
+
+        // Set k8s Impersonation headers if the ControlPlane identified the user.
+        if (impersonateUser is not null)
+        {
+            request.Headers.TryAddWithoutValidation("Impersonate-User", impersonateUser);
+            if (impersonateGroup is not null)
+                request.Headers.TryAddWithoutValidation("Impersonate-Group", impersonateGroup);
         }
 
         if (frame.BodyChunk.Length > 0 || method == HttpMethod.Post || method == HttpMethod.Put
