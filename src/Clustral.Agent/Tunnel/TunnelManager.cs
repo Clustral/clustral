@@ -33,6 +33,7 @@ public sealed class TunnelManager
     private readonly ILogger<TunnelManager> _logger;
 
     private readonly Random _jitter = new();
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public TunnelManager(
         IOptions<AgentOptions>   opts,
@@ -175,14 +176,22 @@ public sealed class TunnelManager
                     break;
 
                 case TunnelServerMessage.PayloadOneofCase.Ping:
-                    await call.RequestStream.WriteAsync(new TunnelClientMessage
+                    await _writeLock.WaitAsync(ct);
+                    try
                     {
-                        Pong = new PongFrame
+                        await call.RequestStream.WriteAsync(new TunnelClientMessage
                         {
-                            Payload        = msg.Ping.Payload,
-                            OriginalSentAt = msg.Ping.SentAt,
-                        },
-                    }, ct);
+                            Pong = new PongFrame
+                            {
+                                Payload        = msg.Ping.Payload,
+                                OriginalSentAt = msg.Ping.SentAt,
+                            },
+                        }, ct);
+                    }
+                    finally
+                    {
+                        _writeLock.Release();
+                    }
                     break;
 
                 case TunnelServerMessage.PayloadOneofCase.Pong:
@@ -212,7 +221,15 @@ public sealed class TunnelManager
         try
         {
             var response = await _proxy.ProxyAsync(request, ct);
-            await writer.WriteAsync(new TunnelClientMessage { HttpResponse = response }, ct);
+            await _writeLock.WaitAsync(ct);
+            try
+            {
+                await writer.WriteAsync(new TunnelClientMessage { HttpResponse = response }, ct);
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
