@@ -22,7 +22,6 @@ RUN apk add --no-cache openssl
 # Copy standalone Next.js output.
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
 
 # Custom HTTPS server + entrypoint.
 COPY server.ts ./server.js
