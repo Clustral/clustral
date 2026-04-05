@@ -1,0 +1,162 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build CLI (${{ matrix.artifact }})
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            artifact: clustral-linux-amd64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            artifact: clustral-linux-arm64
+          - os: macos-latest
+            rid: osx-arm64
+            artifact: clustral-darwin-arm64
+          - os: macos-13
+            rid: osx-x64
+            artifact: clustral-darwin-amd64
+          - os: windows-latest
+            rid: win-x64
+            artifact: clustral-windows-amd64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish NativeAOT binary
+        run: |
+          dotnet publish src/Clustral.Cli -c Release -r ${{ matrix.rid }} \
+            -p:Version=${GITHUB_REF_NAME#v} \
+            -p:InformationalVersion=${GITHUB_REF_NAME#v}
+        shell: bash
+
+      - name: Rename binary
+        run: |
+          if [[ "${{ matrix.rid }}" == win-* ]]; then
+            cp src/Clustral.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/clustral.exe ${{ matrix.artifact }}
+          else
+            cp src/Clustral.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/clustral ${{ matrix.artifact }}
+          fi
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          generate_release_notes: true
+          files: |
+            artifacts/clustral-linux-amd64/clustral-linux-amd64
+            artifacts/clustral-linux-arm64/clustral-linux-arm64
+            artifacts/clustral-darwin-arm64/clustral-darwin-arm64
+            artifacts/clustral-darwin-amd64/clustral-darwin-amd64
+            artifacts/clustral-windows-amd64.exe/clustral-windows-amd64.exe
+
+  homebrew:
+    name: Update Homebrew Formula
+    needs: release
+    # Only update Homebrew on stable releases (no prerelease suffix).
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Compute SHA256 checksums
+        id: sha
+        run: |
+          echo "darwin_arm64=$(sha256sum artifacts/clustral-darwin-arm64/clustral-darwin-arm64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "darwin_amd64=$(sha256sum artifacts/clustral-darwin-amd64/clustral-darwin-amd64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "linux_arm64=$(sha256sum artifacts/clustral-linux-arm64/clustral-linux-arm64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "linux_amd64=$(sha256sum artifacts/clustral-linux-amd64/clustral-linux-amd64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Clustral/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cat > homebrew-tap/Formula/clustral.rb << FORMULA
+          class Clustral < Formula
+            desc "Kubernetes access proxy CLI"
+            homepage "https://github.com/Clustral/clustral"
+            version "$VERSION"
+            license :cannot_represent
+
+            on_macos do
+              on_arm do
+                url "https://github.com/Clustral/clustral/releases/download/${GITHUB_REF_NAME}/clustral-darwin-arm64"
+                sha256 "${{ steps.sha.outputs.darwin_arm64 }}"
+              end
+              on_intel do
+                url "https://github.com/Clustral/clustral/releases/download/${GITHUB_REF_NAME}/clustral-darwin-amd64"
+                sha256 "${{ steps.sha.outputs.darwin_amd64 }}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/Clustral/clustral/releases/download/${GITHUB_REF_NAME}/clustral-linux-arm64"
+                sha256 "${{ steps.sha.outputs.linux_arm64 }}"
+              end
+              on_intel do
+                url "https://github.com/Clustral/clustral/releases/download/${GITHUB_REF_NAME}/clustral-linux-amd64"
+                sha256 "${{ steps.sha.outputs.linux_amd64 }}"
+              end
+            end
+
+            def install
+              binary = if OS.mac?
+                Hardware::CPU.arm? ? "clustral-darwin-arm64" : "clustral-darwin-amd64"
+              else
+                Hardware::CPU.arm? ? "clustral-linux-arm64" : "clustral-linux-amd64"
+              end
+              bin.install binary => "clustral"
+            end
+
+            test do
+              assert_match "clustral", shell_output("#{bin}/clustral --version")
+            end
+          end
+          FORMULA
+
+      - name: Push formula update
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/clustral.rb
+          git commit -m "Update clustral to ${GITHUB_REF_NAME}"
+          git push

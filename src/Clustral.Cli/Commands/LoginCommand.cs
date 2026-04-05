@@ -245,6 +245,7 @@ internal static class LoginCommand
             Console.WriteLine($"  Logged in as:       {profile.DisplayName ?? profile.Email}");
             Console.WriteLine($"  Email:              {profile.Email}");
             Console.WriteLine($"  Kubernetes:         enabled");
+            Console.WriteLine($"  CLI version:        v{VersionCommand.GetVersion()}");
 
             if (roles.Count > 0)
                 Console.WriteLine($"  Roles:              {string.Join(", ", roles)}");
