@@ -1,7 +1,7 @@
-using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace Clustral.Agent.Proxy;
@@ -35,6 +35,8 @@ internal sealed class ImpersonationHandler : DelegatingHandler
     /// </summary>
     internal static SocketsHttpHandler CreateHandler(bool skipTlsVerify)
     {
+        const string caCertPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
+
         var handler = new SocketsHttpHandler();
 
         if (skipTlsVerify)
@@ -44,6 +46,11 @@ internal sealed class ImpersonationHandler : DelegatingHandler
                 RemoteCertificateValidationCallback = (_, _, _, _) => true,
             };
         }
+
+        // Load the in-cluster CA cert for k8s API server TLS verification.
+        X509Certificate2? caCert = null;
+        if (!skipTlsVerify && File.Exists(caCertPath))
+            caCert = X509CertificateLoader.LoadCertificateFromFile(caCertPath);
 
         handler.ConnectCallback = async (context, ct) =>
         {
@@ -57,14 +64,31 @@ internal sealed class ImpersonationHandler : DelegatingHandler
             if (context.DnsEndPoint.Port == 443 ||
                 context.InitialRequestMessage.RequestUri?.Scheme == "https")
             {
-                var sslStream = new SslStream(stream, false,
-                    skipTlsVerify ? (_, _, _, _) => true : null);
+                RemoteCertificateValidationCallback? certCallback = null;
+
+                if (skipTlsVerify)
+                {
+                    certCallback = (_, _, _, _) => true;
+                }
+                else if (caCert is not null)
+                {
+                    // Validate using the in-cluster CA cert.
+                    certCallback = (_, cert, _, _) =>
+                    {
+                        if (cert is null) return false;
+                        using var chain = new X509Chain();
+                        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                        chain.ChainPolicy.CustomTrustStore.Add(caCert);
+                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                        return chain.Build(new X509Certificate2(cert));
+                    };
+                }
+
+                var sslStream = new SslStream(stream, false, certCallback);
                 await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
                 {
                     TargetHost = context.DnsEndPoint.Host,
-                    RemoteCertificateValidationCallback = skipTlsVerify
-                        ? (_, _, _, _) => true
-                        : null,
+                    RemoteCertificateValidationCallback = certCallback,
                 }, ct);
                 stream = sslStream;
             }
