@@ -29,8 +29,11 @@ async function handler(
   });
 
   const responseHeaders = new Headers();
+  const skipResponseHeaders = new Set([
+    "transfer-encoding", "connection", "content-encoding", "content-length",
+  ]);
   res.headers.forEach((value, key) => {
-    if (!["transfer-encoding", "connection"].includes(key.toLowerCase())) {
+    if (!skipResponseHeaders.has(key.toLowerCase())) {
       responseHeaders.set(key, value);
     }
   });

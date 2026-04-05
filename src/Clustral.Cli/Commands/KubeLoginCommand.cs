@@ -144,7 +144,7 @@ internal static class KubeLoginCommand
             ServerUrl:             serverUrl,
             Token:                 credential.Token,
             ExpiresAt:             credential.ExpiresAt,
-            InsecureSkipTlsVerify: insecure);
+            InsecureSkipTlsVerify: insecure || serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
 
         try
         {
