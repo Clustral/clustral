@@ -6,11 +6,11 @@ const certPath = process.env.TLS_CERT_PATH || "/etc/clustral-web/tls.crt";
 const keyPath = process.env.TLS_KEY_PATH || "/etc/clustral-web/tls.key";
 const port = parseInt(process.env.PORT || "3000", 10);
 
-// Override HOSTNAME so Next.js binds to all interfaces.
 process.env.HOSTNAME = "0.0.0.0";
 
-const NextServer = require("next/dist/server/next.js").default;
-const app = NextServer({ dev: false, dir: __dirname, port, hostname: "0.0.0.0" });
+// In standalone mode, next() is the default export.
+const next = require("next");
+const app = next({ dev: false, dir: __dirname, port, hostname: "0.0.0.0" });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
