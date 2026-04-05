@@ -2,45 +2,44 @@
 
 Kubernetes access proxy — a Teleport alternative built on .NET and React.
 
-Clustral lets users authenticate via Keycloak, then transparently proxies `kubectl` traffic through a control plane to registered cluster agents. No inbound firewall rules required on the cluster side.
+Clustral lets users authenticate via any OIDC provider (Keycloak, Auth0, Okta, Azure AD), then transparently proxies `kubectl` traffic through a control plane to registered cluster agents. No inbound firewall rules required on the cluster side.
 
 ## Architecture
 
 ```
-  Browser (HTTPS)                CLI
-      │                          │
-      │  same-origin proxy       │  auto-discovery
-      ▼                          ▼
-  ┌──────────────────────────────────┐
-  │   Web (nginx)  :3000 HTTPS       │
-  │   /            → React SPA       │
-  │   /auth/*      → Keycloak proxy  │
-  │   /api/*       → ControlPlane    │
-  │   /proxy/*     → kubectl tunnel  │
-  └──────────┬───────────────────────┘
-             │
-  ┌──────────▼───────────┐
-  │   ControlPlane       │  ASP.NET Core
-  │   REST :5000         │  Cluster management, credential issuance
-  │   gRPC :5001         │  Agent tunnel, kubectl proxy
-  └──────────┬───────────┘
-             │ bidirectional gRPC stream
-  ┌──────────▼───────────┐
-  │   Agent              │  .NET Worker Service (in-cluster)
-  │   kubectl proxy      │  Forwards API traffic to k8s API server
-  └──────────────────────┘
+  Browser (HTTPS)                   CLI
+      │                              │
+      │                              │  auto-discovery
+      ▼                              ▼
+  ┌─────────────────┐    ┌───────────────────────┐
+  │  Web (Next.js)  │───▶│  OIDC Provider        │
+  │  :3000 HTTPS    │    │  (Keycloak / Auth0 /  │
+  │  Server-side    │    │   Okta / Azure AD)    │
+  │  OIDC auth      │    └───────────────────────┘
+  └────────┬────────┘
+           │ proxies /api/*, /proxy/*
+  ┌────────▼────────┐
+  │  ControlPlane   │  ASP.NET Core
+  │  REST :5000     │  Cluster mgmt, credentials
+  │  gRPC :5001     │  Agent tunnel, kubectl proxy
+  └────────┬────────┘
+           │ bidirectional gRPC stream
+  ┌────────▼────────┐
+  │  Agent          │  .NET Worker Service (in-cluster)
+  │  kubectl proxy  │  Forwards API traffic to k8s API
+  └─────────────────┘
 ```
 
-| Component        | Stack                                    | Description                                          |
-|------------------|------------------------------------------|------------------------------------------------------|
-| **Web**          | Vite, React 18, TypeScript, Tailwind CSS | HTTPS dashboard, reverse-proxies all backend traffic |
-| **ControlPlane** | ASP.NET Core, MongoDB, Keycloak OIDC     | REST + gRPC server, kubectl tunnel proxy             |
-| **Agent**        | .NET Worker Service                      | Deployed per cluster, tunnels kubectl traffic        |
-| **CLI**          | .NET NativeAOT, System.CommandLine       | `clustral login` / `clustral kube login`             |
+| Component        | Stack                                       | Description                                     |
+|------------------|---------------------------------------------|-------------------------------------------------|
+| **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | HTTPS dashboard, server-side OIDC via NextAuth  |
+| **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
+| **Agent**        | .NET Worker Service                         | Deployed per cluster, tunnels kubectl traffic   |
+| **CLI**          | .NET NativeAOT, System.CommandLine          | `clustral login` / `clustral kube login`        |
 
 ## Quick Start (On-Prem)
 
-Deploy the full stack from pre-built images. The Web UI serves HTTPS with an auto-generated self-signed certificate, so it works from any IP address — no `localhost` required.
+Deploy the full stack from pre-built images.
 
 ### 1. Create `docker-compose.yml`
 
@@ -66,6 +65,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HTTP_PORT: 8080
       KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
     healthcheck:
@@ -105,18 +106,22 @@ services:
     depends_on:
       controlplane:
         condition: service_healthy
+    environment:
+      CONTROLPLANE_URL: "http://controlplane:5000"
+      OIDC_ISSUER: "http://keycloak:8080/realms/clustral"
+      OIDC_CLIENT_ID: "clustral-web"
+      OIDC_CLIENT_SECRET: "clustral-web-secret"
+      AUTH_SECRET: "change-me-to-a-random-32-char-string!!"
     ports:
       - "3000:3000"
-    # Optional: mount your own TLS certs instead of the auto-generated self-signed ones.
+    # Optional: mount your own TLS certs instead of auto-generated self-signed ones.
     # volumes:
-    #   - ./certs/tls.crt:/etc/nginx/certs/tls.crt:ro
-    #   - ./certs/tls.key:/etc/nginx/certs/tls.key:ro
+    #   - ./certs/tls.crt:/etc/clustral-web/tls.crt:ro
+    #   - ./certs/tls.key:/etc/clustral-web/tls.key:ro
 
 volumes:
   mongo_data:
 ```
-
-> **Note:** Only the `web` service needs a published port. All other services communicate internally on the Docker network. Keycloak, the ControlPlane API, and kubectl proxy traffic are all reverse-proxied through nginx on port 3000.
 
 ### 2. Download the Keycloak realm config
 
@@ -136,14 +141,7 @@ docker compose up -d
 
 Open `https://<your-ip>:3000` in your browser. Accept the self-signed certificate warning.
 
-| Path              | Destination             | Purpose                        |
-|-------------------|-------------------------|--------------------------------|
-| `/`               | React SPA               | Web dashboard                  |
-| `/auth/*`         | Keycloak (proxied)      | OIDC login, token endpoints    |
-| `/api/*`          | ControlPlane REST API   | Cluster management, credentials|
-| `/proxy/{id}/*`   | kubectl tunnel          | Proxied k8s API requests       |
-
-### 5. Default users
+### 5. Default users (Keycloak)
 
 | Username | Password | Role             |
 |----------|----------|------------------|
@@ -152,19 +150,69 @@ Open `https://<your-ip>:3000` in your browser. Accept the self-signed certificat
 
 ### 6. TLS certificates
 
-By default, the Web container generates a self-signed certificate at startup. For production, mount your own:
+The Web container generates a self-signed certificate at startup. For production, mount your own:
 
 ```yaml
 web:
   volumes:
-    - ./certs/tls.crt:/etc/nginx/certs/tls.crt:ro
-    - ./certs/tls.key:/etc/nginx/certs/tls.key:ro
+    - ./certs/tls.crt:/etc/clustral-web/tls.crt:ro
+    - ./certs/tls.key:/etc/clustral-web/tls.key:ro
+```
+
+## Using a Different OIDC Provider
+
+Clustral works with any OIDC-compliant provider. Just change the Web service environment variables:
+
+### Auth0
+
+```yaml
+web:
+  environment:
+    OIDC_ISSUER: "https://your-tenant.us.auth0.com"
+    OIDC_CLIENT_ID: "your-auth0-client-id"
+    OIDC_CLIENT_SECRET: "your-auth0-client-secret"
+```
+
+### Azure AD
+
+```yaml
+web:
+  environment:
+    OIDC_ISSUER: "https://login.microsoftonline.com/your-tenant-id/v2.0"
+    OIDC_CLIENT_ID: "your-azure-client-id"
+    OIDC_CLIENT_SECRET: "your-azure-client-secret"
+```
+
+### Okta
+
+```yaml
+web:
+  environment:
+    OIDC_ISSUER: "https://your-org.okta.com"
+    OIDC_CLIENT_ID: "your-okta-client-id"
+    OIDC_CLIENT_SECRET: "your-okta-client-secret"
+```
+
+The ControlPlane's `Keycloak__Authority` and `Keycloak__MetadataAddress` must also point to the same OIDC provider so it can validate the JWT tokens.
+
+## Distributed Deployment
+
+Each component can run on a separate host. The Web UI connects to the ControlPlane and OIDC provider via environment variables:
+
+```yaml
+web:
+  environment:
+    CONTROLPLANE_URL: "https://controlplane.example.com"
+    OIDC_ISSUER: "https://sso.example.com/realms/clustral"
+    OIDC_CLIENT_ID: "clustral-web"
+    OIDC_CLIENT_SECRET: "<secret>"
+    AUTH_SECRET: "<random-32-chars>"
 ```
 
 ## CLI Usage
 
 ```bash
-# Authenticate — discovers Keycloak from the ControlPlane automatically
+# Authenticate — discovers OIDC settings from the ControlPlane automatically
 clustral login app.clustral.example
 
 # Local dev
@@ -177,9 +225,9 @@ clustral kube login <cluster-id>
 kubectl get namespaces
 ```
 
-The CLI auto-discovers OIDC settings from the ControlPlane via `GET /.well-known/clustral-configuration`. No Keycloak URL needed.
+The CLI auto-discovers OIDC settings via `GET /.well-known/clustral-configuration`. No OIDC provider URL needed.
 
-Build the CLI from source (single NativeAOT binary, no runtime dependencies):
+Build from source (single NativeAOT binary, no runtime dependencies):
 
 ```bash
 dotnet publish src/Clustral.Cli -r osx-arm64 -c Release    # macOS Apple Silicon
@@ -210,9 +258,9 @@ kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/Cl
 kubectl -n clustral logs -f deploy/clustral-agent
 ```
 
-The agent connects outbound to the ControlPlane gRPC port — no inbound firewall rules needed on the cluster side.
+The agent connects outbound to the ControlPlane gRPC port — no inbound firewall rules needed.
 
-For Docker Desktop Kubernetes testing, use `host.docker.internal` as the ControlPlane host:
+For Docker Desktop Kubernetes, use `host.docker.internal`:
 
 ```bash
 --from-literal=control-plane-url="http://host.docker.internal:5001"
@@ -220,21 +268,19 @@ For Docker Desktop Kubernetes testing, use `host.docker.internal` as the Control
 
 ## How It Works
 
-### Single-origin architecture
+### Authentication (Web)
 
-All browser traffic goes through nginx on port 3000 (HTTPS). Keycloak, the REST API, and the kubectl proxy are all reverse-proxied on the same origin — no CORS issues, no mixed-content blocks, works from any IP address.
+1. User opens `https://<ip>:3000` and clicks "Sign in with SSO"
+2. Next.js server redirects to the OIDC provider (Keycloak, Auth0, etc.)
+3. User authenticates → provider redirects back to Next.js callback
+4. NextAuth.js handles the token exchange server-side (no CORS issues)
+5. Session is stored server-side, access token forwarded to API calls
 
-### Authentication
+### Authentication (CLI)
 
-1. User opens `https://<ip>:3000` and clicks "Sign in with Keycloak"
-2. Browser redirects to `/auth/realms/clustral/...` (Keycloak proxied through nginx)
-3. User authenticates with Keycloak credentials (OIDC Authorization Code + PKCE)
-4. JWT is stored in the browser session
-
-For the CLI:
 1. User runs `clustral login <url>`
 2. CLI fetches OIDC settings from `GET /.well-known/clustral-configuration`
-3. Browser opens for Keycloak login
+3. Browser opens for OIDC login (Authorization Code + PKCE)
 4. JWT is stored in `~/.clustral/token`
 
 ### kubectl Access
@@ -248,7 +294,7 @@ For the CLI:
 
 1. Agent (deployed in-cluster) opens a persistent gRPC bidirectional stream to the ControlPlane
 2. kubectl HTTP requests are multiplexed over the stream — no inbound ports needed
-3. Agent strips the user's token and authenticates to the k8s API with its own ServiceAccount
+3. Agent authenticates to the k8s API with its own ServiceAccount
 4. Cluster status is tracked: Connected while tunnel is open, Disconnected when agent stops
 
 ## Repository Layout
@@ -259,7 +305,7 @@ clustral/
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
 │   ├── Clustral.Agent/          # .NET Worker Service — tunnel + kubectl proxy
 │   ├── Clustral.Cli/            # NativeAOT console app — login + kubeconfig
-│   └── Clustral.Web/            # Vite + React 18 + nginx HTTPS reverse proxy
+│   └── Clustral.Web/            # Next.js 14 — dashboard, server-side OIDC
 ├── packages/
 │   ├── Clustral.Sdk/            # Shared: TokenCache, KubeconfigWriter, GrpcChannelFactory
 │   └── proto/                   # Protobuf contracts (ClusterService, TunnelService, AuthService)
@@ -282,6 +328,20 @@ Published to GitHub Container Registry when relevant source files change:
 
 Tags: `latest`, `main`, commit SHA, semver (`v1.0.0`, `v1.0`) on tagged releases.
 
+## Web UI Environment Variables
+
+All configuration is via runtime environment variables — no rebuild needed.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL (internal) |
+| `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL |
+| `OIDC_CLIENT_ID` | No | `clustral-web` | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | Yes | — | OIDC client secret (confidential client) |
+| `AUTH_SECRET` | Yes | — | NextAuth session encryption key (random 32+ chars) |
+| `TLS_CERT_PATH` | No | `/etc/clustral-web/tls.crt` | Path to TLS certificate |
+| `TLS_KEY_PATH` | No | `/etc/clustral-web/tls.key` | Path to TLS private key |
+
 ## Development
 
 ### Prerequisites
@@ -303,7 +363,7 @@ docker compose up -d mongo keycloak
 # ControlPlane
 dotnet run --project src/Clustral.ControlPlane
 
-# Web UI (proxies /api to ControlPlane, serves HTTP in dev)
+# Web UI (Next.js dev server)
 cd src/Clustral.Web && bun install && bun dev
 
 # Agent (against Docker Desktop Kubernetes)
@@ -317,18 +377,17 @@ dotnet run --project src/Clustral.Agent -- \
 
 ```bash
 dotnet test Clustral.slnx
-cd src/Clustral.Web && bun test
 ```
 
 ## Keycloak Configuration
 
 The realm export at `infra/keycloak/clustral-realm.json` pre-configures:
 
-| Client                   | Type        | Purpose                                            |
-|--------------------------|-------------|-----------------------------------------------------|
-| `clustral-control-plane` | Bearer-only | JWT validation by the ControlPlane                  |
-| `clustral-cli`           | Public      | CLI PKCE flow, redirect to `127.0.0.1:7777`        |
-| `clustral-web`           | Public      | Web UI OIDC via nginx proxy, PKCE enabled           |
+| Client                   | Type          | Purpose                                         |
+|--------------------------|---------------|--------------------------------------------------|
+| `clustral-control-plane` | Bearer-only   | JWT validation by the ControlPlane               |
+| `clustral-cli`           | Public        | CLI PKCE flow, redirect to `127.0.0.1:7777`     |
+| `clustral-web`           | Confidential  | Web UI server-side OIDC via NextAuth             |
 
 ## License
 
