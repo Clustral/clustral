@@ -63,8 +63,11 @@ public sealed class AuthController(
                        ?? User.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
                        ?? string.Empty;
         var displayName = User.Claims.FirstOrDefault(c => c.Type == "name")?.Value
-                       ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
-        var email       = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+                       ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value
+                       ?? User.Claims.FirstOrDefault(c => c.Type == "preferred_username")?.Value;
+        var email       = User.Claims.FirstOrDefault(c => c.Type == "email")?.Value
+                       ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value
+                       ?? User.Claims.FirstOrDefault(c => c.Type == "preferred_username")?.Value;
 
         var existingUser = await db.Users
             .Find(u => u.KeycloakSubject == subject)

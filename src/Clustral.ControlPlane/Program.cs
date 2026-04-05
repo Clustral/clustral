@@ -89,7 +89,11 @@ builder.Services.AddAuthorization();
 // MVC Controllers + OpenAPI
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services.AddControllers();
+builder.Services.AddScoped<Clustral.ControlPlane.Api.UserSyncFilter>();
+builder.Services.AddControllers(opts =>
+{
+    opts.Filters.AddService<Clustral.ControlPlane.Api.UserSyncFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opts =>
 {

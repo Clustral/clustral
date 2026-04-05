@@ -14,7 +14,7 @@ export default function UsersPage() {
   const token = (session as any)?.accessToken as string | undefined;
   const queryClient = useQueryClient();
 
-  const { data: usersData, isLoading } = useQuery({
+  const { data: usersData, isLoading, isError, error } = useQuery({
     queryKey: ["users"],
     queryFn: () => fetchUsers(token!),
     enabled: !!token,
@@ -33,6 +33,18 @@ export default function UsersPage() {
       <h2 className="text-xl font-semibold mb-6">Users</h2>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading users...</p>}
+
+      {isError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive mb-4">
+          Failed to load users: {(error as Error).message}
+        </div>
+      )}
+
+      {!token && status === "authenticated" && (
+        <div className="rounded-md border border-pending/50 bg-pending/5 p-4 text-sm mb-4">
+          No access token in session. The OIDC provider may not be returning an access token.
+        </div>
+      )}
 
       {usersData && usersData.users.length === 0 && (
         <div className="text-center py-16">

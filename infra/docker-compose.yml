@@ -23,6 +23,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - clustral
 
   # ──────────────────────────────────────────────────────────────────────────
   # Keycloak 24 (dev mode)
@@ -52,6 +54,8 @@ services:
       timeout: 10s
       retries: 30
       start_period: 60s
+    networks:
+      - clustral
 
   # ──────────────────────────────────────────────────────────────────────────
   # HTTPS reverse proxy (nginx)
@@ -99,5 +103,4 @@ volumes:
 
 networks:
   clustral:
-    external: true
     name: clustral_default

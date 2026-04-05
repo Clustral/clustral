@@ -112,7 +112,7 @@ public sealed class KubectlProxy
 
     // -------------------------------------------------------------------------
 
-    private static HttpRequestMessage BuildRequest(HttpRequestFrame frame)
+    private HttpRequestMessage BuildRequest(HttpRequestFrame frame)
     {
         var head    = frame.Head ?? throw new InvalidOperationException(
             $"HttpRequestFrame {frame.RequestId} has no head.");
@@ -149,9 +149,17 @@ public sealed class KubectlProxy
         // Set k8s Impersonation headers if the ControlPlane identified the user.
         if (impersonateUser is not null)
         {
+            _logger.LogInformation(
+                "Impersonating user={User}, groups=[{Groups}] for {Method} {Path}",
+                impersonateUser, string.Join(", ", impersonateGroups), method, head.Path);
+
             request.Headers.TryAddWithoutValidation("Impersonate-User", impersonateUser);
             foreach (var group in impersonateGroups)
                 request.Headers.TryAddWithoutValidation("Impersonate-Group", group);
+        }
+        else
+        {
+            _logger.LogWarning("No impersonation headers for {Method} {Path}", method, head.Path);
         }
 
         if (frame.BodyChunk.Length > 0 || method == HttpMethod.Post || method == HttpMethod.Put
