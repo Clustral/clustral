@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Streaming proxy for kubectl tunnel traffic.
  * Forwards /api/proxy/{clusterId}/{k8s-path} to the ControlPlane.
@@ -13,19 +15,21 @@ async function proxyHandler(
   const path = (await params).path.join("/");
   const target = `${controlPlaneUrl}/api/proxy/${path}${req.nextUrl.search}`;
 
-  const headers = new Headers();
+  // Forward all headers except hop-by-hop ones.
+  // Explicitly grab Authorization — kubectl sends it as a Bearer token.
+  const outHeaders: Record<string, string> = {};
+  const skipHeaders = new Set(["host", "connection", "transfer-encoding"]);
+
   req.headers.forEach((value, key) => {
-    if (!["host", "connection", "transfer-encoding"].includes(key.toLowerCase())) {
-      headers.set(key, value);
+    if (!skipHeaders.has(key.toLowerCase())) {
+      outHeaders[key] = value;
     }
   });
 
   const res = await fetch(target, {
     method: req.method,
-    headers,
-    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-    // @ts-expect-error -- Node fetch supports duplex for streaming
-    duplex: "half",
+    headers: outHeaders,
+    body: req.method !== "GET" && req.method !== "HEAD" ? await req.arrayBuffer() : undefined,
   });
 
   const responseHeaders = new Headers();
@@ -35,7 +39,8 @@ async function proxyHandler(
     }
   });
 
-  return new NextResponse(res.body, {
+  const body = await res.arrayBuffer();
+  return new NextResponse(body, {
     status: res.status,
     headers: responseHeaders,
   });
