@@ -224,48 +224,17 @@ public sealed class KubectlProxy
         const string saTokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token";
 
         var isInCluster = File.Exists(saTokenPath);
+        var baseUri = new Uri(apiUrl);
 
-        // Use SocketsHttpHandler with a custom ConnectCallback that wraps
-        // the stream with ImpersonationStream. This rewrites comma-separated
-        // Impersonate-Group headers into separate header lines on the wire,
-        // working around .NET HttpClient's RFC 7230 header serialization.
-        var socketsHandler = ImpersonationHandler.CreateHandler(skipTlsVerify);
+        // ImpersonationHandler writes raw HTTP with separate Impersonate-Group
+        // headers and handles SA token injection. .NET HttpClient combines
+        // multi-value headers into comma-separated values which k8s doesn't
+        // accept for impersonation.
+        var handler = new ImpersonationHandler(
+            baseUri,
+            skipTlsVerify,
+            isInCluster ? saTokenPath : null);
 
-        HttpMessageHandler handler = isInCluster
-            ? new ServiceAccountTokenHandler(saTokenPath, socketsHandler)
-            : socketsHandler;
-
-        return new HttpClient(handler) { BaseAddress = new Uri(apiUrl) };
-    }
-}
-
-// =============================================================================
-// ServiceAccountTokenHandler
-// =============================================================================
-
-/// <summary>
-/// Attaches the pod's service account bearer token to every outgoing request.
-/// The token file is re-read on each request because kubelet rotates it
-/// periodically (typically every hour).
-/// </summary>
-internal sealed class ServiceAccountTokenHandler : DelegatingHandler
-{
-    private readonly string _tokenPath;
-
-    internal ServiceAccountTokenHandler(string tokenPath, HttpMessageHandler inner)
-        : base(inner)
-    {
-        _tokenPath = tokenPath;
-    }
-
-    protected override async Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        CancellationToken  cancellationToken)
-    {
-        var token = await File.ReadAllTextAsync(_tokenPath, cancellationToken);
-        request.Headers.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Trim());
-
-        return await base.SendAsync(request, cancellationToken);
+        return new HttpClient(handler) { BaseAddress = baseUri };
     }
 }
