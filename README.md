@@ -289,11 +289,42 @@ docker compose up -d
 | `admin`  | `admin`  | `clustral-admin` |
 | `dev`    | `dev`    | `clustral-user`  |
 
+## Install the CLI
+
+### macOS / Linux (one-liner)
+
+```bash
+curl -sL https://raw.githubusercontent.com/Clustral/clustral/main/install.sh | sh
+```
+
+### macOS / Linux (Homebrew)
+
+```bash
+brew install Clustral/tap/clustral
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/Clustral/clustral/main/install.ps1 | iex
+```
+
+### Build from source
+
+```bash
+dotnet publish src/Clustral.Cli -r osx-arm64 -c Release    # macOS Apple Silicon
+dotnet publish src/Clustral.Cli -r linux-x64  -c Release    # Linux
+dotnet publish src/Clustral.Cli -r win-x64    -c Release    # Windows
+```
+
 ## CLI Usage
 
 ```bash
-# Authenticate — discovers OIDC settings from the ControlPlane
+# Authenticate (shows profile if already logged in)
 clustral login app.clustral.example
+
+# Force re-authentication
+clustral login --force
 
 # List available clusters
 clustral kube ls
@@ -309,14 +340,34 @@ clustral clusters list
 
 # Sign out — revokes credentials, removes kubeconfig contexts
 clustral logout
+
+# Check version
+clustral version
+
+# Self-update to latest
+clustral update
+
+# Check for updates without installing
+clustral update --check
+
+# Update to pre-release
+clustral update --pre
 ```
 
-Build the CLI from source (single NativeAOT binary, no runtime dependencies):
+### Login output
 
-```bash
-dotnet publish src/Clustral.Cli -r osx-arm64 -c Release    # macOS Apple Silicon
-dotnet publish src/Clustral.Cli -r linux-x64  -c Release    # Linux
-dotnet publish src/Clustral.Cli -r win-x64    -c Release    # Windows
+```
+> Profile URL:        http://app.example.com
+  Logged in as:       Admin User
+  Email:              admin@clustral.local
+  Kubernetes:         enabled
+  CLI version:        v0.1.0
+  Roles:              k8s-admin
+  Clusters:           production, staging
+  Access:
+    production               → k8s-admin
+    staging                  → k8s-viewer
+  Valid until:        2026-04-06 03:41:32 +0200 [valid for 3h16m]
 ```
 
 ## Deploy an Agent
@@ -386,29 +437,113 @@ When a user runs `kubectl`, the ControlPlane looks up their role assignment for 
 
 Users without a role assignment for a cluster receive `403: No role assigned for this cluster`.
 
-## Repository Layout
+## Project Structure
+
+### Monorepo map
+
+```mermaid
+graph LR
+    subgraph "Clustral/clustral (monorepo)"
+        subgraph "src/"
+            CP["Clustral.ControlPlane<br/>.NET / ASP.NET Core"]
+            CLI["Clustral.Cli<br/>.NET NativeAOT"]
+            WEB["Clustral.Web<br/>Next.js 14"]
+            AGENT["clustral-agent<br/>Go 1.23"]
+        end
+
+        subgraph "packages/"
+            SDK["Clustral.Sdk<br/>Shared .NET library"]
+            PROTO["proto/<br/>.proto contracts"]
+        end
+
+        subgraph "infra/"
+            KC["keycloak/<br/>Realm config"]
+            INFRA_DC["docker-compose.yml<br/>MongoDB + Keycloak + SSL"]
+        end
+
+        INSTALL["install.sh / install.ps1"]
+        CI[".github/workflows/<br/>CI/CD pipelines"]
+    end
+
+    subgraph "Clustral/homebrew-tap (separate repo)"
+        BREW["Formula/clustral.rb"]
+    end
+
+    SDK -->|"referenced by"| CP
+    SDK -->|"referenced by"| CLI
+    PROTO -->|".NET stubs"| SDK
+    PROTO -->|"Go stubs"| AGENT
+    CI -->|"builds images"| CP
+    CI -->|"builds images"| WEB
+    CI -->|"builds images"| AGENT
+    CI -->|"builds binaries<br/>on git tag"| CLI
+    CI -->|"auto-updates<br/>on stable release"| BREW
+    INSTALL -->|"downloads from"| CLI
+```
+
+### Dependency graph
+
+```mermaid
+graph TB
+    subgraph "Build-time dependencies"
+        PROTO[packages/proto/*.proto]
+        PROTO -->|protoc-gen-go| AGENT_GEN[clustral-agent/gen/]
+        PROTO -->|Grpc.Tools| SDK_GEN[Clustral.Sdk/Generated/]
+    end
+
+    subgraph ".NET projects"
+        SDK_GEN --> SDK[Clustral.Sdk]
+        SDK --> CP[Clustral.ControlPlane]
+        SDK --> CLI[Clustral.Cli]
+    end
+
+    subgraph "Standalone"
+        AGENT_GEN --> AGENT[clustral-agent]
+        WEB[Clustral.Web]
+    end
+
+    subgraph "CI outputs"
+        CP -->|Docker| CP_IMG[ghcr.io/.../controlplane]
+        AGENT -->|Docker| AGENT_IMG[ghcr.io/.../agent]
+        WEB -->|Docker| WEB_IMG[ghcr.io/.../web]
+        CLI -->|NativeAOT| CLI_BIN[GitHub Release binaries]
+        CLI_BIN -->|formula| BREW[Homebrew tap]
+    end
+```
+
+### Repository layout
 
 ```
-clustral/
+Clustral/clustral (monorepo)
 ├── src/
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
 │   ├── clustral-agent/          # Go — gRPC tunnel + kubectl proxy (16MB binary)
-│   ├── Clustral.Cli/            # .NET NativeAOT — login + kubeconfig management
-│   └── Clustral.Web/            # Next.js 14 — dashboard, server-side OIDC
+│   ├── Clustral.Cli/            # .NET NativeAOT — login, kubeconfig, self-update
+│   └── Clustral.Web/            # Next.js 14 — dashboard, OIDC, access management
 ├── packages/
 │   ├── Clustral.Sdk/            # Shared .NET: TokenCache, KubeconfigWriter
 │   └── proto/                   # Protobuf contracts (shared between .NET + Go)
 ├── infra/
 │   ├── keycloak/                # Realm export with pre-configured clients
-│   └── docker-compose.yml       # Infrastructure (MongoDB, Keycloak, SSL proxy)
-├── .github/workflows/           # CI/CD — build, test, multi-arch image push
+│   ├── nginx/                   # Optional SSL termination proxy
+│   └── docker-compose.yml       # Infrastructure (MongoDB, Keycloak)
+├── .github/workflows/
+│   ├── build.yml                # Build + test (.NET, Go, Web)
+│   ├── release.yml              # Docker image publishing
+│   └── release-cli.yml          # CLI binary release + Homebrew update
+├── install.sh                   # Linux/macOS installer
+├── install.ps1                  # Windows installer
 ├── docker-compose.yml           # Application stack (ControlPlane + Web)
 └── CLAUDE.md                    # Claude Code guide
+
+Clustral/homebrew-tap (separate repo)
+└── Formula/
+    └── clustral.rb              # Auto-updated by CI on stable releases
 ```
 
-## Container Images
+## Releases & Artifacts
 
-Published to GitHub Container Registry (manually triggerable or on source changes):
+### Container images (ghcr.io)
 
 | Image | Stack | Size |
 |---|---|---|
@@ -417,6 +552,32 @@ Published to GitHub Container Registry (manually triggerable or on source change
 | `ghcr.io/clustral/clustral-web` | Node.js 20 | ~50MB |
 
 Tags: `latest`, `main`, commit SHA, semver (`v1.0.0`, `v1.0`) on tagged releases.
+
+### CLI binaries (GitHub Releases)
+
+| Platform | Binary |
+|---|---|
+| macOS Apple Silicon | `clustral-darwin-arm64` |
+| macOS Intel | `clustral-darwin-amd64` |
+| Linux x64 | `clustral-linux-amd64` |
+| Linux ARM64 | `clustral-linux-arm64` |
+| Windows x64 | `clustral-windows-amd64.exe` |
+
+Published on `v*` tags. Pre-releases (`v0.1.0-alpha.1`) are flagged accordingly.
+
+### Release workflow
+
+```mermaid
+graph LR
+    TAG["git tag v1.0.0"] --> CI["GitHub Actions"]
+    CI --> BIN["NativeAOT binaries<br/>(5 platforms)"]
+    CI --> IMG["Docker images<br/>(3 services)"]
+    BIN --> GHR["GitHub Release"]
+    IMG --> GHCR["ghcr.io"]
+    GHR -->|stable only| BREW["Homebrew tap<br/>formula update"]
+    GHR -->|"curl install.sh"| USER["User machine"]
+    GHCR -->|"docker pull"| K8S["Kubernetes cluster"]
+```
 
 ## Development
 
