@@ -41,15 +41,21 @@ public sealed class KubectlProxyMiddleware
     {
         var path = httpContext.Request.Path.Value ?? "";
 
-        // Only handle /proxy/{clusterId}/...
-        if (!path.StartsWith("/proxy/", StringComparison.OrdinalIgnoreCase))
+        // Handle both /api/proxy/{clusterId}/... (via Next.js) and /proxy/{clusterId}/... (direct)
+        string afterProxy;
+        if (path.StartsWith("/api/proxy/", StringComparison.OrdinalIgnoreCase))
+        {
+            afterProxy = path["/api/proxy/".Length..];
+        }
+        else if (path.StartsWith("/proxy/", StringComparison.OrdinalIgnoreCase))
+        {
+            afterProxy = path["/proxy/".Length..];
+        }
+        else
         {
             await _next(httpContext);
             return;
         }
-
-        // Parse: /proxy/{clusterId}/api/v1/pods → clusterId + /api/v1/pods
-        var afterProxy = path["/proxy/".Length..];
         var slashIdx = afterProxy.IndexOf('/');
 
         string clusterIdStr;

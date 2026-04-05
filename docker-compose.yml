@@ -58,8 +58,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Clustral: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Keycloak__Authority: "http://keycloak:8080/realms/clustral"
-      Keycloak__MetadataAddress: "http://keycloak:8080/realms/clustral/.well-known/openid-configuration"
+      Keycloak__Authority: "http://192.168.55.49:8080/realms/clustral"
+      Keycloak__MetadataAddress: "http://192.168.55.49:8080/realms/clustral/.well-known/openid-configuration"
       Keycloak__ClientId: "clustral-control-plane"
       Keycloak__Audience: "clustral-control-plane"
       Keycloak__RequireHttpsMetadata: "false"
@@ -85,8 +85,9 @@ services:
       controlplane:
         condition: service_healthy
     environment:
-      CONTROLPLANE_URL: "http://controlplane:5000"
-      OIDC_ISSUER: "http://keycloak:8080/realms/clustral"
+      NEXTAUTH_URL: "http://192.168.55.49:3000"
+      CONTROLPLANE_URL: "http://192.168.55.49:5100"
+      OIDC_ISSUER: "http://192.168.55.49:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
       AUTH_SECRET: "lXBA6UgneVKkAZSlKqDqLTuXigHVoScA"

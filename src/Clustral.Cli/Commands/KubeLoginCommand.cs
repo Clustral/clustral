@@ -137,7 +137,7 @@ internal static class KubeLoginCommand
         }
 
         // ── Write kubeconfig entry ────────────────────────────────────────────
-        var serverUrl = $"{controlPlaneUrl.TrimEnd('/')}/proxy/{clusterId}";
+        var serverUrl = $"{controlPlaneUrl.TrimEnd('/')}/api/proxy/{clusterId}";
 
         var entry = new ClustralKubeconfigEntry(
             ContextName:           contextName,
