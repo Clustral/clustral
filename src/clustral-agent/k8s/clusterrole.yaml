@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ClusterRole for the Clustral Agent
+#
+# Uses Kubernetes Impersonation API to forward user identity.
+# Cluster admins create RoleBindings for Clustral users/groups:
+#
+#   kubectl create clusterrolebinding clustral-admins \
+#     --clusterrole=cluster-admin --group=system:masters
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clustral-agent
+  labels:
+    app.kubernetes.io/name: clustral-agent
+    app.kubernetes.io/component: agent
+rules:
+  # Full impersonation support.
+  # Using wildcard apiGroups to avoid conflicts with CRDs (e.g. Rancher's
+  # management.cattle.io which also defines 'users' and 'groups' resources).
+  - apiGroups: ["*"]
+    resources: ["users", "groups", "serviceaccounts"]
+    verbs: ["impersonate"]
+
+  # Extra field impersonation.
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["*"]
+    verbs: ["impersonate"]
+
+  # Agent's own operations.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+
+  # kubectl auth can-i support through the proxy.
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+    verbs: ["create"]

@@ -35,8 +35,8 @@ jobs:
               - "packages/**"
               - "src/Clustral.ControlPlane/**"
             agent:
-              - "packages/**"
-              - "src/Clustral.Agent/**"
+              - "packages/proto/**"
+              - "src/clustral-agent/**"
             web:
               - "src/Clustral.Web/**"
 
@@ -105,8 +105,8 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
       - uses: docker/build-push-action@v6
         with:
-          context: .
-          file: src/Clustral.Agent/Dockerfile
+          context: src/clustral-agent
+          file: src/clustral-agent/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

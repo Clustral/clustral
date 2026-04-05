@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clustral-agent
+  namespace: clustral
+  labels:
+    app.kubernetes.io/name: clustral-agent
+    app.kubernetes.io/component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clustral-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clustral-agent
+        app.kubernetes.io/component: agent
+    spec:
+      serviceAccountName: clustral-agent
+      containers:
+        - name: agent
+          image: ghcr.io/clustral/clustral-agent:latest
+          imagePullPolicy: Always
+          env:
+            - name: AGENT_CLUSTER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: clustral-agent-config
+                  key: cluster-id
+            - name: AGENT_CONTROL_PLANE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: clustral-agent-config
+                  key: control-plane-url
+            - name: AGENT_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clustral-agent-config
+                  key: bootstrap-token
+            - name: AGENT_CREDENTIAL_PATH
+              value: /etc/clustral/agent.token
+          volumeMounts:
+            - name: credential
+              mountPath: /etc/clustral
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+      volumes:
+        - name: credential
+          emptyDir: {}
