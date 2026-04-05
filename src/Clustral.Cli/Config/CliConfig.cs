@@ -94,6 +94,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(IssueCredentialRequest))]
 [JsonSerializable(typeof(IssueCredentialResponse))]
 [JsonSerializable(typeof(ControlPlaneConfig))]
+[JsonSerializable(typeof(ClusterListResponse))]
 internal partial class CliJsonContext : JsonSerializerContext { }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,4 +134,23 @@ internal sealed class IssueCredentialResponse
     [JsonPropertyName("expiresAt")]    public DateTimeOffset ExpiresAt  { get; set; }
     [JsonPropertyName("subject")]      public string        Subject      { get; set; } = string.Empty;
     [JsonPropertyName("displayName")]  public string?       DisplayName  { get; set; }
+}
+
+/// <summary>Mirrors <c>ClusterListResponse</c> in the ControlPlane.</summary>
+internal sealed class ClusterListResponse
+{
+    [JsonPropertyName("clusters")]      public List<ClusterResponse> Clusters      { get; set; } = [];
+    [JsonPropertyName("nextPageToken")] public string?               NextPageToken { get; set; }
+}
+
+internal sealed class ClusterResponse
+{
+    [JsonPropertyName("id")]                 public string              Id                { get; set; } = string.Empty;
+    [JsonPropertyName("name")]               public string              Name              { get; set; } = string.Empty;
+    [JsonPropertyName("description")]        public string              Description       { get; set; } = string.Empty;
+    [JsonPropertyName("status")]             public string              Status            { get; set; } = string.Empty;
+    [JsonPropertyName("kubernetesVersion")]  public string?             KubernetesVersion { get; set; }
+    [JsonPropertyName("registeredAt")]       public DateTimeOffset      RegisteredAt      { get; set; }
+    [JsonPropertyName("lastSeenAt")]         public DateTimeOffset?     LastSeenAt        { get; set; }
+    [JsonPropertyName("labels")]             public Dictionary<string, string> Labels     { get; set; } = new();
 }
