@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const CONTROLPLANE_URL =
-  process.env.CONTROLPLANE_URL || "http://localhost:5000";
-
 /**
  * Streaming proxy for kubectl tunnel traffic.
- * Forwards /proxy/{clusterId}/{k8s-path} to the ControlPlane.
+ * Forwards /api/proxy/{clusterId}/{k8s-path} to the ControlPlane.
  */
 async function proxyHandler(
   req: NextRequest,
   { params }: { params: { path: string[] } },
 ) {
+  const controlPlaneUrl =
+    process.env.CONTROLPLANE_URL || "http://localhost:5000";
   const path = (await params).path.join("/");
-  const target = `${CONTROLPLANE_URL}/proxy/${path}${req.nextUrl.search}`;
+  const target = `${controlPlaneUrl}/api/proxy/${path}${req.nextUrl.search}`;
 
   const headers = new Headers();
   req.headers.forEach((value, key) => {
-    if (!["host", "connection"].includes(key.toLowerCase())) {
+    if (!["host", "connection", "transfer-encoding"].includes(key.toLowerCase())) {
       headers.set(key, value);
     }
   });
@@ -24,14 +23,21 @@ async function proxyHandler(
   const res = await fetch(target, {
     method: req.method,
     headers,
-    body: req.body,
+    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
     // @ts-expect-error -- Node fetch supports duplex for streaming
     duplex: "half",
   });
 
+  const responseHeaders = new Headers();
+  res.headers.forEach((value, key) => {
+    if (!["transfer-encoding", "connection"].includes(key.toLowerCase())) {
+      responseHeaders.set(key, value);
+    }
+  });
+
   return new NextResponse(res.body, {
     status: res.status,
-    headers: res.headers,
+    headers: responseHeaders,
   });
 }
 
