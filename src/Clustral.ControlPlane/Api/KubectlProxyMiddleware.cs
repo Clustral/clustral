@@ -157,12 +157,6 @@ public sealed class KubectlProxyMiddleware
             }
         }
 
-        var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger<KubectlProxyMiddleware>();
-        logger.LogInformation(
-            "Proxy: user={User}, groups=[{Groups}], cluster={ClusterId}",
-            impersonateUser, string.Join(", ", impersonateGroups), clusterId);
-
         // ── 2. Find tunnel session ───────────────────────────────────────────
         var sessions = httpContext.RequestServices.GetRequiredService<TunnelSessionManager>();
         var session = sessions.GetSession(clusterId);
