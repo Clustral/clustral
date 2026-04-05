@@ -10,16 +10,17 @@
 
   <ItemGroup>
     <!-- gRPC server hosting -->
-    <PackageReference Include="Grpc.AspNetCore"                              Version="2.67.0" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.67.0" />
 
     <!-- MongoDB -->
-    <PackageReference Include="MongoDB.Driver"                               Version="3.4.0" />
+    <PackageReference Include="MongoDB.Driver" Version="3.4.0" />
 
     <!-- Authentication -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
 
     <!-- OpenAPI / Swagger -->
-    <PackageReference Include="Swashbuckle.AspNetCore"                        Version="7.3.1" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.3.1" />
   </ItemGroup>
 
   <ItemGroup>

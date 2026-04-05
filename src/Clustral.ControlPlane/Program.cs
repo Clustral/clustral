@@ -5,8 +5,19 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
+using Serilog;
+
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Options
@@ -122,6 +133,8 @@ var app = builder.Build();
 // ─────────────────────────────────────────────────────────────────────────────
 // Middleware pipeline
 // ─────────────────────────────────────────────────────────────────────────────
+
+app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
 {
