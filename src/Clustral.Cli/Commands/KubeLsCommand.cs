@@ -87,7 +87,7 @@ internal static class KubeLsCommand
             // Detect which cluster the current kubeconfig context points to.
             var currentContext = GetCurrentClustralContext();
 
-            Console.WriteLine($"  {"CLUSTER",-24} {"STATUS",-14} {"K8S VERSION",-14} {"LABELS"}");
+            Console.WriteLine($"  {"CLUSTER",-24} {"ID",-38} {"STATUS",-14} {"K8S VERSION",-14} {"LABELS"}");
 
             foreach (var c in result.Clusters)
             {
@@ -98,7 +98,7 @@ internal static class KubeLsCommand
                     : "";
 
                 Console.WriteLine(
-                    $"{selected}{Truncate(c.Name, 24),-24} {c.Status,-14} {c.KubernetesVersion ?? "",-14} {labels}");
+                    $"{selected}{Truncate(c.Name, 24),-24} {c.Id,-38} {c.Status,-14} {c.KubernetesVersion ?? "",-14} {labels}");
             }
         }
         catch (Exception ex)
