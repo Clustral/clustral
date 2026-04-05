@@ -1,41 +1,184 @@
 # Clustral
 
-Kubernetes access proxy — a Teleport alternative built on .NET and React.
+Kubernetes access proxy — a Teleport alternative built on .NET, Go and React.
 
 Clustral lets users authenticate via any OIDC provider (Keycloak, Auth0, Okta, Azure AD), then transparently proxies `kubectl` traffic through a control plane to registered cluster agents. No inbound firewall rules required on the cluster side.
 
 ## Architecture
 
-```
-  Browser (HTTPS)                   CLI
-      │                              │
-      │                              │  auto-discovery
-      ▼                              ▼
-  ┌─────────────────┐    ┌───────────────────────┐
-  │  Web (Next.js)  │───▶│  OIDC Provider        │
-  │  :3000 HTTPS    │    │  (Keycloak / Auth0 /  │
-  │  Server-side    │    │   Okta / Azure AD)    │
-  │  OIDC auth      │    └───────────────────────┘
-  └────────┬────────┘
-           │ proxies /api/*, /proxy/*
-  ┌────────▼────────┐
-  │  ControlPlane   │  ASP.NET Core
-  │  REST :5000     │  Cluster mgmt, credentials
-  │  gRPC :5001     │  Agent tunnel, kubectl proxy
-  └────────┬────────┘
-           │ bidirectional gRPC stream
-  ┌────────▼────────┐
-  │  Agent          │  .NET Worker Service (in-cluster)
-  │  kubectl proxy  │  Forwards API traffic to k8s API
-  └─────────────────┘
+```mermaid
+graph TB
+    subgraph Developer
+        CLI[clustral CLI]
+        KB[kubectl]
+    end
+
+    subgraph "Clustral Platform"
+        WEB[Web UI<br/>Next.js 14]
+        CP[ControlPlane<br/>ASP.NET Core]
+        DB[(MongoDB)]
+    end
+
+    OIDC[OIDC Provider<br/>Keycloak / Auth0 / Okta]
+
+    subgraph "Target Cluster"
+        AGENT[Agent<br/>Go binary]
+        K8S[k8s API Server]
+    end
+
+    CLI -->|OIDC PKCE| OIDC
+    WEB -->|Server-side OIDC| OIDC
+    CLI -->|REST API| CP
+    KB -->|kubectl proxy| CP
+    WEB -->|REST API| CP
+    CP --- DB
+    CP <-->|gRPC tunnel| AGENT
+    AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
 | Component        | Stack                                       | Description                                     |
 |------------------|---------------------------------------------|-------------------------------------------------|
-| **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | HTTPS dashboard, server-side OIDC via NextAuth  |
+| **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | Dashboard, server-side OIDC via NextAuth        |
 | **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
-| **Agent**        | .NET Worker Service                         | Deployed per cluster, tunnels kubectl traffic   |
+| **Agent**        | Go 1.23, gRPC, 16MB static binary           | Deployed per cluster, tunnels kubectl traffic   |
 | **CLI**          | .NET NativeAOT, System.CommandLine          | `clustral login` / `clustral kube login`        |
+
+## How It Works
+
+Clustral provides secure, tunneled `kubectl` access to Kubernetes clusters without requiring inbound firewall rules, VPNs, or bastion hosts.
+
+### Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as clustral CLI
+    participant CP as ControlPlane
+    participant OIDC as OIDC Provider
+
+    User->>CLI: clustral login app.example.com
+    CLI->>CP: GET /.well-known/clustral-configuration
+    CP-->>CLI: {oidcAuthority, oidcClientId}
+    CLI->>OIDC: Authorization Code + PKCE
+    OIDC-->>User: Browser login page
+    User->>OIDC: Enter credentials
+    OIDC-->>CLI: Authorization code → callback
+    CLI->>OIDC: Exchange code for tokens
+    OIDC-->>CLI: JWT access token
+    CLI->>CLI: Store JWT in ~/.clustral/token
+    CLI-->>User: "Logged in to app.example.com"
+```
+
+### kubectl Proxy Flow
+
+```mermaid
+sequenceDiagram
+    participant kubectl
+    participant CP as ControlPlane
+    participant Agent as Agent (Go)
+    participant K8S as k8s API
+
+    Note over Agent,CP: Persistent gRPC tunnel (outbound from Agent)
+
+    kubectl->>CP: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
+    CP->>CP: Validate credential<br/>Look up user + role assignment
+    CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
+    Agent->>Agent: Translate to k8s Impersonate-* headers
+    Agent->>K8S: GET /api/v1/pods<br/>Impersonate-User: admin@clustral.local<br/>Impersonate-Group: system:masters<br/>Authorization: Bearer {SA token}
+    K8S-->>Agent: Pod list (JSON)
+    Agent-->>CP: HttpResponseFrame via gRPC tunnel
+    CP-->>kubectl: Pod list (JSON)
+```
+
+### Agent Tunnel Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent (Go)
+    participant CP as ControlPlane
+    participant DB as MongoDB
+
+    Agent->>CP: AuthService.IssueAgentCredential<br/>(bootstrap token, cluster ID)
+    CP->>DB: Store credential hash
+    CP-->>Agent: Agent credential + expiry
+    Agent->>Agent: Save to /etc/clustral/agent.token
+
+    loop Reconnect with backoff
+        Agent->>CP: TunnelService.OpenTunnel (gRPC stream)
+        Agent->>CP: AgentHello (cluster ID, version)
+        CP-->>Agent: TunnelHello (ack)
+        CP->>DB: Set cluster status = Connected
+
+        par Frame dispatch
+            CP->>Agent: HttpRequestFrame
+            Agent->>Agent: Proxy to k8s API
+            Agent->>CP: HttpResponseFrame
+        and Heartbeat (every 30s)
+            Agent->>CP: ClusterService.UpdateStatus
+        and Ping/Pong
+            CP->>Agent: PingFrame
+            Agent->>CP: PongFrame
+        end
+
+        Note over Agent,CP: On disconnect
+        CP->>DB: Set cluster status = Disconnected
+        Agent->>Agent: Backoff + jitter, retry
+    end
+```
+
+### Role-Based Access Management
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant WebUI as Web UI
+    participant CP as ControlPlane
+    participant DB as MongoDB
+    participant Agent
+    participant K8S as k8s API
+
+    Admin->>WebUI: Create role "k8s-admin"<br/>groups: [system:masters]
+    WebUI->>CP: POST /api/v1/roles
+    CP->>DB: Store role
+
+    Admin->>WebUI: Assign "k8s-admin" to user<br/>for cluster "production"
+    WebUI->>CP: POST /api/v1/users/{id}/assignments
+    CP->>DB: Store assignment
+
+    Note over CP: Later, user runs kubectl...
+
+    CP->>DB: Look up assignment for user + cluster
+    CP->>DB: Load role → groups: [system:masters]
+    CP->>Agent: X-Clustral-Impersonate-Group: system:masters
+    Agent->>K8S: Impersonate-Group: system:masters
+    K8S->>K8S: Check ClusterRoleBinding for system:masters
+    K8S-->>Agent: Authorized ✓
+```
+
+### Security Model
+
+| Layer | Mechanism |
+|---|---|
+| User → ControlPlane | OIDC JWT (from any provider) |
+| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw) |
+| Agent → ControlPlane | Long-lived agent credential (issued via bootstrap token, rotatable) |
+| Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
+| Tunnel transport | gRPC over HTTP/2 (TLS in production) |
+| Agent connectivity | Outbound only — no inbound firewall rules needed |
+| Per-user k8s access | Role assignments with k8s group impersonation (system:masters, etc.) |
+
+### Token Lifecycle
+
+```
+Bootstrap token (one-time, from registration)
+  → exchanged for agent credential (1 year, rotatable)
+    → agent uses it to open gRPC tunnel
+
+OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
+  → exchanged for kubeconfig credential (8 hours default, configurable)
+    → used by kubectl to authenticate proxy requests
+    → revoked on logout
+```
 
 ## Quick Start (On-Prem)
 
@@ -123,7 +266,7 @@ volumes:
   mongo_data:
 ```
 
-> Replace `<YOUR_HOST_IP>` with your machine's IP address (e.g. `192.168.1.100`). All services must use the same IP so the browser, Next.js server, and ControlPlane can all reach Keycloak at the same issuer URL.
+> Replace `<YOUR_HOST_IP>` with your machine's IP address. All services must use the same IP so the browser, Next.js server, and ControlPlane can all reach Keycloak at the same issuer URL.
 
 ### 2. Download the Keycloak realm config
 
@@ -139,82 +282,17 @@ curl -sL https://raw.githubusercontent.com/Clustral/clustral/main/infra/keycloak
 docker compose up -d
 ```
 
-### 4. Access
-
-Open `https://<your-ip>:3000` in your browser. Accept the self-signed certificate warning.
-
-### 5. Default users (Keycloak)
+### 4. Default users (Keycloak)
 
 | Username | Password | Role             |
 |----------|----------|------------------|
 | `admin`  | `admin`  | `clustral-admin` |
 | `dev`    | `dev`    | `clustral-user`  |
 
-### 6. TLS certificates
-
-The Web container generates a self-signed certificate at startup. For production, mount your own:
-
-```yaml
-web:
-  volumes:
-    - ./certs/tls.crt:/etc/clustral-web/tls.crt:ro
-    - ./certs/tls.key:/etc/clustral-web/tls.key:ro
-```
-
-## Using a Different OIDC Provider
-
-Clustral works with any OIDC-compliant provider. Just change the Web service environment variables:
-
-### Auth0
-
-```yaml
-web:
-  environment:
-    OIDC_ISSUER: "https://your-tenant.us.auth0.com"
-    OIDC_CLIENT_ID: "your-auth0-client-id"
-    OIDC_CLIENT_SECRET: "your-auth0-client-secret"
-```
-
-### Azure AD
-
-```yaml
-web:
-  environment:
-    OIDC_ISSUER: "https://login.microsoftonline.com/your-tenant-id/v2.0"
-    OIDC_CLIENT_ID: "your-azure-client-id"
-    OIDC_CLIENT_SECRET: "your-azure-client-secret"
-```
-
-### Okta
-
-```yaml
-web:
-  environment:
-    OIDC_ISSUER: "https://your-org.okta.com"
-    OIDC_CLIENT_ID: "your-okta-client-id"
-    OIDC_CLIENT_SECRET: "your-okta-client-secret"
-```
-
-The ControlPlane's `Keycloak__Authority` and `Keycloak__MetadataAddress` must also point to the same OIDC provider so it can validate the JWT tokens.
-
-## Distributed Deployment
-
-Each component can run on a separate host. The Web UI connects to the ControlPlane and OIDC provider via environment variables:
-
-```yaml
-web:
-  environment:
-    CONTROLPLANE_URL: "https://controlplane.example.com"
-    OIDC_ISSUER: "https://sso.example.com/realms/clustral"
-    OIDC_CLIENT_ID: "clustral-web"
-    OIDC_CLIENT_SECRET: "<secret>"
-    AUTH_SECRET: "<random-32-chars>"
-```
-
 ## CLI Usage
 
 ```bash
-# Authenticate — discovers OIDC settings from the ControlPlane automatically
+# Authenticate — discovers OIDC settings from the ControlPlane
 clustral login app.clustral.example
 
 # List available clusters
@@ -226,13 +304,14 @@ clustral kube login <cluster-id>
 # kubectl works transparently
 kubectl get pods -A
 
+# List all registered clusters
+clustral clusters list
+
 # Sign out — revokes credentials, removes kubeconfig contexts
 clustral logout
 ```
 
-The CLI auto-discovers OIDC settings via `GET /.well-known/clustral-configuration`. No OIDC provider URL needed.
-
-Build from source (single NativeAOT binary, no runtime dependencies):
+Build the CLI from source (single NativeAOT binary, no runtime dependencies):
 
 ```bash
 dotnet publish src/Clustral.Cli -r osx-arm64 -c Release    # macOS Apple Silicon
@@ -242,13 +321,13 @@ dotnet publish src/Clustral.Cli -r win-x64    -c Release    # Windows
 
 ## Deploy an Agent
 
-Register a cluster in the Web UI, then deploy the agent to your Kubernetes cluster:
+Register a cluster in the Web UI, then deploy the Go agent to your Kubernetes cluster:
 
 ```bash
 # Apply RBAC
-kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/Clustral.Agent/k8s/serviceaccount.yaml
-kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/Clustral.Agent/k8s/clusterrole.yaml
-kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/Clustral.Agent/k8s/clusterrolebinding.yaml
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/serviceaccount.yaml
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/clusterrole.yaml
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/clusterrolebinding.yaml
 
 # Create the secret (values from the UI registration step)
 kubectl -n clustral create secret generic clustral-agent-config \
@@ -257,7 +336,7 @@ kubectl -n clustral create secret generic clustral-agent-config \
   --from-literal=bootstrap-token="<BOOTSTRAP_TOKEN>"
 
 # Deploy the agent
-kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/Clustral.Agent/k8s/deployment.yaml
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/deployment.yaml
 
 # Check status
 kubectl -n clustral logs -f deploy/clustral-agent
@@ -271,133 +350,41 @@ For Docker Desktop Kubernetes, use `host.docker.internal`:
 --from-literal=control-plane-url="http://host.docker.internal:5001"
 ```
 
-## How It Works
+## Access Management
 
-Clustral provides secure, tunneled `kubectl` access to Kubernetes clusters without requiring inbound firewall rules, VPNs, or bastion hosts. It works by placing a lightweight agent inside each cluster that opens an outbound connection to a central control plane. Users authenticate via their organization's identity provider and get short-lived credentials that route `kubectl` commands through this tunnel.
+Clustral has a built-in role-based access management system. OIDC handles authentication, Clustral handles authorization.
 
-### The Big Picture
+### Concepts
 
-```
- Developer workstation                  Clustral ControlPlane               Target cluster
-┌──────────────────────┐     HTTPS     ┌─────────────────────┐   gRPC      ┌──────────────┐
-│                      │    (REST)     │                     │  tunnel     │              │
-│  clustral login      │──────────────▶│  Authenticate user  │◀───────────│  Agent pod   │
-│  clustral kube login │──────────────▶│  Issue credential   │            │  (outbound   │
-│  kubectl get pods    │──────────────▶│  Proxy through      │───────────▶│   only)      │
-│                      │               │  tunnel             │            │              │──▶ k8s API
-└──────────────────────┘               └─────────────────────┘            └──────────────┘
-                                              ▲
-                                              │ OIDC
-                                       ┌──────┴──────┐
-                                       │   Keycloak  │
-                                       │   Auth0     │
-                                       │   Okta      │
-                                       │   Azure AD  │
-                                       └─────────────┘
-```
+- **Users** — synced automatically from the OIDC provider on first login
+- **Roles** — define which Kubernetes groups to impersonate (e.g. `k8s-admin` → `system:masters`)
+- **Assignments** — bind a user to a role for a specific cluster (per-cluster access control)
 
-### Step-by-step: Getting access to a cluster
+### Setup
 
-**1. Admin registers a cluster**
+1. Navigate to **Roles** in the Web UI and create roles:
+   - `k8s-admin` with groups `system:masters` (full cluster access)
+   - `k8s-viewer` with groups `clustral-viewer` (read-only)
 
-Through the Web UI or API, an admin registers a new cluster. Clustral generates a one-time bootstrap token.
+2. Navigate to **Users**, select a user, and assign roles per cluster
 
-**2. Agent is deployed to the cluster**
-
-The agent is deployed as a Kubernetes pod using the bootstrap token. On first boot, it exchanges the bootstrap token for a long-lived agent credential and opens a persistent gRPC bidirectional stream (tunnel) to the ControlPlane. The cluster status changes to "Connected".
-
-```
-Agent → gRPC OpenTunnel → ControlPlane
-Agent sends AgentHello (cluster ID, k8s version)
-ControlPlane sends TunnelHello (ack)
-Stream stays open — the agent reconnects automatically with exponential backoff if disconnected.
-```
-
-**3. User authenticates**
+3. On each target cluster, create the corresponding k8s RBAC bindings:
 
 ```bash
-$ clustral login app.example.com
+# Full access for the k8s-admin role
+kubectl create clusterrolebinding clustral-admins \
+  --clusterrole=cluster-admin --group=system:masters
+
+# Read-only for the k8s-viewer role
+kubectl create clusterrolebinding clustral-viewers \
+  --clusterrole=view --group=clustral-viewer
 ```
 
-The CLI discovers OIDC settings from the ControlPlane (`GET /.well-known/clustral-configuration`), opens the browser for SSO login (Authorization Code + PKCE), and stores the JWT in `~/.clustral/token`.
+### How it works
 
-The Web UI does the same via NextAuth.js server-side — the user clicks "Sign in with SSO" and the OIDC flow happens entirely on the server (no CORS issues).
+When a user runs `kubectl`, the ControlPlane looks up their role assignment for the target cluster, resolves the role's Kubernetes groups, and sends them as `Impersonate-Group` headers through the tunnel. The Go agent sets these as separate HTTP headers on the request to the k8s API server, which enforces RBAC per the impersonated identity.
 
-**4. User gets kubectl credentials**
-
-```bash
-$ clustral kube ls
-  CLUSTER                  ID                                     STATUS         K8S VERSION
-> production               a1b2c3d4-...                           Connected      v1.30.2
-
-$ clustral kube login a1b2c3d4-...
-Kubeconfig updated. Context: clustral-a1b2c3d4-...
-```
-
-The CLI exchanges the JWT for a short-lived kubeconfig credential via `POST /api/v1/auth/kubeconfig-credential`. The credential and server URL are written to `~/.kube/config` — existing contexts are preserved, never overwritten.
-
-**5. kubectl traffic flows through the tunnel**
-
-```bash
-$ kubectl get pods -A
-```
-
-```
-kubectl
-  → sends request to ControlPlane (via server URL in kubeconfig)
-  → KubectlProxyMiddleware validates the short-lived credential
-  → looks up the TunnelSession for the target cluster
-  → wraps the HTTP request in an HttpRequestFrame (protobuf)
-  → sends it through the gRPC tunnel to the Agent
-  → Agent forwards to the in-cluster Kubernetes API server
-  → response flows back through the tunnel
-  → kubectl displays the result
-```
-
-The agent authenticates to the k8s API with its own ServiceAccount — the user's Clustral credential never reaches the cluster. Multiple kubectl requests are multiplexed over the single gRPC stream using request IDs.
-
-**6. User logs out**
-
-```bash
-$ clustral logout
-  Revoked credential for clustral-a1b2c3d4-...
-  Removed kubeconfig context: clustral-a1b2c3d4-...
-Logged out.
-```
-
-The CLI revokes all kubeconfig credentials server-side, removes all `clustral-*` entries from `~/.kube/config`, and clears the stored JWT.
-
-### Security model
-
-| Layer | Mechanism |
-|---|---|
-| User → ControlPlane | OIDC JWT (from any provider) |
-| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw) |
-| Agent → ControlPlane | Long-lived agent credential (issued via bootstrap token, rotatable) |
-| Agent → k8s API | In-cluster ServiceAccount token (auto-rotated by kubelet) |
-| Tunnel transport | gRPC over HTTP/2 (TLS in production) |
-| Agent connectivity | Outbound only — no inbound firewall rules needed |
-
-### Token lifecycle
-
-```
-Bootstrap token (one-time, from registration)
-  → exchanged for agent credential (1 year, rotatable)
-    → agent uses it to open gRPC tunnel
-
-OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
-  → exchanged for kubeconfig credential (8 hours default, configurable)
-    → used by kubectl to authenticate proxy requests
-    → revoked on logout
-```
-
-### What happens when the agent disconnects
-
-- The TunnelServiceImpl `finally` block sets the cluster status to "Disconnected"
-- The TunnelSession is removed from the in-memory registry
-- kubectl requests for that cluster return `502: Cluster agent is not connected`
-- The agent's reconnect loop kicks in with exponential backoff + jitter
-- When reconnected, the cluster status returns to "Connected"
+Users without a role assignment for a cluster receive `403: No role assigned for this cluster`.
 
 ## Repository Layout
 
@@ -405,43 +392,31 @@ OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
 clustral/
 ├── src/
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
-│   ├── Clustral.Agent/          # .NET Worker Service — tunnel + kubectl proxy
-│   ├── Clustral.Cli/            # NativeAOT console app — login + kubeconfig
+│   ├── clustral-agent/          # Go — gRPC tunnel + kubectl proxy (16MB binary)
+│   ├── Clustral.Cli/            # .NET NativeAOT — login + kubeconfig management
 │   └── Clustral.Web/            # Next.js 14 — dashboard, server-side OIDC
 ├── packages/
-│   ├── Clustral.Sdk/            # Shared: TokenCache, KubeconfigWriter, GrpcChannelFactory
-│   └── proto/                   # Protobuf contracts (ClusterService, TunnelService, AuthService)
+│   ├── Clustral.Sdk/            # Shared .NET: TokenCache, KubeconfigWriter
+│   └── proto/                   # Protobuf contracts (shared between .NET + Go)
 ├── infra/
-│   └── keycloak/                # Realm export with pre-configured clients and users
-├── .github/workflows/           # CI/CD — build, test, multi-arch image push to ghcr.io
-├── docker-compose.yml           # Dev stack (builds from source)
+│   ├── keycloak/                # Realm export with pre-configured clients
+│   └── docker-compose.yml       # Infrastructure (MongoDB, Keycloak, SSL proxy)
+├── .github/workflows/           # CI/CD — build, test, multi-arch image push
+├── docker-compose.yml           # Application stack (ControlPlane + Web)
 └── CLAUDE.md                    # Claude Code guide
 ```
 
 ## Container Images
 
-Published to GitHub Container Registry when relevant source files change:
+Published to GitHub Container Registry (manually triggerable or on source changes):
 
-| Image | Architectures |
-|---|---|
-| `ghcr.io/clustral/clustral-controlplane` | `linux/amd64`, `linux/arm64` |
-| `ghcr.io/clustral/clustral-agent` | `linux/amd64`, `linux/arm64` |
-| `ghcr.io/clustral/clustral-web` | `linux/amd64`, `linux/arm64` |
+| Image | Stack | Size |
+|---|---|---|
+| `ghcr.io/clustral/clustral-controlplane` | .NET 10 | ~80MB |
+| `ghcr.io/clustral/clustral-agent` | Go 1.23 | ~16MB |
+| `ghcr.io/clustral/clustral-web` | Node.js 20 | ~50MB |
 
 Tags: `latest`, `main`, commit SHA, semver (`v1.0.0`, `v1.0`) on tagged releases.
-
-## Web UI Environment Variables
-
-All configuration is via runtime environment variables — no rebuild needed.
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `NEXTAUTH_URL` | Yes | — | Browser-facing URL of the Web UI (e.g. `http://192.168.1.100:3000`) |
-| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL (reachable from the web container) |
-| `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL (reachable from the web container) |
-| `OIDC_CLIENT_ID` | No | `clustral-web` | OIDC client ID |
-| `OIDC_CLIENT_SECRET` | Yes | — | OIDC client secret (confidential client) |
-| `AUTH_SECRET` | Yes | — | NextAuth session encryption key (random 32+ chars) |
 
 ## Development
 
@@ -449,36 +424,64 @@ All configuration is via runtime environment variables — no rebuild needed.
 
 - Docker Desktop (or OrbStack)
 - .NET 10 SDK
+- Go 1.23+
 - Node.js 20+ and bun
-- kubectl (for agent testing)
+- kubectl
 
 ### Run from source
 
 ```bash
-# Start infrastructure + applications (builds locally)
+# Start infrastructure
+docker compose -f infra/docker-compose.yml up -d
+
+# Start application
 docker compose up -d
 
-# Or run infrastructure only and applications natively:
-docker compose up -d mongo keycloak
+# Or run natively:
 
 # ControlPlane
 dotnet run --project src/Clustral.ControlPlane
 
-# Web UI (Next.js dev server)
+# Web UI
 cd src/Clustral.Web && bun install && bun dev
 
-# Agent (against Docker Desktop Kubernetes)
-dotnet run --project src/Clustral.Agent -- \
-  --Agent:ClusterId="<ID>" \
-  --Agent:ControlPlaneUrl=http://localhost:5001 \
-  --Agent:BootstrapToken="<TOKEN>"
+# Agent (Go)
+cd src/clustral-agent && go run . 
+# Set env vars: AGENT_CLUSTER_ID, AGENT_CONTROL_PLANE_URL, AGENT_BOOTSTRAP_TOKEN
 ```
 
 ### Run tests
 
 ```bash
+# .NET
 dotnet test Clustral.slnx
+
+# Go Agent
+cd src/clustral-agent && go test ./...
 ```
+
+## Web UI Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `NEXTAUTH_URL` | Yes | — | Browser-facing URL of the Web UI |
+| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL |
+| `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL |
+| `OIDC_CLIENT_ID` | No | `clustral-web` | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | Yes | — | OIDC client secret |
+| `AUTH_SECRET` | Yes | — | NextAuth session encryption key |
+
+## Agent Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AGENT_CLUSTER_ID` | Yes | — | Cluster ID from registration |
+| `AGENT_CONTROL_PLANE_URL` | Yes | — | ControlPlane gRPC endpoint |
+| `AGENT_BOOTSTRAP_TOKEN` | First boot | — | One-time bootstrap token |
+| `AGENT_CREDENTIAL_PATH` | No | `~/.clustral/agent.token` | Token file path |
+| `AGENT_KUBERNETES_API_URL` | No | `https://kubernetes.default.svc` | k8s API server URL |
+| `AGENT_KUBERNETES_SKIP_TLS_VERIFY` | No | `false` | Skip k8s TLS (dev only) |
+| `AGENT_HEARTBEAT_INTERVAL` | No | `30s` | Heartbeat frequency |
 
 ## Keycloak Configuration
 
