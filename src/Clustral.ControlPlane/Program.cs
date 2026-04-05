@@ -53,9 +53,15 @@ builder.Services
         if (!string.IsNullOrEmpty(keycloakOpts.MetadataAddress))
             opts.MetadataAddress = keycloakOpts.MetadataAddress;
 
+        // When MetadataAddress is set, the ControlPlane fetches JWKS from an
+        // internal URL but the token issuer may vary depending on how the user
+        // accessed Keycloak (localhost vs IP vs hostname).  Disable strict issuer
+        // validation — the JWKS key check already proves token authenticity.
+        var relaxIssuer = !string.IsNullOrEmpty(keycloakOpts.MetadataAddress);
+
         opts.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer           = true,
+            ValidateIssuer           = !relaxIssuer,
             ValidateAudience         = true,
             ValidateLifetime         = true,
             ValidateIssuerSigningKey = true,

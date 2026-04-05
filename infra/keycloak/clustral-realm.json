@@ -84,10 +84,11 @@
     {
       "clientId": "clustral-web",
       "name": "Clustral Web UI",
-      "description": "Public client for the Clustral web dashboard — browser-based OIDC.",
+      "description": "Confidential client for the Clustral web dashboard — server-side OIDC via NextAuth.",
       "enabled": true,
       "protocol": "openid-connect",
-      "publicClient": true,
+      "publicClient": false,
+      "secret": "clustral-web-secret",
       "bearerOnly": false,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,

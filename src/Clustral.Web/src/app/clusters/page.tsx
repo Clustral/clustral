@@ -1,6 +1,9 @@
+"use client";
+
 import { useState } from "react";
-import { useClusters } from "@/hooks/useClusters";
-import { useAuthStore } from "@/stores/useAuthStore";
+import { useSession, signOut } from "next-auth/react";
+import { redirect } from "next/navigation";
+import { useClusters, clusterKeys } from "@/hooks/useClusters";
 import { ClusterCard } from "@/components/ClusterCard";
 import { ConnectSteps } from "@/components/ConnectSteps";
 import { RegisterClusterDialog } from "@/components/RegisterClusterDialog";
@@ -8,14 +11,12 @@ import { deleteCluster } from "@/lib/api";
 import type { Cluster } from "@/types/api";
 import { LogOut, RefreshCw, Server, Plus } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clusterKeys } from "@/hooks/useClusters";
 
-export function ClustersPage() {
-  const { data, isLoading, isError, error } = useClusters();
-  const token = useAuthStore((s) => s.token);
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
+export default function ClustersPage() {
+  const { data: session, status } = useSession();
+  const token = (session as any)?.accessToken as string | undefined;
   const queryClient = useQueryClient();
+  const { data, isLoading, isError, error } = useClusters();
 
   const [selected, setSelected] = useState<Cluster | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -30,25 +31,36 @@ export function ClustersPage() {
     },
   });
 
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    redirect("/login");
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+      {/* Header */}
       <header className="border-b">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             <Server className="h-5 w-5" />
             <span className="text-lg font-semibold">Clustral</span>
           </div>
-
           <div className="flex items-center gap-4">
-            {user && (
+            {session?.user?.email && (
               <span className="text-sm text-muted-foreground">
-                {user.email || user.name}
+                {session.user.email}
               </span>
             )}
             <button
               type="button"
-              onClick={() => logout()}
+              onClick={() => signOut({ callbackUrl: "/login" })}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent transition-colors"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -58,7 +70,7 @@ export function ClustersPage() {
         </div>
       </header>
 
-      {/* ── Body ────────────────────────────────────────────────────────── */}
+      {/* Body */}
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Clusters</h2>
@@ -113,7 +125,6 @@ export function ClustersPage() {
 
         {data && data.clusters.length > 0 && (
           <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-            {/* Cluster list */}
             <div className="space-y-3">
               {data.clusters.map((c) => (
                 <ClusterCard
@@ -125,8 +136,6 @@ export function ClustersPage() {
                 />
               ))}
             </div>
-
-            {/* Connect panel */}
             <div>
               {selected ? (
                 <ConnectSteps cluster={selected} />
@@ -142,13 +151,12 @@ export function ClustersPage() {
         )}
       </main>
 
-      {/* ── Register dialog ────────────────────────────────────────────── */}
       <RegisterClusterDialog
         open={registerOpen}
         onClose={() => setRegisterOpen(false)}
       />
 
-      {/* ── Delete confirmation dialog ─────────────────────────────────── */}
+      {/* Delete confirmation */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div
@@ -168,13 +176,11 @@ export function ClustersPage() {
               This will remove the cluster registration and revoke all associated
               credentials. Connected agents will be disconnected.
             </p>
-
             {deleteMutation.isError && (
               <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive mb-4">
                 {(deleteMutation.error as Error).message}
               </div>
             )}
-
             <div className="flex justify-end gap-3">
               <button
                 type="button"

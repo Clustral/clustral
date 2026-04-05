@@ -1,7 +1,9 @@
+"use client";
+
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { registerCluster } from "@/lib/api";
-import { useAuthStore } from "@/stores/useAuthStore";
 import { clusterKeys } from "@/hooks/useClusters";
 import { AgentSetupSteps } from "@/components/AgentSetupSteps";
 import { X, Plus } from "lucide-react";
@@ -13,7 +15,8 @@ interface Props {
 }
 
 export function RegisterClusterDialog({ open, onClose }: Props) {
-  const token = useAuthStore((s) => s.token);
+  const { data: session } = useSession();
+  const token = (session as any)?.accessToken as string | undefined;
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
@@ -52,13 +55,10 @@ export function RegisterClusterDialog({ open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-foreground/20"
         onClick={handleClose}
       />
-
-      {/* Dialog */}
       <div className="relative w-full max-w-lg rounded-lg border bg-background p-6 shadow-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
@@ -76,10 +76,7 @@ export function RegisterClusterDialog({ open, onClose }: Props) {
         {!result ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="cluster-name"
-                className="block text-sm font-medium mb-1"
-              >
+              <label htmlFor="cluster-name" className="block text-sm font-medium mb-1">
                 Cluster name
               </label>
               <input
@@ -92,16 +89,9 @@ export function RegisterClusterDialog({ open, onClose }: Props) {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-
             <div>
-              <label
-                htmlFor="cluster-desc"
-                className="block text-sm font-medium mb-1"
-              >
-                Description{" "}
-                <span className="text-muted-foreground font-normal">
-                  (optional)
-                </span>
+              <label htmlFor="cluster-desc" className="block text-sm font-medium mb-1">
+                Description <span className="text-muted-foreground font-normal">(optional)</span>
               </label>
               <input
                 id="cluster-desc"
@@ -112,19 +102,13 @@ export function RegisterClusterDialog({ open, onClose }: Props) {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-
             {mutation.isError && (
               <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
                 {(mutation.error as Error).message}
               </div>
             )}
-
             <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="rounded-md border px-4 py-2 text-sm hover:bg-accent transition-colors"
-              >
+              <button type="button" onClick={handleClose} className="rounded-md border px-4 py-2 text-sm hover:bg-accent transition-colors">
                 Cancel
               </button>
               <button

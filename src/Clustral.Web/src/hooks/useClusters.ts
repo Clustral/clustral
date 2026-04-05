@@ -1,6 +1,8 @@
+"use client";
+
 import { useQuery } from "@tanstack/react-query";
 import { fetchClusters } from "@/lib/api";
-import { useAuthStore } from "@/stores/useAuthStore";
+import { useSession } from "next-auth/react";
 
 export const clusterKeys = {
   all: ["clusters"] as const,
@@ -8,7 +10,8 @@ export const clusterKeys = {
 };
 
 export function useClusters(statusFilter?: string) {
-  const token = useAuthStore((s) => s.token);
+  const { data: session } = useSession();
+  const token = (session as any)?.accessToken as string | undefined;
 
   return useQuery({
     queryKey: clusterKeys.list(statusFilter),

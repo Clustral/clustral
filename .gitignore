@@ -27,6 +27,7 @@ Thumbs.db
 # Node / Web
 node_modules/
 dist/
+.next/
 .env.local
 .env.*.local
 # Keep bun.lock committed for reproducible builds

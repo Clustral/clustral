@@ -17,14 +17,7 @@ services:
       retries: 10
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Keycloak 24 (dev mode — no TLS, in-memory H2 storage)
-  #
-  # On first run Keycloak imports the realm from infra/keycloak/.
-  # The "clustral" realm is pre-configured with:
-  #   - client: clustral-control-plane  (bearer-only, for token validation)
-  #   - client: clustral-cli            (public, PKCE flow)
-  #   - client: clustral-web            (public, browser OIDC)
-  #   - users:  admin/admin, dev/dev
+  # Keycloak 24 (dev mode)
   # ──────────────────────────────────────────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
@@ -36,8 +29,6 @@ services:
       KEYCLOAK_ADMIN:          admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HTTP_PORT:            8080
-      KC_HOSTNAME:             localhost
-      KC_HOSTNAME_PORT:        8080
       KC_HOSTNAME_STRICT:      "false"
     ports:
       - "8080:8080"
@@ -67,13 +58,13 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Clustral: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Keycloak__Authority: "http://localhost:8080/realms/clustral"
+      Keycloak__Authority: "http://keycloak:8080/realms/clustral"
       Keycloak__MetadataAddress: "http://keycloak:8080/realms/clustral/.well-known/openid-configuration"
       Keycloak__ClientId: "clustral-control-plane"
       Keycloak__Audience: "clustral-control-plane"
       Keycloak__RequireHttpsMetadata: "false"
     ports:
-      - "5100:5000"   # Host :5100 → container :5000 (avoids macOS AirPlay on :5000)
+      - "5100:5000"
       - "5101:5001"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5000/healthz || exit 1"]
@@ -83,7 +74,7 @@ services:
       start_period: 15s
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Clustral Web UI (Vite + React, served by nginx)
+  # Clustral Web UI (Next.js — HTTPS)
   # ──────────────────────────────────────────────────────────────────────────
   web:
     build:
@@ -93,6 +84,13 @@ services:
     depends_on:
       controlplane:
         condition: service_healthy
+    environment:
+      CONTROLPLANE_URL: "http://controlplane:5000"
+      OIDC_ISSUER: "http://keycloak:8080/realms/clustral"
+      OIDC_CLIENT_ID: "clustral-web"
+      OIDC_CLIENT_SECRET: "clustral-web-secret"
+      AUTH_SECRET: "change-me-to-a-random-32-char-string!!"
+      NODE_ENV: "production"
     ports:
       - "3000:3000"
 

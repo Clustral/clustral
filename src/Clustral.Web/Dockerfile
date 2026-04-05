@@ -2,8 +2,10 @@
 #   docker build -f src/Clustral.Web/Dockerfile -t clustral-web src/Clustral.Web
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM oven/bun:1 AS build
+FROM node:20-alpine AS build
 WORKDIR /app
+
+RUN npm install -g bun
 
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -11,14 +13,19 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-# ── Stage 2: serve with nginx + self-signed TLS ──────────────────────────────
-FROM nginx:1.27-alpine AS final
+# ── Stage 2: production ──────────────────────────────────────────────────────
+FROM node:20-alpine AS final
+WORKDIR /app
 
-# openssl for self-signed cert generation at startup.
 RUN apk add --no-cache openssl
 
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy standalone Next.js output.
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+
+# Custom HTTPS server + entrypoint.
+COPY server.ts ./server.js
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
