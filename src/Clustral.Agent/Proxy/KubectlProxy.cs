@@ -150,8 +150,9 @@ public sealed class KubectlProxy
         if (impersonateUser is not null)
         {
             request.Headers.TryAddWithoutValidation("Impersonate-User", impersonateUser);
-            foreach (var group in impersonateGroups)
-                request.Headers.TryAddWithoutValidation("Impersonate-Group", group);
+            // k8s requires separate Impersonate-Group headers, NOT comma-separated.
+            // TryAddWithoutValidation with IEnumerable sends them correctly.
+            request.Headers.TryAddWithoutValidation("Impersonate-Group", impersonateGroups);
         }
 
         if (frame.BodyChunk.Length > 0 || method == HttpMethod.Post || method == HttpMethod.Put
