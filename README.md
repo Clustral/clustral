@@ -88,11 +88,14 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Clustral: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Keycloak__Authority: "http://keycloak:8080/realms/clustral"
-      Keycloak__MetadataAddress: "http://keycloak:8080/realms/clustral/.well-known/openid-configuration"
+      Keycloak__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
+      Keycloak__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
       Keycloak__ClientId: "clustral-control-plane"
       Keycloak__Audience: "clustral-control-plane"
       Keycloak__RequireHttpsMetadata: "false"
+    ports:
+      - "5100:5000"
+      - "5101:5001"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5000/healthz || exit 1"]
       interval: 10s
@@ -107,21 +110,20 @@ services:
       controlplane:
         condition: service_healthy
     environment:
-      CONTROLPLANE_URL: "http://controlplane:5000"
-      OIDC_ISSUER: "http://keycloak:8080/realms/clustral"
+      NEXTAUTH_URL: "http://<YOUR_HOST_IP>:3000"
+      CONTROLPLANE_URL: "http://<YOUR_HOST_IP>:5100"
+      OIDC_ISSUER: "http://<YOUR_HOST_IP>:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
       AUTH_SECRET: "change-me-to-a-random-32-char-string!!"
     ports:
       - "3000:3000"
-    # Optional: mount your own TLS certs instead of auto-generated self-signed ones.
-    # volumes:
-    #   - ./certs/tls.crt:/etc/clustral-web/tls.crt:ro
-    #   - ./certs/tls.key:/etc/clustral-web/tls.key:ro
 
 volumes:
   mongo_data:
 ```
+
+> Replace `<YOUR_HOST_IP>` with your machine's IP address (e.g. `192.168.1.100`). All services must use the same IP so the browser, Next.js server, and ControlPlane can all reach Keycloak at the same issuer URL.
 
 ### 2. Download the Keycloak realm config
 
@@ -334,13 +336,12 @@ All configuration is via runtime environment variables — no rebuild needed.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL (internal) |
-| `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL |
+| `NEXTAUTH_URL` | Yes | — | Browser-facing URL of the Web UI (e.g. `http://192.168.1.100:3000`) |
+| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL (reachable from the web container) |
+| `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL (reachable from the web container) |
 | `OIDC_CLIENT_ID` | No | `clustral-web` | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | Yes | — | OIDC client secret (confidential client) |
 | `AUTH_SECRET` | Yes | — | NextAuth session encryption key (random 32+ chars) |
-| `TLS_CERT_PATH` | No | `/etc/clustral-web/tls.crt` | Path to TLS certificate |
-| `TLS_KEY_PATH` | No | `/etc/clustral-web/tls.key` | Path to TLS private key |
 
 ## Development
 
