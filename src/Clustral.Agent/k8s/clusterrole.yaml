@@ -2,25 +2,17 @@
 # ClusterRole for the Clustral Agent
 #
 # The Agent uses the Kubernetes Impersonation API to forward user identity
-# from the Clustral ControlPlane to the k8s API server. This means the
-# Agent's ServiceAccount only needs the "impersonate" verb — actual
-# authorization is enforced by k8s RBAC based on the impersonated user.
+# from the Clustral ControlPlane to the k8s API server. The agent's
+# ServiceAccount only needs the "impersonate" verb — actual authorization
+# is enforced by k8s RBAC based on the impersonated user/groups.
 #
-# Cluster admins must create RoleBindings/ClusterRoleBindings for each
-# Clustral user (by email) to grant them the appropriate k8s permissions.
+# Cluster admins create RoleBindings for Clustral users/groups:
 #
-# Example — grant a user read access to a namespace:
+#   kubectl create clusterrolebinding clustral-admins \
+#     --clusterrole=cluster-admin --group=system:masters
 #
-#   kubectl create rolebinding dev-reader \
-#     --clusterrole=view \
-#     --user=dev@clustral.local \
-#     --namespace=default
-#
-# Example — grant a user cluster-admin access:
-#
-#   kubectl create clusterrolebinding admin-full \
-#     --clusterrole=cluster-admin \
-#     --user=admin@clustral.local
+#   kubectl create clusterrolebinding clustral-viewers \
+#     --clusterrole=view --group=clustral-viewer
 # ──────────────────────────────────────────────────────────────────────────────
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -30,18 +22,36 @@ metadata:
     app.kubernetes.io/name: clustral-agent
     app.kubernetes.io/component: agent
 rules:
-  # Impersonation — allows the agent to act as any user or group.
-  # The k8s API server then enforces RBAC for the impersonated identity.
+  # Impersonation of users (core API group).
   - apiGroups: [""]
-    resources:
-      - users
-      - groups
-      - serviceaccounts
+    resources: ["users"]
     verbs: ["impersonate"]
 
-  # Required for the agent's own heartbeat (ClusterService.UpdateStatus).
-  # This is the agent calling as itself, not impersonating.
+  # Impersonation of groups (core API group).
   - apiGroups: [""]
-    resources:
-      - nodes
+    resources: ["groups"]
+    verbs: ["impersonate"]
+
+  # Impersonation of service accounts (core API group).
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["impersonate"]
+
+  # Impersonation of extra fields (authentication API group).
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["userextras/scopes", "userextras/aud"]
+    verbs: ["impersonate"]
+
+  # Allow impersonating any user/group name (no resourceNames restriction).
+  # For tighter security, add resourceNames to limit which users/groups
+  # the agent can impersonate.
+
+  # Required for the agent's own operations (heartbeat, version discovery).
+  - apiGroups: [""]
+    resources: ["nodes"]
     verbs: ["get", "list"]
+
+  # Self-subject access reviews (used by kubectl auth can-i via proxy).
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+    verbs: ["create"]
