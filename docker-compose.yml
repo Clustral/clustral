@@ -89,7 +89,7 @@ services:
       OIDC_ISSUER: "http://keycloak:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
-      AUTH_SECRET: "change-me-to-a-random-32-char-string!!"
+      AUTH_SECRET: "lXBA6UgneVKkAZSlKqDqLTuXigHVoScA"
       NODE_ENV: "production"
     ports:
       - "3000:3000"
