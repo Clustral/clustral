@@ -1,0 +1,53 @@
+# Standalone HTTPS reverse proxy for Clustral.
+#
+# Sits in front of the Web UI (Next.js) on port 443 and terminates TLS.
+# Generates a self-signed certificate on first start if none is mounted.
+#
+# Usage:
+#   docker compose -f infra/nginx-ssl-proxy/docker-compose.yml up -d
+#
+# This file is designed to attach to the existing Clustral network.
+# The main docker-compose.yml must be running first.
+#
+# kubectl connects to: https://<host>/api/proxy/{clusterId}
+# Browser connects to: https://<host>
+
+services:
+  ssl-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certs:/etc/nginx/certs
+      # Optional: mount your own certs instead of auto-generated ones.
+      # - ./certs/tls.crt:/etc/nginx/certs/tls.crt:ro
+      # - ./certs/tls.key:/etc/nginx/certs/tls.key:ro
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        if [ ! -f /etc/nginx/certs/tls.crt ]; then
+          echo "Generating self-signed certificate..."
+          apk add --no-cache openssl > /dev/null 2>&1
+          openssl req -x509 -nodes -days 365 \
+            -newkey rsa:2048 \
+            -keyout /etc/nginx/certs/tls.key \
+            -out /etc/nginx/certs/tls.crt \
+            -subj "/CN=clustral" \
+            -addext "subjectAltName=DNS:clustral,DNS:localhost,IP:0.0.0.0" \
+            2>/dev/null
+          echo "Self-signed certificate generated."
+        fi
+        exec nginx -g "daemon off;"
+    networks:
+      - clustral
+
+volumes:
+  certs:
+
+networks:
+  clustral:
+    external: true
+    name: clustral_default
