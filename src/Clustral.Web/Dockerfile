@@ -19,12 +19,14 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl
 
-# Copy standalone Next.js output.
+# Copy standalone Next.js output (includes node_modules subset).
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 
-# Custom HTTPS server + entrypoint.
-COPY server.ts ./server.js
+# Replace the auto-generated server.js with our HTTPS wrapper.
+# The standalone server.js is not needed — our wrapper uses next programmatically.
+COPY server.js ./server.js
+
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
