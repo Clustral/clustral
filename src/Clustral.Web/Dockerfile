@@ -1,35 +1,39 @@
-# Build context: src/Clustral.Web
-#   docker build -f src/Clustral.Web/Dockerfile -t clustral-web src/Clustral.Web
+FROM node:20-alpine AS base
 
-# ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS build
+# ── Stage 1: deps ─────────────────────────────────────────────────────────────
+FROM base AS deps
 WORKDIR /app
 
 RUN npm install -g bun
-
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-COPY . .
-RUN bun run build
-
-# ── Stage 2: production ──────────────────────────────────────────────────────
-FROM node:20-alpine AS final
+# ── Stage 2: build ────────────────────────────────────────────────────────────
+FROM base AS builder
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 
-# Copy standalone Next.js output (includes node_modules subset).
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+RUN npm run build
 
-# Replace the auto-generated server.js with our HTTPS wrapper.
-# The standalone server.js is not needed — our wrapper uses next programmatically.
-COPY server.js ./server.js
+# ── Stage 3: production ──────────────────────────────────────────────────────
+FROM base AS runner
+WORKDIR /app
 
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+USER nextjs
 
 EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["node", "server.js"]

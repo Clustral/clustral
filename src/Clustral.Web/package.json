@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --port 5173",
     "build": "next build",
-    "start": "node server.ts"
+    "start": "next start"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.2",
