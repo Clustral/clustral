@@ -1,18 +1,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # ClusterRole for the Clustral Agent
 #
-# The Agent uses the Kubernetes Impersonation API to forward user identity
-# from the Clustral ControlPlane to the k8s API server. The agent's
-# ServiceAccount only needs the "impersonate" verb — actual authorization
-# is enforced by k8s RBAC based on the impersonated user/groups.
-#
+# Uses Kubernetes Impersonation API to forward user identity.
 # Cluster admins create RoleBindings for Clustral users/groups:
 #
 #   kubectl create clusterrolebinding clustral-admins \
 #     --clusterrole=cluster-admin --group=system:masters
-#
-#   kubectl create clusterrolebinding clustral-viewers \
-#     --clusterrole=view --group=clustral-viewer
 # ──────────────────────────────────────────────────────────────────────────────
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -22,36 +15,24 @@ metadata:
     app.kubernetes.io/name: clustral-agent
     app.kubernetes.io/component: agent
 rules:
-  # Impersonation of users (core API group).
-  - apiGroups: [""]
-    resources: ["users"]
+  # Full impersonation support.
+  # Using wildcard apiGroups to avoid conflicts with CRDs (e.g. Rancher's
+  # management.cattle.io which also defines 'users' and 'groups' resources).
+  - apiGroups: ["*"]
+    resources: ["users", "groups", "serviceaccounts"]
     verbs: ["impersonate"]
 
-  # Impersonation of groups (core API group).
-  - apiGroups: [""]
-    resources: ["groups"]
-    verbs: ["impersonate"]
-
-  # Impersonation of service accounts (core API group).
-  - apiGroups: [""]
-    resources: ["serviceaccounts"]
-    verbs: ["impersonate"]
-
-  # Impersonation of extra fields (authentication API group).
+  # Extra field impersonation.
   - apiGroups: ["authentication.k8s.io"]
-    resources: ["userextras/scopes", "userextras/aud"]
+    resources: ["*"]
     verbs: ["impersonate"]
 
-  # Allow impersonating any user/group name (no resourceNames restriction).
-  # For tighter security, add resourceNames to limit which users/groups
-  # the agent can impersonate.
-
-  # Required for the agent's own operations (heartbeat, version discovery).
+  # Agent's own operations.
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list"]
 
-  # Self-subject access reviews (used by kubectl auth can-i via proxy).
+  # kubectl auth can-i support through the proxy.
   - apiGroups: ["authorization.k8s.io"]
     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
     verbs: ["create"]
