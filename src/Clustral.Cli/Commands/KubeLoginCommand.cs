@@ -51,6 +51,7 @@ internal static class KubeLoginCommand
     {
         var kube = new Command("kube", "Manage kubeconfig credentials for Clustral clusters.");
         kube.AddCommand(BuildLoginSubcommand());
+        kube.AddCommand(KubeLsCommand.Build());
         return kube;
     }
 
