@@ -1,6 +1,7 @@
 name: Build & Test
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -79,7 +80,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.23"
 
       - name: Build
         working-directory: src/clustral-agent
