@@ -95,6 +95,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(IssueCredentialResponse))]
 [JsonSerializable(typeof(ControlPlaneConfig))]
 [JsonSerializable(typeof(ClusterListResponse))]
+[JsonSerializable(typeof(UserProfileResponse))]
 internal partial class CliJsonContext : JsonSerializerContext { }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,4 +154,22 @@ internal sealed class ClusterResponse
     [JsonPropertyName("registeredAt")]       public DateTimeOffset      RegisteredAt      { get; set; }
     [JsonPropertyName("lastSeenAt")]         public DateTimeOffset?     LastSeenAt        { get; set; }
     [JsonPropertyName("labels")]             public Dictionary<string, string> Labels     { get; set; } = new();
+}
+
+/// <summary>Mirrors <c>UserProfileResponse</c> from GET /api/v1/users/me.</summary>
+internal sealed class UserProfileResponse
+{
+    [JsonPropertyName("id")]           public string               Id           { get; set; } = string.Empty;
+    [JsonPropertyName("email")]        public string               Email        { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")]  public string?              DisplayName  { get; set; }
+    [JsonPropertyName("createdAt")]    public DateTimeOffset        CreatedAt   { get; set; }
+    [JsonPropertyName("lastSeenAt")]   public DateTimeOffset?       LastSeenAt  { get; set; }
+    [JsonPropertyName("assignments")]  public List<ProfileAssignment> Assignments { get; set; } = [];
+}
+
+internal sealed class ProfileAssignment
+{
+    [JsonPropertyName("roleName")]     public string  RoleName     { get; set; } = string.Empty;
+    [JsonPropertyName("clusterName")]  public string  ClusterName  { get; set; } = string.Empty;
+    [JsonPropertyName("clusterId")]    public string  ClusterId    { get; set; } = string.Empty;
 }

@@ -121,8 +121,8 @@ internal static class LoginCommand
             var cache = new TokenCache();
             await cache.StoreAsync(token, ct);
 
-            Console.WriteLine($"Logged in to {cpUrl}");
-            Console.WriteLine("Token stored in ~/.clustral/token.");
+            // Fetch and display user profile.
+            await DisplayProfileAsync(http, cpUrl, token, ct);
         }
         catch (OperationCanceledException)
         {
@@ -167,6 +167,110 @@ internal static class LoginCommand
             }
         }
 
+        return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static async Task DisplayProfileAsync(
+        HttpClient http, string cpUrl, string token, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"{cpUrl.TrimEnd('/')}/api/v1/users/me";
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+
+            var response = await http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                // Fallback: just show basic info.
+                Console.WriteLine($"\n> Profile URL:        {cpUrl}");
+                Console.WriteLine($"  Logged in as:       (unknown — profile fetch failed: {(int)response.StatusCode})");
+                return;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            var profile = JsonSerializer.Deserialize(json, CliJsonContext.Default.UserProfileResponse);
+
+            if (profile is null)
+            {
+                Console.WriteLine($"\n  Logged in to {cpUrl}");
+                return;
+            }
+
+            // Decode JWT expiry.
+            var expiry = DecodeJwtExpiry(token);
+
+            // Collect unique roles and clusters.
+            var roles = profile.Assignments
+                .Select(a => a.RoleName)
+                .Distinct()
+                .OrderBy(r => r)
+                .ToList();
+
+            var clusters = profile.Assignments
+                .Select(a => a.ClusterName)
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+
+            // Display Teleport-style profile.
+            Console.WriteLine();
+            Console.WriteLine($"> Profile URL:        {cpUrl}");
+            Console.WriteLine($"  Logged in as:       {profile.DisplayName ?? profile.Email}");
+            Console.WriteLine($"  Email:              {profile.Email}");
+            Console.WriteLine($"  Kubernetes:         enabled");
+
+            if (roles.Count > 0)
+                Console.WriteLine($"  Roles:              {string.Join(", ", roles)}");
+            else
+                Console.WriteLine($"  Roles:              (none assigned)");
+
+            if (clusters.Count > 0)
+                Console.WriteLine($"  Clusters:           {string.Join(", ", clusters)}");
+            else
+                Console.WriteLine($"  Clusters:           (none assigned)");
+
+            // Per-cluster breakdown.
+            if (profile.Assignments.Count > 0)
+            {
+                Console.WriteLine($"  Access:");
+                foreach (var a in profile.Assignments)
+                    Console.WriteLine($"    {a.ClusterName,-24} → {a.RoleName}");
+            }
+
+            if (expiry.HasValue)
+            {
+                var remaining = expiry.Value - DateTimeOffset.UtcNow;
+                var validFor = remaining.TotalHours >= 1
+                    ? $"{(int)remaining.TotalHours}h{remaining.Minutes}m"
+                    : $"{(int)remaining.TotalMinutes}m";
+                Console.WriteLine($"  Valid until:        {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [valid for {validFor}]");
+            }
+        }
+        catch
+        {
+            Console.WriteLine($"\n  Logged in to {cpUrl}");
+        }
+    }
+
+    private static DateTimeOffset? DecodeJwtExpiry(string token)
+    {
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length < 2) return null;
+            var payload = parts[1];
+            // Pad base64.
+            payload += new string('=', (4 - payload.Length % 4) % 4);
+            var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
+                payload.Replace('-', '+').Replace('_', '/')));
+            var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("exp", out var exp))
+                return DateTimeOffset.FromUnixTimeSeconds(exp.GetInt64());
+        }
+        catch { }
         return null;
     }
 }

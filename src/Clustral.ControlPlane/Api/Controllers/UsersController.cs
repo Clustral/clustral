@@ -14,6 +14,48 @@ namespace Clustral.ControlPlane.Api.Controllers;
 public sealed class UsersController(ClustralDb db, ILogger<UsersController> logger)
     : ControllerBase
 {
+    [HttpGet("me")]
+    public async Task<IActionResult> Me(CancellationToken ct)
+    {
+        var subject = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value
+                   ?? User.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+
+        if (string.IsNullOrEmpty(subject))
+            return Unauthorized();
+
+        var user = await db.Users
+            .Find(u => u.KeycloakSubject == subject)
+            .FirstOrDefaultAsync(ct);
+
+        if (user is null)
+            return NotFound(new { error = "User not found. This is your first API call — try again." });
+
+        var assignments = await db.RoleAssignments
+            .Find(a => a.UserId == user.Id)
+            .ToListAsync(ct);
+
+        var roleIds    = assignments.Select(a => a.RoleId).Distinct().ToList();
+        var clusterIds = assignments.Select(a => a.ClusterId).Distinct().ToList();
+
+        var roles    = (await db.Roles.Find(r => roleIds.Contains(r.Id)).ToListAsync(ct)).ToDictionary(r => r.Id);
+        var clusters = (await db.Clusters.Find(c => clusterIds.Contains(c.Id)).ToListAsync(ct)).ToDictionary(c => c.Id);
+
+        var assignmentResponses = assignments.Select(a => new RoleAssignmentResponse(
+            a.Id, a.UserId, a.RoleId,
+            roles.GetValueOrDefault(a.RoleId)?.Name ?? "unknown",
+            a.ClusterId,
+            clusters.GetValueOrDefault(a.ClusterId)?.Name ?? "unknown",
+            a.AssignedAt, a.AssignedBy)).ToList();
+
+        return Ok(new UserProfileResponse(
+            user.Id,
+            user.Email ?? user.KeycloakSubject,
+            user.DisplayName,
+            user.CreatedAt,
+            user.LastSeenAt,
+            assignmentResponses));
+    }
+
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
     {
