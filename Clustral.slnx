@@ -5,6 +5,8 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Clustral.Cli/Clustral.Cli.csproj" />
+    <Project Path="src/Clustral.Cli.Tests/Clustral.Cli.Tests.csproj" />
     <Project Path="src/Clustral.ControlPlane/Clustral.ControlPlane.csproj" />
+    <Project Path="src/Clustral.ControlPlane.Tests/Clustral.ControlPlane.Tests.csproj" />
   </Folder>
 </Solution>

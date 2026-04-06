@@ -9,6 +9,8 @@ root.AddCommand(LoginCommand.Build());
 root.AddCommand(LogoutCommand.Build());
 root.AddCommand(KubeLoginCommand.BuildKubeCommand());
 root.AddCommand(ClustersListCommand.BuildClustersCommand());
+root.AddCommand(UsersCommand.BuildUsersCommand());
+root.AddCommand(AccessCommand.BuildAccessCommand());
 root.AddCommand(UpdateCommand.Build());
 root.AddCommand(VersionCommand.Build());
 

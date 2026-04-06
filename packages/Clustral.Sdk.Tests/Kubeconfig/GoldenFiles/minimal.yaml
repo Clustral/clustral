@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Config
+preferences: {}
+
+clusters:
+- name: clustral-prod
+  cluster:
+    server: https://cp.example.com/api/proxy/prod
+
+users:
+- name: clustral-prod
+  user:
+    token: eyJhbGciOi.token.sig
+
+contexts:
+- name: clustral-prod
+  context:
+    cluster: clustral-prod
+    user: clustral-prod
+
+current-context: clustral-prod

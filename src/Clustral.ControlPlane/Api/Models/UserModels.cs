@@ -29,11 +29,12 @@ public sealed record RoleAssignmentResponse(
 public sealed record RoleAssignmentListResponse(
     IReadOnlyList<RoleAssignmentResponse> Assignments);
 
-/// <summary>GET /api/v1/users/me — current user profile with role assignments.</summary>
+/// <summary>GET /api/v1/users/me — current user profile with role assignments and active JIT grants.</summary>
 public sealed record UserProfileResponse(
     Guid                                   Id,
     string                                 Email,
     string?                                DisplayName,
     DateTimeOffset                         CreatedAt,
     DateTimeOffset?                        LastSeenAt,
-    IReadOnlyList<RoleAssignmentResponse>  Assignments);
+    IReadOnlyList<RoleAssignmentResponse>  Assignments,
+    IReadOnlyList<ActiveGrantResponse>     ActiveGrants);

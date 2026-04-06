@@ -96,6 +96,13 @@ public sealed class CliConfig
 [JsonSerializable(typeof(ControlPlaneConfig))]
 [JsonSerializable(typeof(ClusterListResponse))]
 [JsonSerializable(typeof(UserProfileResponse))]
+[JsonSerializable(typeof(UserListResponse))]
+[JsonSerializable(typeof(AccessRequestCreateRequest))]
+[JsonSerializable(typeof(AccessRequestResponse))]
+[JsonSerializable(typeof(AccessRequestListResponse))]
+[JsonSerializable(typeof(AccessRequestApproveRequest))]
+[JsonSerializable(typeof(AccessRequestDenyRequest))]
+[JsonSerializable(typeof(RevokeByTokenRequest))]
 internal partial class CliJsonContext : JsonSerializerContext { }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -165,6 +172,7 @@ internal sealed class UserProfileResponse
     [JsonPropertyName("createdAt")]    public DateTimeOffset        CreatedAt   { get; set; }
     [JsonPropertyName("lastSeenAt")]   public DateTimeOffset?       LastSeenAt  { get; set; }
     [JsonPropertyName("assignments")]  public List<ProfileAssignment> Assignments { get; set; } = [];
+    [JsonPropertyName("activeGrants")] public List<ActiveGrant>    ActiveGrants { get; set; } = [];
 }
 
 internal sealed class ProfileAssignment
@@ -172,4 +180,81 @@ internal sealed class ProfileAssignment
     [JsonPropertyName("roleName")]     public string  RoleName     { get; set; } = string.Empty;
     [JsonPropertyName("clusterName")]  public string  ClusterName  { get; set; } = string.Empty;
     [JsonPropertyName("clusterId")]    public string  ClusterId    { get; set; } = string.Empty;
+}
+
+internal sealed class ActiveGrant
+{
+    [JsonPropertyName("requestId")]      public string         RequestId      { get; set; } = string.Empty;
+    [JsonPropertyName("roleName")]       public string         RoleName       { get; set; } = string.Empty;
+    [JsonPropertyName("clusterId")]      public string         ClusterId      { get; set; } = string.Empty;
+    [JsonPropertyName("clusterName")]    public string         ClusterName    { get; set; } = string.Empty;
+    [JsonPropertyName("grantExpiresAt")] public DateTimeOffset GrantExpiresAt { get; set; }
+}
+
+// ── User listing ────────────────────────────────────────────────────────────
+
+internal sealed class UserListResponse
+{
+    [JsonPropertyName("users")] public List<UserResponse> Users { get; set; } = [];
+}
+
+internal sealed class UserResponse
+{
+    [JsonPropertyName("id")]          public string         Id          { get; set; } = string.Empty;
+    [JsonPropertyName("email")]       public string         Email       { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")] public string?        DisplayName { get; set; }
+    [JsonPropertyName("lastSeenAt")]  public DateTimeOffset? LastSeenAt { get; set; }
+}
+
+// ── Access requests ─────────────────────────────────────────────────────────
+
+internal sealed class AccessRequestCreateRequest
+{
+    [JsonPropertyName("roleId")]                  public string       RoleId                  { get; set; } = string.Empty;
+    [JsonPropertyName("clusterId")]               public string       ClusterId               { get; set; } = string.Empty;
+    [JsonPropertyName("reason")]                  public string?      Reason                  { get; set; }
+    [JsonPropertyName("requestedDuration")]       public string?      RequestedDuration       { get; set; }
+    [JsonPropertyName("suggestedReviewerEmails")] public List<string>? SuggestedReviewerEmails { get; set; }
+}
+
+internal sealed class AccessRequestResponse
+{
+    [JsonPropertyName("id")]                  public string         Id                  { get; set; } = string.Empty;
+    [JsonPropertyName("requesterId")]         public string         RequesterId         { get; set; } = string.Empty;
+    [JsonPropertyName("requesterEmail")]      public string         RequesterEmail      { get; set; } = string.Empty;
+    [JsonPropertyName("requesterDisplayName")]public string?        RequesterDisplayName { get; set; }
+    [JsonPropertyName("roleId")]              public string         RoleId              { get; set; } = string.Empty;
+    [JsonPropertyName("roleName")]            public string         RoleName            { get; set; } = string.Empty;
+    [JsonPropertyName("clusterId")]           public string         ClusterId           { get; set; } = string.Empty;
+    [JsonPropertyName("clusterName")]         public string         ClusterName         { get; set; } = string.Empty;
+    [JsonPropertyName("status")]              public string         Status              { get; set; } = string.Empty;
+    [JsonPropertyName("reason")]              public string         Reason              { get; set; } = string.Empty;
+    [JsonPropertyName("requestedDuration")]   public string         RequestedDuration   { get; set; } = string.Empty;
+    [JsonPropertyName("createdAt")]           public DateTimeOffset CreatedAt           { get; set; }
+    [JsonPropertyName("requestExpiresAt")]    public DateTimeOffset RequestExpiresAt    { get; set; }
+    [JsonPropertyName("reviewerId")]          public string?        ReviewerId          { get; set; }
+    [JsonPropertyName("reviewerEmail")]       public string?        ReviewerEmail       { get; set; }
+    [JsonPropertyName("reviewedAt")]          public DateTimeOffset? ReviewedAt         { get; set; }
+    [JsonPropertyName("denialReason")]        public string?        DenialReason        { get; set; }
+    [JsonPropertyName("grantExpiresAt")]      public DateTimeOffset? GrantExpiresAt     { get; set; }
+}
+
+internal sealed class AccessRequestListResponse
+{
+    [JsonPropertyName("requests")] public List<AccessRequestResponse> Requests { get; set; } = [];
+}
+
+internal sealed class AccessRequestApproveRequest
+{
+    [JsonPropertyName("durationOverride")] public string? DurationOverride { get; set; }
+}
+
+internal sealed class AccessRequestDenyRequest
+{
+    [JsonPropertyName("reason")] public string Reason { get; set; } = string.Empty;
+}
+
+internal sealed class RevokeByTokenRequest
+{
+    [JsonPropertyName("token")] public string Token { get; set; } = string.Empty;
 }

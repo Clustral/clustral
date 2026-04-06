@@ -15,7 +15,7 @@ internal static class VersionCommand
     public static Command Build()
     {
         var cmd = new Command("version", "Show the clustral CLI version.");
-        cmd.SetHandler(() => Console.WriteLine($"{Ui.Ansi.Bold("clustral")} {Ui.Ansi.Cyan($"v{GetVersion()}")}"));
+        cmd.SetHandler(() => Spectre.Console.AnsiConsole.MarkupLine($"[bold]clustral[/] [cyan]v{GetVersion()}[/]"));
         return cmd;
     }
 }

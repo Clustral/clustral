@@ -101,6 +101,26 @@ public sealed class AuthController(
         var tokenHash = HashToken(rawToken);
         var now       = DateTimeOffset.UtcNow;
 
+        var expiresAt = now + ttl;
+
+        // Cap credential TTL to JIT grant expiry if user has no static assignment.
+        var staticAssignment = await db.RoleAssignments
+            .Find(a => a.UserId == userId && a.ClusterId == cluster.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (staticAssignment is null)
+        {
+            var activeGrant = await db.AccessRequests
+                .Find(r => r.RequesterId == userId
+                         && r.ClusterId == cluster.Id
+                         && r.Status == AccessRequestStatus.Approved
+                         && r.GrantExpiresAt > now)
+                .FirstOrDefaultAsync(ct);
+
+            if (activeGrant?.GrantExpiresAt is not null && activeGrant.GrantExpiresAt.Value < expiresAt)
+                expiresAt = activeGrant.GrantExpiresAt.Value;
+        }
+
         var credential = new AccessToken
         {
             Id        = Guid.NewGuid(),
@@ -109,7 +129,7 @@ public sealed class AuthController(
             ClusterId = cluster.Id,
             UserId    = userId,
             IssuedAt  = now,
-            ExpiresAt = now + ttl,
+            ExpiresAt = expiresAt,
         };
         await db.AccessTokens.InsertOneAsync(credential, cancellationToken: ct);
 

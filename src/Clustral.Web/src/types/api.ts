@@ -97,3 +97,39 @@ export interface RoleAssignment {
 export interface RoleAssignmentListResponse {
   assignments: RoleAssignment[];
 }
+
+// ── Access Requests (JIT) ───────────────────────────────────────────────────
+
+export type AccessRequestStatus = "Pending" | "Approved" | "Denied" | "Expired";
+
+export interface ReviewerInfo {
+  id: string;
+  email: string;
+  displayName: string | null;
+}
+
+export interface AccessRequest {
+  id: string;
+  requesterId: string;
+  requesterEmail: string;
+  requesterDisplayName: string | null;
+  roleId: string;
+  roleName: string;
+  clusterId: string;
+  clusterName: string;
+  status: AccessRequestStatus;
+  reason: string;
+  requestedDuration: string;
+  createdAt: string;
+  requestExpiresAt: string;
+  suggestedReviewers: ReviewerInfo[];
+  reviewerId: string | null;
+  reviewerEmail: string | null;
+  reviewedAt: string | null;
+  denialReason: string | null;
+  grantExpiresAt: string | null;
+}
+
+export interface AccessRequestListResponse {
+  requests: AccessRequest[];
+}

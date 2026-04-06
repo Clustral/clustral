@@ -128,6 +128,9 @@ builder.Services.AddGrpc(opts =>
 // Singleton session registry shared between TunnelServiceImpl instances.
 builder.Services.AddSingleton<TunnelSessionManager>();
 
+// Background cleanup: expire pending access requests past their TTL.
+builder.Services.AddHostedService<AccessRequestCleanupService>();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Build
 // ─────────────────────────────────────────────────────────────────────────────

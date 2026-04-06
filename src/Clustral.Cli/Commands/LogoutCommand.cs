@@ -6,6 +6,7 @@ using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
+using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
 
@@ -67,13 +68,13 @@ internal static class LogoutCommand
                 try
                 {
                     var body = JsonSerializer.Serialize(
-                        new { token },
-                        CliJsonContext.Default.Options);
+                        new RevokeByTokenRequest { Token = token },
+                        CliJsonContext.Default.RevokeByTokenRequest);
                     using var content = new StringContent(body, Encoding.UTF8, "application/json");
                     var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, ct);
 
                     if (response.IsSuccessStatusCode)
-                        Console.WriteLine($"  {Ui.Ansi.Red(Ui.Ansi.Cross)} Revoked credential for {Ui.Ansi.Cyan(contextName)}");
+                        Spectre.Console.AnsiConsole.MarkupLine($"  [red]✗[/] Revoked credential for [cyan]{contextName.EscapeMarkup()}[/]");
                 }
                 catch
                 {
@@ -86,20 +87,19 @@ internal static class LogoutCommand
         foreach (var (contextName, _) in clustralContexts)
         {
             writer.RemoveClusterEntry(contextName);
-            Console.WriteLine($"  {Ui.Ansi.Red(Ui.Ansi.Cross)} Removed kubeconfig context: {Ui.Ansi.Cyan(contextName)}");
+            Spectre.Console.AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context: [cyan]{contextName.EscapeMarkup()}[/]");
         }
 
         // ── 4. Clear the JWT ──────────────────────────────────────────────
         await cache.ClearAsync(ct);
 
-        Console.WriteLine($"\n  {Ui.Ansi.Green(Ui.Ansi.Check)} {Ui.Ansi.Bold("Logged out.")}");
-
+        Spectre.Console.AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Logged out.[/]");
     }
 
     /// <summary>
     /// Finds all <c>clustral-*</c> contexts and their tokens from the kubeconfig.
     /// </summary>
-    private static List<(string ContextName, string? Token)> FindClustralContexts(string kubeconfigPath)
+    internal static List<(string ContextName, string? Token)> FindClustralContexts(string kubeconfigPath)
     {
         var results = new List<(string, string?)>();
 

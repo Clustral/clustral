@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Clustral.ControlPlane.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- gRPC server hosting -->
     <PackageReference Include="Grpc.AspNetCore" Version="2.67.0" />
 

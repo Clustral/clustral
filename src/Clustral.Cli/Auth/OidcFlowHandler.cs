@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Web;
 using Clustral.Cli.Config;
+using Spectre.Console;
 
 namespace Clustral.Cli.Auth;
 
@@ -55,7 +56,7 @@ internal sealed class OidcFlowHandler
         var authUrl = BuildAuthorizationUrl(challenge, state, redirectUri);
 
         // ── Open browser ──────────────────────────────────────────────────────
-        Console.Error.WriteLine($"  {Ui.Ansi.Cyan(Ui.Ansi.Dot)} Opening browser for SSO login...");
+        Spectre.Console.AnsiConsole.MarkupLine("  [cyan]●[/] Opening browser for SSO login...");
 
         OpenBrowser(authUrl);
 
@@ -63,9 +64,9 @@ internal sealed class OidcFlowHandler
         string callbackQuery;
         using (var server = new OidcCallbackServer(_port))
         {
-            Console.Error.WriteLine($"  {Ui.Ansi.Yellow(Ui.Ansi.Dot)} Waiting for authentication...");
-            Console.Error.WriteLine($"    {Ui.Ansi.Dim("If the browser did not open, visit:")}");
-            Console.Error.WriteLine($"    {Ui.Ansi.Dim(authUrl)}");
+            Spectre.Console.AnsiConsole.MarkupLine("  [yellow]●[/] Waiting for authentication...");
+            Spectre.Console.AnsiConsole.MarkupLine($"    [dim]If the browser did not open, visit:[/]");
+            Spectre.Console.AnsiConsole.MarkupLine($"    [dim]{authUrl.EscapeMarkup()}[/]");
             Console.Error.WriteLine();
 
             callbackQuery = await server.WaitForCallbackAsync(ct);

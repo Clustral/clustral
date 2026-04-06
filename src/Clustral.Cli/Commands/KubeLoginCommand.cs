@@ -6,6 +6,7 @@ using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
+using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
 
@@ -51,6 +52,7 @@ internal static class KubeLoginCommand
     {
         var kube = new Command("kube", "Manage kubeconfig credentials for Clustral clusters.");
         kube.AddCommand(BuildLoginSubcommand());
+        kube.AddCommand(KubeLogoutCommand.Build());
         kube.AddCommand(KubeLsCommand.Build());
         return kube;
     }
@@ -159,13 +161,13 @@ internal static class KubeLoginCommand
             return;
         }
 
-        Console.WriteLine($"\n  {Ui.Ansi.Green(Ui.Ansi.Check)} {Ui.Ansi.Bold("Kubeconfig updated")}");
-        Console.WriteLine($"  {Ui.Ansi.Gray("Context")}   {Ui.Ansi.Cyan(contextName)}");
-        Console.WriteLine($"  {Ui.Ansi.Gray("Server")}    {serverUrl}");
-        Console.WriteLine($"  {Ui.Ansi.Gray("Expires")}   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
+        Spectre.Console.AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Kubeconfig updated[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");
+        Spectre.Console.AnsiConsole.MarkupLine($"  [grey]Server[/]    {serverUrl.EscapeMarkup()}");
+        Spectre.Console.AnsiConsole.MarkupLine($"  [grey]Expires[/]   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
 
         if (!noSetContext)
-            Console.WriteLine($"  {Ui.Ansi.Gray("Active")}    {Ui.Ansi.Green("current-context set")}");
+            Spectre.Console.AnsiConsole.MarkupLine("  [grey]Active[/]    [green]current-context set[/]");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import type {
   RoleAssignmentListResponse,
   Role,
   RoleAssignment,
+  AccessRequest,
+  AccessRequestListResponse,
 } from "@/types/api";
 
 const BASE = "/api/v1";
@@ -145,5 +147,59 @@ export async function removeAssignment(
 ): Promise<void> {
   await apiFetch<void>(`/users/${userId}/assignments/${assignmentId}`, token, {
     method: "DELETE",
+  });
+}
+
+// ── Access Requests (JIT) ───────────────────────────────────────────────────
+
+export function fetchAccessRequests(
+  token: string,
+  params?: { status?: string; mine?: boolean },
+): Promise<AccessRequestListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.mine) qs.set("mine", "true");
+  const query = qs.toString();
+  return apiFetch<AccessRequestListResponse>(
+    `/access-requests${query ? `?${query}` : ""}`,
+    token,
+  );
+}
+
+export function createAccessRequest(
+  token: string,
+  request: {
+    roleId: string;
+    clusterId: string;
+    reason?: string;
+    requestedDuration?: string;
+    suggestedReviewerEmails?: string[];
+  },
+): Promise<AccessRequest> {
+  return apiFetch<AccessRequest>("/access-requests", token, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function approveAccessRequest(
+  token: string,
+  requestId: string,
+  durationOverride?: string,
+): Promise<AccessRequest> {
+  return apiFetch<AccessRequest>(`/access-requests/${requestId}/approve`, token, {
+    method: "POST",
+    body: JSON.stringify({ durationOverride }),
+  });
+}
+
+export function denyAccessRequest(
+  token: string,
+  requestId: string,
+  reason: string,
+): Promise<AccessRequest> {
+  return apiFetch<AccessRequest>(`/access-requests/${requestId}/deny`, token, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }

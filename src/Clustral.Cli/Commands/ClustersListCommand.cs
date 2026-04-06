@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Sdk.Auth;
+using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
 
@@ -95,37 +96,11 @@ internal static class ClustersListCommand
 
             if (result is null || result.Clusters.Count == 0)
             {
-                Console.WriteLine($"  {Ui.Ansi.Dim("No clusters found.")}");
+                AnsiConsole.MarkupLine("[dim]No clusters found.[/]");
                 return;
             }
 
-            Console.WriteLine(
-                $"  {Ui.Ansi.Pad(Ui.Ansi.Bold("ID"), 38)}" +
-                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("NAME"), 22)}" +
-                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("STATUS"), 16)}" +
-                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("K8S"), 12)}" +
-                $"{Ui.Ansi.Bold("LAST SEEN")}");
-
-            foreach (var c in result.Clusters)
-            {
-                var lastSeen = c.LastSeenAt.HasValue
-                    ? TimeAgo(c.LastSeenAt.Value)
-                    : Ui.Ansi.Dim("-");
-
-                var statusText = c.Status switch
-                {
-                    "Connected" => Ui.Ansi.Green(Ui.Ansi.Dot + " " + c.Status),
-                    "Pending" => Ui.Ansi.Yellow(Ui.Ansi.Dot + " " + c.Status),
-                    _ => Ui.Ansi.Red(Ui.Ansi.Dot + " " + c.Status),
-                };
-
-                Console.WriteLine(
-                    $"  {Ui.Ansi.Pad(Ui.Ansi.Dim(c.Id), 38)}" +
-                    $"{Ui.Ansi.Pad(Truncate(c.Name, 20), 22)}" +
-                    $"{Ui.Ansi.Pad(statusText, 16)}" +
-                    $"{Ui.Ansi.Pad(c.KubernetesVersion ?? Ui.Ansi.Dim("-"), 12)}" +
-                    $"{lastSeen}");
-            }
+            RenderClusterTable(AnsiConsole.Console, result.Clusters);
         }
         catch (Exception ex)
         {
@@ -134,10 +109,48 @@ internal static class ClustersListCommand
         }
     }
 
-    private static string Truncate(string s, int max) =>
+    internal static void RenderClusterTable(IAnsiConsole console, List<ClusterResponse> clusters)
+    {
+        var table = new Table()
+            .Border(TableBorder.None)
+            .AddColumn("Cluster")
+            .AddColumn("ID")
+            .AddColumn("Status")
+            .AddColumn("K8s Version")
+            .AddColumn("Last Seen")
+            .AddColumn("Labels");
+
+        foreach (var c in clusters)
+        {
+            var lastSeen = c.LastSeenAt.HasValue ? TimeAgo(c.LastSeenAt.Value) : "[dim]-[/]";
+
+            var statusMarkup = c.Status switch
+            {
+                "Connected" => "[green]● Connected[/]",
+                "Pending" => "[yellow]● Pending[/]",
+                _ => "[red]● Disconnected[/]",
+            };
+
+            var labels = c.Labels.Count > 0
+                ? $"[dim]{string.Join(", ", c.Labels.Select(kv => $"{kv.Key}={kv.Value}")).EscapeMarkup()}[/]"
+                : "";
+
+            table.AddRow(
+                Truncate(c.Name, 24).EscapeMarkup(),
+                $"[dim]{c.Id}[/]",
+                statusMarkup,
+                c.KubernetesVersion ?? "[dim]-[/]",
+                lastSeen,
+                labels);
+        }
+
+        console.Write(table);
+    }
+
+    internal static string Truncate(string s, int max) =>
         s.Length <= max ? s : s[..(max - 1)] + "…";
 
-    private static string TimeAgo(DateTimeOffset dt)
+    internal static string TimeAgo(DateTimeOffset dt)
     {
         var ago = DateTimeOffset.UtcNow - dt;
         if (ago.TotalSeconds < 60) return $"{(int)ago.TotalSeconds}s ago";

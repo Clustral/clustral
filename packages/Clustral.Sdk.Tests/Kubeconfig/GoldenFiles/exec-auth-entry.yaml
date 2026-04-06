@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Config
+preferences: {}
+
+clusters:
+- name: eks-prod
+  cluster:
+    server: https://eks.us-east-1.amazonaws.com
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+
+users:
+- name: eks-prod
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: aws-iam-authenticator
+      args:
+      - token
+      - -i
+      - prod-cluster
+      env:
+      - name: AWS_PROFILE
+        value: production
+
+contexts:
+- name: eks-prod
+  context:
+    cluster: eks-prod
+    user: eks-prod
+    namespace: default
+
+current-context: eks-prod

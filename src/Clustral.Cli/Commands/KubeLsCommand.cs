@@ -5,6 +5,7 @@ using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
+using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
 
@@ -80,62 +81,65 @@ internal static class KubeLsCommand
 
             if (result is null || result.Clusters.Count == 0)
             {
-                Console.WriteLine($"  {Ui.Ansi.Dim("No Kubernetes clusters found.")}");
+                AnsiConsole.MarkupLine("[dim]No Kubernetes clusters found.[/]");
                 return;
             }
 
             var currentContext = GetCurrentClustralContext();
-
-            // Pad raw text first, then apply color — ANSI codes break string padding.
-            Console.WriteLine(
-                $"  {Ui.Ansi.Pad(Ui.Ansi.Bold("CLUSTER"), 26)}" +
-                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("ID"), 38)}" +
-                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("STATUS"), 16)}" +
-                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("K8S VERSION"), 14)}" +
-                $"{Ui.Ansi.Bold("LABELS")}");
-
-            foreach (var c in result.Clusters)
-            {
-                var contextName = $"clustral-{c.Id}";
-                var isSelected = contextName == currentContext;
-                var pointer = isSelected ? Ui.Ansi.Green(Ui.Ansi.Pointer) + " " : "  ";
-
-                var statusDot = c.Status switch
-                {
-                    "Connected" => Ui.Ansi.Green(Ui.Ansi.Dot),
-                    "Pending" => Ui.Ansi.Yellow(Ui.Ansi.Dot),
-                    _ => Ui.Ansi.Red(Ui.Ansi.Dot),
-                };
-
-                var statusText = c.Status switch
-                {
-                    "Connected" => Ui.Ansi.Green(c.Status),
-                    "Pending" => Ui.Ansi.Yellow(c.Status),
-                    _ => Ui.Ansi.Red(c.Status),
-                };
-
-                var clusterName = Truncate(c.Name, 24);
-                if (isSelected) clusterName = Ui.Ansi.Bold(clusterName);
-
-                var labels = c.Labels.Count > 0
-                    ? Ui.Ansi.Dim(string.Join(", ", c.Labels.Select(kv => $"{kv.Key}={kv.Value}")))
-                    : "";
-
-                var version = c.KubernetesVersion ?? Ui.Ansi.Dim("-");
-
-                Console.WriteLine(
-                    $"{pointer}{Ui.Ansi.Pad(clusterName, 24)}" +
-                    $"{Ui.Ansi.Pad(Ui.Ansi.Dim(c.Id), 38)}" +
-                    $"{statusDot} {Ui.Ansi.Pad(statusText, 14)}" +
-                    $"{Ui.Ansi.Pad(version, 14)}" +
-                    $"{labels}");
-            }
+            RenderKubeLsTable(AnsiConsole.Console, result.Clusters, currentContext);
         }
         catch (Exception ex)
         {
             await Console.Error.WriteLineAsync($"error: {ex.Message}");
             ctx.ExitCode = 1;
         }
+    }
+
+    internal static void RenderKubeLsTable(
+        IAnsiConsole console,
+        List<ClusterResponse> clusters,
+        string? currentContext)
+    {
+        var table = new Table()
+            .Border(TableBorder.None)
+            .AddColumn("")       // pointer
+            .AddColumn("Cluster")
+            .AddColumn("ID")
+            .AddColumn("Status")
+            .AddColumn("K8s Version")
+            .AddColumn("Labels");
+
+        foreach (var c in clusters)
+        {
+            var contextName = $"clustral-{c.Id}";
+            var isSelected = contextName == currentContext;
+            var pointer = isSelected ? "[green]▸[/]" : " ";
+
+            var statusMarkup = c.Status switch
+            {
+                "Connected" => "[green]● Connected[/]",
+                "Pending" => "[yellow]● Pending[/]",
+                _ => "[red]● Disconnected[/]",
+            };
+
+            var clusterName = isSelected
+                ? $"[bold]{Truncate(c.Name, 24).EscapeMarkup()}[/]"
+                : Truncate(c.Name, 24).EscapeMarkup();
+
+            var labels = c.Labels.Count > 0
+                ? $"[dim]{string.Join(", ", c.Labels.Select(kv => $"{kv.Key}={kv.Value}")).EscapeMarkup()}[/]"
+                : "";
+
+            table.AddRow(
+                pointer,
+                clusterName,
+                $"[dim]{c.Id}[/]",
+                statusMarkup,
+                c.KubernetesVersion ?? "[dim]-[/]",
+                labels);
+        }
+
+        console.Write(table);
     }
 
     private static string? GetCurrentClustralContext()

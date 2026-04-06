@@ -134,16 +134,34 @@ public sealed class KubectlProxyMiddleware
                     .Find(a => a.UserId == user.Id && a.ClusterId == clusterId)
                     .FirstOrDefaultAsync(ct);
 
-                if (assignment is null)
+                Guid roleId;
+                if (assignment is not null)
                 {
-                    httpContext.Response.StatusCode = 403;
-                    await httpContext.Response.WriteAsync(
-                        "No role assigned for this cluster. Ask an admin to assign you a role.");
-                    return;
+                    roleId = assignment.RoleId;
+                }
+                else
+                {
+                    // Fallback: check for an active JIT grant.
+                    var now = DateTimeOffset.UtcNow;
+                    var grant = await db.AccessRequests
+                        .Find(r => r.RequesterId == user.Id
+                                && r.ClusterId == clusterId
+                                && r.Status == Domain.AccessRequestStatus.Approved
+                                && r.GrantExpiresAt > now)
+                        .FirstOrDefaultAsync(ct);
+
+                    if (grant is null)
+                    {
+                        httpContext.Response.StatusCode = 403;
+                        await httpContext.Response.WriteAsync(
+                            "No role assigned for this cluster. Request access with 'clustral access request'.");
+                        return;
+                    }
+                    roleId = grant.RoleId;
                 }
 
                 var role = await db.Roles
-                    .Find(r => r.Id == assignment.RoleId)
+                    .Find(r => r.Id == roleId)
                     .FirstOrDefaultAsync(ct);
 
                 if (role is not null)

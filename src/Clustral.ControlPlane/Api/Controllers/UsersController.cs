@@ -47,13 +47,34 @@ public sealed class UsersController(ClustralDb db, ILogger<UsersController> logg
             clusters.GetValueOrDefault(a.ClusterId)?.Name ?? "unknown",
             a.AssignedAt, a.AssignedBy)).ToList();
 
+        // Fetch active JIT grants.
+        var now = DateTimeOffset.UtcNow;
+        var activeRequests = await db.AccessRequests
+            .Find(r => r.RequesterId == user.Id
+                     && r.Status == Domain.AccessRequestStatus.Approved
+                     && r.GrantExpiresAt > now)
+            .ToListAsync(ct);
+
+        var grantClusterIds = activeRequests.Select(r => r.ClusterId).Distinct().ToList();
+        var grantRoleIds    = activeRequests.Select(r => r.RoleId).Distinct().ToList();
+        var grantClusters   = (await db.Clusters.Find(c => grantClusterIds.Contains(c.Id)).ToListAsync(ct)).ToDictionary(c => c.Id);
+        var grantRoles      = (await db.Roles.Find(r => grantRoleIds.Contains(r.Id)).ToListAsync(ct)).ToDictionary(r => r.Id);
+
+        var activeGrants = activeRequests.Select(r => new ActiveGrantResponse(
+            r.Id,
+            grantRoles.GetValueOrDefault(r.RoleId)?.Name ?? "unknown",
+            r.ClusterId,
+            grantClusters.GetValueOrDefault(r.ClusterId)?.Name ?? "unknown",
+            r.GrantExpiresAt!.Value)).ToList();
+
         return Ok(new UserProfileResponse(
             user.Id,
             user.Email ?? user.KeycloakSubject,
             user.DisplayName,
             user.CreatedAt,
             user.LastSeenAt,
-            assignmentResponses));
+            assignmentResponses,
+            activeGrants));
     }
 
     [HttpGet]

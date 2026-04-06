@@ -30,6 +30,10 @@
     <NoWarn>IL2026;IL3050</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Clustral.Cli.Tests" />
+  </ItemGroup>
+
   <!-- macOS: NativeAOT linker needs OpenSSL from Homebrew -->
   <!-- macOS: NativeAOT linker needs Homebrew libs (OpenSSL, brotli) -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
@@ -38,6 +42,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.55.0" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>
 

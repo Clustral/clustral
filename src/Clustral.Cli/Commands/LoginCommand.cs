@@ -4,6 +4,7 @@ using System.Text.Json;
 using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
 using Clustral.Sdk.Auth;
+using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
 
@@ -113,7 +114,7 @@ internal static class LoginCommand
         }
 
         // ── Discover OIDC configuration from ControlPlane ─────────────────
-        Console.Error.WriteLine($"\n  {Ui.Ansi.Cyan(Ui.Ansi.Dot)} Connecting to {Ui.Ansi.Bold(cpUrl)}...");
+        AnsiConsole.MarkupLine($"\n  [cyan]●[/] Connecting to [bold]{cpUrl.EscapeMarkup()}[/]...");
 
         var discovered = await DiscoverConfigAsync(http, cpUrl, ct);
         if (discovered is null)
@@ -209,8 +210,8 @@ internal static class LoginCommand
             if (!response.IsSuccessStatusCode)
             {
                 // Fallback: just show basic info.
-                Console.WriteLine($"\n> Profile URL:        {cpUrl}");
-                Console.WriteLine($"  Logged in as:       (unknown — profile fetch failed: {(int)response.StatusCode})");
+                AnsiConsole.MarkupLine($"\n[green]✓[/] Logged in to [cyan]{cpUrl.EscapeMarkup()}[/]");
+                AnsiConsole.MarkupLine($"  [dim](profile unavailable: {(int)response.StatusCode})[/]");
                 return;
             }
 
@@ -239,32 +240,12 @@ internal static class LoginCommand
                 .OrderBy(c => c)
                 .ToList();
 
-            // Display profile with colors and symbols.
-            Console.WriteLine();
-            Console.WriteLine($"  {Ui.Ansi.Green(Ui.Ansi.Check)} {Ui.Ansi.Bold("Logged in successfully")}");
-            Console.WriteLine();
-            Console.WriteLine($"  {Ui.Ansi.Gray("Profile URL")}     {Ui.Ansi.Cyan(cpUrl)}");
-            Console.WriteLine($"  {Ui.Ansi.Gray("Logged in as")}    {Ui.Ansi.Bold(profile.DisplayName ?? profile.Email)}");
-            Console.WriteLine($"  {Ui.Ansi.Gray("Email")}           {profile.Email}");
-            Console.WriteLine($"  {Ui.Ansi.Gray("Kubernetes")}      {Ui.Ansi.Green("enabled")}");
-            Console.WriteLine($"  {Ui.Ansi.Gray("CLI version")}     v{VersionCommand.GetVersion()}");
+            // Display profile with Spectre.Console.
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[green]✓[/] [bold]Logged in successfully[/]");
+            AnsiConsole.WriteLine();
 
-            if (roles.Count > 0)
-                Console.WriteLine($"  {Ui.Ansi.Gray("Roles")}           {Ui.Ansi.Yellow(string.Join(", ", roles))}");
-            else
-                Console.WriteLine($"  {Ui.Ansi.Gray("Roles")}           {Ui.Ansi.Dim("(none assigned)")}");
-
-            if (clusters.Count > 0)
-                Console.WriteLine($"  {Ui.Ansi.Gray("Clusters")}        {Ui.Ansi.Cyan(string.Join(", ", clusters))}");
-            else
-                Console.WriteLine($"  {Ui.Ansi.Gray("Clusters")}        {Ui.Ansi.Dim("(none assigned)")}");
-
-            if (profile.Assignments.Count > 0)
-            {
-                Console.WriteLine($"  {Ui.Ansi.Gray("Access")}");
-                foreach (var a in profile.Assignments)
-                    Console.WriteLine($"    {Ui.Ansi.Cyan(a.ClusterName),-35} {Ui.Ansi.Arrow} {Ui.Ansi.Yellow(a.RoleName)}");
-            }
+            RenderProfileTable(AnsiConsole.Console, profile, cpUrl, roles, clusters);
 
             if (expiry.HasValue)
             {
@@ -272,8 +253,8 @@ internal static class LoginCommand
                 var validFor = remaining.TotalHours >= 1
                     ? $"{(int)remaining.TotalHours}h{remaining.Minutes}m"
                     : $"{(int)remaining.TotalMinutes}m";
-                var color = remaining.TotalMinutes < 10 ? Ui.Ansi.Red : remaining.TotalHours < 1 ? Ui.Ansi.Yellow : (Func<string, string>)Ui.Ansi.Green;
-                Console.WriteLine($"  {Ui.Ansi.Gray("Valid until")}      {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [{color($"valid for {validFor}")}]");
+                var color = remaining.TotalMinutes < 10 ? "red" : remaining.TotalHours < 1 ? "yellow" : "green";
+                AnsiConsole.MarkupLine($"\n[grey]Valid until[/]  {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [[{color}]valid for {validFor}[/]]");
             }
         }
         catch
@@ -282,7 +263,7 @@ internal static class LoginCommand
         }
     }
 
-    private static DateTimeOffset? DecodeJwtExpiry(string token)
+    internal static DateTimeOffset? DecodeJwtExpiry(string token)
     {
         try
         {
@@ -299,5 +280,62 @@ internal static class LoginCommand
         }
         catch { }
         return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Extracted for testability — accepts IAnsiConsole so tests can capture output.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal static void RenderProfileTable(
+        IAnsiConsole console,
+        UserProfileResponse profile,
+        string cpUrl,
+        List<string> roles,
+        List<string> clusters)
+    {
+        var table = new Table()
+            .Border(TableBorder.None)
+            .HideHeaders()
+            .AddColumn(new TableColumn("Key").PadRight(2))
+            .AddColumn(new TableColumn("Value"));
+
+        table.AddRow("[grey]Profile URL[/]", $"[cyan]{cpUrl.EscapeMarkup()}[/]");
+        table.AddRow("[grey]Logged in as[/]", $"[bold]{(profile.DisplayName ?? profile.Email).EscapeMarkup()}[/]");
+        table.AddRow("[grey]Email[/]", profile.Email.EscapeMarkup());
+        table.AddRow("[grey]Kubernetes[/]", "[green]enabled[/]");
+        table.AddRow("[grey]CLI version[/]", $"v{VersionCommand.GetVersion()}");
+
+        table.AddRow("[grey]Roles[/]", roles.Count > 0
+            ? $"[yellow]{string.Join(", ", roles).EscapeMarkup()}[/]"
+            : "[dim](none assigned)[/]");
+
+        table.AddRow("[grey]Clusters[/]", clusters.Count > 0
+            ? $"[cyan]{string.Join(", ", clusters).EscapeMarkup()}[/]"
+            : "[dim](none assigned)[/]");
+
+        var hasAccess = profile.Assignments.Count > 0 || profile.ActiveGrants.Count > 0;
+        if (hasAccess)
+        {
+            var first = true;
+            foreach (var a in profile.Assignments)
+            {
+                var label = first ? "[grey]Access[/]" : "";
+                table.AddRow(label, $"[cyan]{a.ClusterName.EscapeMarkup()}[/] [dim]→[/] [yellow]{a.RoleName.EscapeMarkup()}[/]");
+                first = false;
+            }
+            foreach (var g in profile.ActiveGrants)
+            {
+                var label = first ? "[grey]Access[/]" : "";
+                var remaining = g.GrantExpiresAt - DateTimeOffset.UtcNow;
+                var validFor = remaining.TotalHours >= 1
+                    ? $"{(int)remaining.TotalHours}h{remaining.Minutes}m"
+                    : $"{(int)remaining.TotalMinutes}m";
+                table.AddRow(label,
+                    $"[cyan]{g.ClusterName.EscapeMarkup()}[/] [dim]→[/] [yellow]{g.RoleName.EscapeMarkup()}[/] [dim][[JIT {validFor} remaining]][/]");
+                first = false;
+            }
+        }
+
+        console.Write(table);
     }
 }

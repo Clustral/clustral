@@ -98,6 +98,144 @@ public sealed class KubeconfigWriter
     }
 
     /// <summary>
+    /// Writes a cluster entry with the specified merge strategy.
+    /// </summary>
+    public void WriteClusterEntry(
+        ClustralKubeconfigEntry entry,
+        MergeStrategy strategy,
+        bool setCurrentContext = true)
+    {
+        if (strategy == MergeStrategy.Replace)
+        {
+            WriteClusterEntry(entry, setCurrentContext);
+            return;
+        }
+
+        var doc = ReadRawDocument();
+        var exists = EntryExists(doc, "contexts", entry.ContextName);
+
+        if (exists && strategy == MergeStrategy.FailOnConflict)
+            throw new InvalidOperationException(
+                $"Context '{entry.ContextName}' already exists and merge strategy is FailOnConflict.");
+
+        if (exists && strategy == MergeStrategy.SkipExisting)
+            return;
+
+        WriteClusterEntry(entry, setCurrentContext);
+    }
+
+    /// <summary>
+    /// Writes a certificate-based kubeconfig entry.
+    /// </summary>
+    public void WriteClusterEntry(CertificateKubeconfigEntry entry, bool setCurrentContext = true)
+    {
+        var doc = ReadRawDocument();
+
+        var clusterData = new Dictionary<object, object> { ["server"] = entry.ServerUrl };
+        if (entry.CertificateAuthorityPath is not null)
+            clusterData["certificate-authority"] = entry.CertificateAuthorityPath;
+        if (entry.CertificateAuthorityData is not null)
+            clusterData["certificate-authority-data"] = entry.CertificateAuthorityData;
+        if (entry.InsecureSkipTlsVerify)
+            clusterData["insecure-skip-tls-verify"] = true;
+
+        UpsertNamedEntry(doc, "clusters", entry.ContextName, clusterData);
+
+        var userData = new Dictionary<object, object>();
+        if (entry.ClientCertificatePath is not null)
+            userData["client-certificate"] = entry.ClientCertificatePath;
+        if (entry.ClientCertificateData is not null)
+            userData["client-certificate-data"] = entry.ClientCertificateData;
+        if (entry.ClientKeyPath is not null)
+            userData["client-key"] = entry.ClientKeyPath;
+        if (entry.ClientKeyData is not null)
+            userData["client-key-data"] = entry.ClientKeyData;
+
+        UpsertNamedEntry(doc, "users", entry.ContextName, userData);
+
+        var contextData = new Dictionary<object, object>
+        {
+            ["cluster"] = entry.ContextName,
+            ["user"] = entry.ContextName,
+        };
+        if (entry.Namespace is not null)
+            contextData["namespace"] = entry.Namespace;
+
+        UpsertNamedEntry(doc, "contexts", entry.ContextName, contextData);
+
+        if (setCurrentContext)
+            doc["current-context"] = entry.ContextName;
+
+        WriteRawDocument(doc);
+    }
+
+    /// <summary>
+    /// Writes an exec-based kubeconfig entry (preferred for enterprise human access).
+    /// </summary>
+    public void WriteClusterEntry(ExecKubeconfigEntry entry, bool setCurrentContext = true)
+    {
+        var doc = ReadRawDocument();
+
+        var clusterData = new Dictionary<object, object> { ["server"] = entry.ServerUrl };
+        if (entry.CertificateAuthorityPath is not null)
+            clusterData["certificate-authority"] = entry.CertificateAuthorityPath;
+        if (entry.CertificateAuthorityData is not null)
+            clusterData["certificate-authority-data"] = entry.CertificateAuthorityData;
+        if (entry.InsecureSkipTlsVerify)
+            clusterData["insecure-skip-tls-verify"] = true;
+
+        UpsertNamedEntry(doc, "clusters", entry.ContextName, clusterData);
+
+        var execData = new Dictionary<object, object>
+        {
+            ["apiVersion"] = entry.ExecApiVersion,
+            ["command"] = entry.ExecCommand,
+        };
+        if (entry.ExecArgs is { Length: > 0 })
+            execData["args"] = new List<object>(entry.ExecArgs);
+        if (entry.ExecEnv is { Count: > 0 })
+        {
+            execData["env"] = entry.ExecEnv
+                .Select(kv => (object)new Dictionary<object, object>
+                {
+                    ["name"] = kv.Key,
+                    ["value"] = kv.Value,
+                })
+                .ToList();
+        }
+        if (entry.InstallHint is not null)
+            execData["installHint"] = entry.InstallHint;
+
+        var userData = new Dictionary<object, object> { ["exec"] = execData };
+        UpsertNamedEntry(doc, "users", entry.ContextName, userData);
+
+        var contextData = new Dictionary<object, object>
+        {
+            ["cluster"] = entry.ContextName,
+            ["user"] = entry.ContextName,
+        };
+        if (entry.Namespace is not null)
+            contextData["namespace"] = entry.Namespace;
+
+        UpsertNamedEntry(doc, "contexts", entry.ContextName, contextData);
+
+        if (setCurrentContext)
+            doc["current-context"] = entry.ContextName;
+
+        WriteRawDocument(doc);
+    }
+
+    // -------------------------------------------------------------------------
+
+    private static bool EntryExists(Dictionary<object, object> doc, string listKey, string name)
+    {
+        if (!doc.TryGetValue(listKey, out var raw) || raw is not List<object> list)
+            return false;
+        return list.OfType<Dictionary<object, object>>()
+            .Any(e => e.TryGetValue("name", out var n) && n is string s && s == name);
+    }
+
+    /// <summary>
     /// Removes the cluster, user, and context entries whose name matches
     /// <paramref name="contextName"/>. All other entries are preserved.
     /// </summary>
@@ -122,6 +260,208 @@ public sealed class KubeconfigWriter
         }
 
         WriteRawDocument(doc);
+    }
+
+    // -------------------------------------------------------------------------
+    // Validation
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Validates the current kubeconfig for structural integrity:
+    /// reference consistency and duplicate names.
+    /// </summary>
+    public KubeconfigValidationResult Validate() =>
+        Validate(KubeconfigSecurityPolicy.Permissive);
+
+    /// <summary>
+    /// Validates the current kubeconfig for structural integrity
+    /// and security policy compliance.
+    /// </summary>
+    public KubeconfigValidationResult Validate(KubeconfigSecurityPolicy policy)
+    {
+        var doc = ReadRawDocument();
+        return ValidateDocument(doc, policy);
+    }
+
+    /// <summary>
+    /// Validates a raw kubeconfig YAML string.
+    /// </summary>
+    public static KubeconfigValidationResult ValidateYaml(string yaml) =>
+        ValidateYaml(yaml, KubeconfigSecurityPolicy.Permissive);
+
+    /// <summary>
+    /// Validates a raw kubeconfig YAML string with security policy.
+    /// </summary>
+    public static KubeconfigValidationResult ValidateYaml(string yaml, KubeconfigSecurityPolicy policy)
+    {
+        var doc = RawDeserializer.Deserialize<Dictionary<object, object>>(yaml);
+        return ValidateDocument(doc ?? new Dictionary<object, object>(), policy);
+    }
+
+    internal static KubeconfigValidationResult ValidateDocument(
+        Dictionary<object, object> doc, KubeconfigSecurityPolicy policy)
+    {
+        var errors = new List<KubeconfigValidationError>();
+
+        var clusterNames = CollectNames(doc, "clusters");
+        var userNames = CollectNames(doc, "users");
+        var contextNames = CollectNames(doc, "contexts");
+
+        // ── Duplicate names ──────────────────────────────────────────────
+        CheckDuplicates(errors, doc, "clusters");
+        CheckDuplicates(errors, doc, "users");
+        CheckDuplicates(errors, doc, "contexts");
+
+        // ── Reference integrity ──────────────────────────────────────────
+        if (doc.TryGetValue("contexts", out var ctxRaw) && ctxRaw is List<object> contexts)
+        {
+            foreach (var item in contexts.OfType<Dictionary<object, object>>())
+            {
+                var name = item.TryGetValue("name", out var n) && n is string s ? s : "(unknown)";
+                if (item.TryGetValue("context", out var dataRaw) && dataRaw is Dictionary<object, object> data)
+                {
+                    if (data.TryGetValue("cluster", out var cr) && cr is string clusterRef && !clusterNames.Contains(clusterRef))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "contexts", name, "cluster",
+                            "DANGLING_CONTEXT_CLUSTER",
+                            $"Context '{name}' references cluster '{clusterRef}' which does not exist."));
+                    }
+                    if (data.TryGetValue("user", out var ur) && ur is string userRef && !userNames.Contains(userRef))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "contexts", name, "user",
+                            "DANGLING_CONTEXT_USER",
+                            $"Context '{name}' references user '{userRef}' which does not exist."));
+                    }
+                }
+            }
+        }
+
+        // ── current-context reference ────────────────────────────────────
+        if (doc.TryGetValue("current-context", out var cc) && cc is string currentCtx &&
+            !string.IsNullOrEmpty(currentCtx) && !contextNames.Contains(currentCtx))
+        {
+            errors.Add(new KubeconfigValidationError(
+                KubeconfigValidationSeverity.Error, "current-context", currentCtx, "current-context",
+                "DANGLING_CURRENT_CONTEXT",
+                $"current-context '{currentCtx}' references a context that does not exist."));
+        }
+
+        // ── Security policy ──────────────────────────────────────────────
+        if (doc.TryGetValue("clusters", out var clRaw) && clRaw is List<object> clusters)
+        {
+            foreach (var item in clusters.OfType<Dictionary<object, object>>())
+            {
+                var name = item.TryGetValue("name", out var nn) && nn is string sn ? sn : "(unknown)";
+                if (item.TryGetValue("cluster", out var dataRaw) && dataRaw is Dictionary<object, object> data)
+                {
+                    if (policy.ForbidInsecureSkipTls &&
+                        data.TryGetValue("insecure-skip-tls-verify", out var insVal) &&
+                        (insVal is true || (insVal is string insStr && insStr.Equals("true", StringComparison.OrdinalIgnoreCase))))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "clusters", name, "insecure-skip-tls-verify",
+                            "INSECURE_TLS_FORBIDDEN",
+                            $"Cluster '{name}' has insecure-skip-tls-verify: true, which is forbidden by security policy."));
+                    }
+                    if (policy.ForbidPlaintextServer &&
+                        data.TryGetValue("server", out var srv) && srv is string srvStr &&
+                        srvStr.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "clusters", name, "server",
+                            "PLAINTEXT_SERVER_FORBIDDEN",
+                            $"Cluster '{name}' uses plaintext HTTP server URL, which is forbidden by security policy."));
+                    }
+                }
+            }
+        }
+
+        if (doc.TryGetValue("users", out var usRaw) && usRaw is List<object> users)
+        {
+            foreach (var item in users.OfType<Dictionary<object, object>>())
+            {
+                var name = item.TryGetValue("name", out var nn) && nn is string sn ? sn : "(unknown)";
+                if (item.TryGetValue("user", out var dataRaw) && dataRaw is Dictionary<object, object> data)
+                {
+                    if (policy.ForbidStaticPasswords && data.ContainsKey("password"))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "users", name, "password",
+                            "STATIC_PASSWORD_FORBIDDEN",
+                            $"User '{name}' has a static password, which is forbidden by security policy."));
+                    }
+                    if (policy.ForbidStaticTokens && data.ContainsKey("token"))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "users", name, "token",
+                            "STATIC_TOKEN_FORBIDDEN",
+                            $"User '{name}' has a static token, which is forbidden by security policy."));
+                    }
+                }
+            }
+        }
+
+        // ── Namespace requirement ────────────────────────────────────────
+        if (policy.RequireNamespaceOnContexts &&
+            doc.TryGetValue("contexts", out var ctxRaw2) && ctxRaw2 is List<object> contexts2)
+        {
+            foreach (var item in contexts2.OfType<Dictionary<object, object>>())
+            {
+                var name = item.TryGetValue("name", out var nn) && nn is string sn ? sn : "(unknown)";
+                if (item.TryGetValue("context", out var dataRaw) && dataRaw is Dictionary<object, object> data)
+                {
+                    if (!data.TryGetValue("namespace", out var ns) || ns is not string nsStr || string.IsNullOrEmpty(nsStr))
+                    {
+                        errors.Add(new KubeconfigValidationError(
+                            KubeconfigValidationSeverity.Error, "contexts", name, "namespace",
+                            "NAMESPACE_REQUIRED",
+                            $"Context '{name}' is missing a namespace, which is required by security policy."));
+                    }
+                }
+            }
+        }
+
+        return new KubeconfigValidationResult(errors.Count == 0, errors);
+    }
+
+    private static HashSet<string> CollectNames(Dictionary<object, object> doc, string listKey)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (doc.TryGetValue(listKey, out var raw) && raw is List<object> list)
+        {
+            foreach (var item in list.OfType<Dictionary<object, object>>())
+            {
+                if (item.TryGetValue("name", out var n) && n is string name)
+                    names.Add(name);
+            }
+        }
+        return names;
+    }
+
+    private static void CheckDuplicates(
+        List<KubeconfigValidationError> errors,
+        Dictionary<object, object> doc,
+        string listKey)
+    {
+        if (!doc.TryGetValue(listKey, out var raw) || raw is not List<object> list)
+            return;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in list.OfType<Dictionary<object, object>>())
+        {
+            if (item.TryGetValue("name", out var n) && n is string name)
+            {
+                if (!seen.Add(name))
+                {
+                    errors.Add(new KubeconfigValidationError(
+                        KubeconfigValidationSeverity.Error, listKey, name, "name",
+                        "DUPLICATE_NAME",
+                        $"Duplicate {listKey.TrimEnd('s')} name '{name}' in {listKey} section."));
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -209,8 +549,32 @@ public sealed class KubeconfigWriter
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        var yaml = RawSerializer.Serialize(doc);
-        File.WriteAllText(_kubeconfigPath, yaml);
+        // Apply canonical ordering for deterministic output.
+        var ordered = KubeconfigOrdering.OrderDocument(doc);
+        var yaml = RawSerializer.Serialize(ordered);
+
+        // Apply enterprise formatting (blank lines between sections, trailing newline).
+        yaml = KubeconfigFormatter.Format(yaml);
+
+        // Atomic write: write to temp file, then rename.
+        var tempPath = _kubeconfigPath + ".tmp";
+        File.WriteAllText(tempPath, yaml);
+
+        // Set restrictive permissions on Unix (owner-only read/write).
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                File.SetUnixFileMode(tempPath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+            catch
+            {
+                // Best effort — not all filesystems support this.
+            }
+        }
+
+        File.Move(tempPath, _kubeconfigPath, overwrite: true);
     }
 
     private static Dictionary<object, object> NewEmptyDocument() => new()

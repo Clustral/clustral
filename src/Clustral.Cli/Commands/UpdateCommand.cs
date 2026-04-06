@@ -151,7 +151,7 @@ internal static class UpdateCommand
         }
     }
 
-    private static string GetArtifactName()
+    internal static string GetArtifactName()
     {
         var os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows"
                : RuntimeInformation.IsOSPlatform(OSPlatform.OSX)     ? "darwin"
@@ -167,7 +167,7 @@ internal static class UpdateCommand
         return $"clustral-{os}-{arch}{ext}";
     }
 
-    private static string? FindAssetUrl(JsonElement release, string artifactName)
+    internal static string? FindAssetUrl(JsonElement release, string artifactName)
     {
         if (!release.TryGetProperty("assets", out var assets)) return null;
 

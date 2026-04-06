@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Config
+preferences: {}
+
+clusters:
+- name: clustral-dev
+  cluster:
+    server: https://cp.example.com/api/proxy/dev
+- name: clustral-prod
+  cluster:
+    server: https://cp.example.com/api/proxy/prod
+- name: clustral-uat
+  cluster:
+    server: https://cp.example.com/api/proxy/uat
+
+users:
+- name: clustral-dev
+  user:
+    token: dev-token
+- name: clustral-prod
+  user:
+    token: prod-token
+- name: clustral-uat
+  user:
+    token: uat-token
+
+contexts:
+- name: clustral-dev
+  context:
+    cluster: clustral-dev
+    user: clustral-dev
+- name: clustral-prod
+  context:
+    cluster: clustral-prod
+    user: clustral-prod
+- name: clustral-uat
+  context:
+    cluster: clustral-uat
+    user: clustral-uat
+
+current-context: clustral-prod

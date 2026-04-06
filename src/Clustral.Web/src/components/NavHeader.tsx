@@ -10,6 +10,7 @@ const navItems = [
   { href: "/clusters", label: "Clusters" },
   { href: "/users", label: "Users" },
   { href: "/roles", label: "Roles" },
+  { href: "/access-requests", label: "Access Requests" },
 ];
 
 export function NavHeader() {
