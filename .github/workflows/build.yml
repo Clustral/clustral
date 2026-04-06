@@ -57,6 +57,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
@@ -70,14 +73,38 @@ jobs:
       - name: Build
         run: dotnet build Clustral.slnx --no-restore -c Release
 
+      # Docker is available on ubuntu-latest runners.
+      # Testcontainers (used by ControlPlane integration tests) requires it.
       - name: Test
-        run: dotnet test Clustral.slnx --no-build -c Release
+        run: |
+          dotnet test Clustral.slnx --no-build -c Release \
+            --logger "trx;LogFileName=results.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults
+
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: .NET Test Results
+          path: "TestResults/**/*.trx"
+          reporter: dotnet-trx
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-coverage
+          path: TestResults/**/coverage.cobertura.xml
 
   build-agent:
     name: Build & Test (Agent/Go)
     needs: changes
     if: needs.changes.outputs.agent == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
@@ -91,7 +118,14 @@ jobs:
 
       - name: Test
         working-directory: src/clustral-agent
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out -v ./...
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: src/clustral-agent/coverage.out
 
   build-web:
     name: Build (Web)

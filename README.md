@@ -583,7 +583,17 @@ Clustral/homebrew-tap (separate repo)
 | `ghcr.io/clustral/clustral-agent` | Go 1.23 | ~16MB |
 | `ghcr.io/clustral/clustral-web` | Node.js 20 | ~50MB |
 
-Tags: `latest`, `main`, commit SHA, semver (`v1.0.0`, `v1.0`) on tagged releases.
+Tags follow a channel-based strategy:
+
+| Tag type | Example | When applied |
+|---|---|---|
+| Exact version | `1.2.3`, `1.2.3-beta.2` | Every tag |
+| Minor cascade | `1.2` | Stable releases only |
+| Major cascade | `1` | Stable releases (v1.0+) |
+| `latest` | — | Stable releases only |
+| `alpha` / `beta` / `rc` | — | Pre-release channel floating tags |
+| `main` | — | Every push to main |
+| Commit SHA | `abc1234` | Every build |
 
 ### CLI binaries (GitHub Releases)
 
@@ -604,12 +614,28 @@ graph LR
     TAG["git tag v1.0.0"] --> CI["GitHub Actions"]
     CI --> BIN["NativeAOT binaries<br/>(5 platforms)"]
     CI --> IMG["Docker images<br/>(3 services)"]
-    BIN --> GHR["GitHub Release"]
+    CI --> CL["Changelog<br/>(git-cliff)"]
+    CL --> GHR["GitHub Release"]
+    CL --> CHF["CHANGELOG.md<br/>(auto-committed)"]
+    BIN --> GHR
     IMG --> GHCR["ghcr.io"]
     GHR -->|stable only| BREW["Homebrew tap<br/>formula update"]
     GHR -->|"curl install.sh"| USER["User machine"]
     GHCR -->|"docker pull"| K8S["Kubernetes cluster"]
 ```
+
+### Pre-release channels
+
+Use semver pre-release suffixes to publish to channels:
+
+```bash
+git tag v0.2.0-alpha.1    # → Docker: alpha tag, GitHub: pre-release
+git tag v0.2.0-beta.1     # → Docker: beta tag, GitHub: pre-release
+git tag v0.2.0-rc.1       # → Docker: rc tag, GitHub: pre-release
+git tag v0.2.0            # → Docker: latest tag, GitHub: stable release, Homebrew update
+```
+
+The `latest` Docker tag is **only** applied to stable releases (no `-alpha`, `-beta`, or `-rc` suffix). Each pre-release channel has its own floating tag (`alpha`, `beta`, `rc`) that points to the most recent build in that channel.
 
 ## Development
 

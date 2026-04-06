@@ -55,9 +55,28 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog for release
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, changelog]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -72,13 +91,43 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          generate_release_notes: true
+          body: ${{ needs.changelog.outputs.changelog }}
           files: |
             artifacts/clustral-linux-amd64/clustral-linux-amd64
             artifacts/clustral-linux-arm64/clustral-linux-arm64
             artifacts/clustral-darwin-arm64/clustral-darwin-arm64
             artifacts/clustral-darwin-amd64/clustral-darwin-amd64
             artifacts/clustral-windows-amd64.exe/clustral-windows-amd64.exe
+
+  update-changelog:
+    name: Update CHANGELOG.md
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Generate full changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Commit changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --staged --quiet && exit 0
+          git commit -m "docs: update CHANGELOG.md for ${{ github.ref_name }}"
+          git push
 
   homebrew:
     name: Update Homebrew Formula
