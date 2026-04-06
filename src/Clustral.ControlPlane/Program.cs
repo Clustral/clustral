@@ -228,11 +228,14 @@ app.MapGet("/api/v1/config", (IOptions<OidcOptions> oidc) =>
 }).AllowAnonymous();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ensure MongoDB indexes on startup.
+// Ensure MongoDB indexes on startup (after config validation).
 // ─────────────────────────────────────────────────────────────────────────────
 
-var db = app.Services.GetRequiredService<ClustralDb>();
-await db.EnsureIndexesAsync();
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    var db = app.Services.GetRequiredService<ClustralDb>();
+    db.EnsureIndexesAsync().GetAwaiter().GetResult();
+});
 
 app.Run();
 

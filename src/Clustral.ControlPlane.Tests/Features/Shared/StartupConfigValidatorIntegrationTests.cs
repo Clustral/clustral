@@ -1,8 +1,10 @@
 using System.Net;
 using FluentAssertions;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Driver;
 using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Features.Shared;
@@ -15,27 +17,44 @@ namespace Clustral.ControlPlane.Tests.Features.Shared;
 /// </summary>
 public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper output)
 {
+    /// <summary>
+    /// Creates a WebApplicationFactory with the given config overrides and a
+    /// stub IMongoClient so the health check doesn't try to connect to a real
+    /// MongoDB instance and timeout.
+    /// </summary>
+    private static WebApplicationFactory<Program> CreateFactoryWithConfig(
+        Dictionary<string, string?> config)
+    {
+        return new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, c) =>
+                    c.AddInMemoryCollection(config));
 
+                builder.ConfigureServices(services =>
+                {
+                    // Replace IMongoClient with one that has a very short
+                    // timeout so EnsureIndexesAsync doesn't hang for 30s
+                    // when no real MongoDB is running.
+                    services.RemoveAll<IMongoClient>();
+                    services.AddSingleton<IMongoClient>(
+                        new MongoClient("mongodb://localhost:27017/?serverSelectionTimeout=1s&connectTimeout=1s"));
+                });
+            });
+    }
 
     [Fact]
     public void Startup_MissingOidcAuthority_Throws()
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(builder =>
-                {
-                    builder.ConfigureAppConfiguration((_, config) =>
-                    {
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            ["Oidc:Authority"] = "",
-                            ["Oidc:ClientId"] = "test-client",
-                            ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
-                            ["MongoDB:DatabaseName"] = "test",
-                        });
-                    });
-                });
+            using var factory = CreateFactoryWithConfig(new()
+            {
+                ["Oidc:Authority"] = "",
+                ["Oidc:ClientId"] = "test-client",
+                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
+                ["MongoDB:DatabaseName"] = "test",
+            });
 
             // Force startup by creating a client.
             factory.CreateClient();
@@ -50,20 +69,13 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(builder =>
-                {
-                    builder.ConfigureAppConfiguration((_, config) =>
-                    {
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            ["Oidc:Authority"] = "http://localhost:8080/realms/test",
-                            ["Oidc:ClientId"] = "",
-                            ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
-                            ["MongoDB:DatabaseName"] = "test",
-                        });
-                    });
-                });
+            using var factory = CreateFactoryWithConfig(new()
+            {
+                ["Oidc:Authority"] = "http://localhost:8080/realms/test",
+                ["Oidc:ClientId"] = "",
+                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
+                ["MongoDB:DatabaseName"] = "test",
+            });
 
             factory.CreateClient();
         });
@@ -77,20 +89,13 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(builder =>
-                {
-                    builder.ConfigureAppConfiguration((_, config) =>
-                    {
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            ["Oidc:Authority"] = "http://localhost:8080/realms/test",
-                            ["Oidc:ClientId"] = "test-client",
-                            ["MongoDB:ConnectionString"] = "not-a-mongodb-url",
-                            ["MongoDB:DatabaseName"] = "test",
-                        });
-                    });
-                });
+            using var factory = CreateFactoryWithConfig(new()
+            {
+                ["Oidc:Authority"] = "http://localhost:8080/realms/test",
+                ["Oidc:ClientId"] = "test-client",
+                ["MongoDB:ConnectionString"] = "not-a-mongodb-url",
+                ["MongoDB:DatabaseName"] = "test",
+            });
 
             factory.CreateClient();
         });
@@ -104,20 +109,13 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(builder =>
-                {
-                    builder.ConfigureAppConfiguration((_, config) =>
-                    {
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            ["Oidc:Authority"] = "not-a-url",
-                            ["Oidc:ClientId"] = "test-client",
-                            ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
-                            ["MongoDB:DatabaseName"] = "test",
-                        });
-                    });
-                });
+            using var factory = CreateFactoryWithConfig(new()
+            {
+                ["Oidc:Authority"] = "not-a-url",
+                ["Oidc:ClientId"] = "test-client",
+                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
+                ["MongoDB:DatabaseName"] = "test",
+            });
 
             factory.CreateClient();
         });
@@ -131,22 +129,15 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(builder =>
-                {
-                    builder.ConfigureAppConfiguration((_, config) =>
-                    {
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            ["Oidc:Authority"] = "http://localhost:8080/realms/test",
-                            ["Oidc:ClientId"] = "test-client",
-                            ["Oidc:DefaultKubeconfigCredentialTtl"] = "08:00:00",
-                            ["Oidc:MaxKubeconfigCredentialTtl"] = "01:00:00",
-                            ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
-                            ["MongoDB:DatabaseName"] = "test",
-                        });
-                    });
-                });
+            using var factory = CreateFactoryWithConfig(new()
+            {
+                ["Oidc:Authority"] = "http://localhost:8080/realms/test",
+                ["Oidc:ClientId"] = "test-client",
+                ["Oidc:DefaultKubeconfigCredentialTtl"] = "08:00:00",
+                ["Oidc:MaxKubeconfigCredentialTtl"] = "01:00:00",
+                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
+                ["MongoDB:DatabaseName"] = "test",
+            });
 
             factory.CreateClient();
         });
