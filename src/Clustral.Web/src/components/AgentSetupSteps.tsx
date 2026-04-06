@@ -1,5 +1,8 @@
 import { useState, useCallback } from "react";
 import { Copy, Check, AlertTriangle } from "lucide-react";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 
 interface Props {
   clusterName: string;
@@ -21,18 +24,19 @@ export function AgentSetupSteps({
     `  --set agent.bootstrapToken="${bootstrapToken}"`,
   ].join("\n");
 
-  const dotnetRunCmd = [
-    "dotnet run --project src/Clustral.Agent -- \\",
-    `  --Agent:ClusterId="${clusterId}" \\`,
-    "  --Agent:ControlPlaneUrl=http://localhost:5001 \\",
-    `  --Agent:BootstrapToken="${bootstrapToken}"`,
+  const goRunCmd = [
+    "cd src/clustral-agent",
+    `export AGENT_CLUSTER_ID="${clusterId}"`,
+    "export AGENT_CONTROL_PLANE_URL=http://localhost:5101",
+    `export AGENT_BOOTSTRAP_TOKEN="${bootstrapToken}"`,
+    "go run .",
   ].join("\n");
 
   return (
     <div className="space-y-5">
-      <div className="rounded-md border border-pending/50 bg-pending/5 p-3 flex gap-2">
-        <AlertTriangle className="h-4 w-4 text-pending shrink-0 mt-0.5" />
-        <div className="text-sm">
+      <Alert className="border-pending/50 bg-pending/5">
+        <AlertTriangle className="h-4 w-4 text-pending" />
+        <div className="text-sm ml-2">
           <p className="font-medium text-foreground">
             Save the bootstrap token now
           </p>
@@ -41,7 +45,7 @@ export function AgentSetupSteps({
             used to authenticate the agent on first connection.
           </p>
         </div>
-      </div>
+      </Alert>
 
       <div>
         <h4 className="text-sm font-medium mb-1">Cluster ID</h4>
@@ -53,7 +57,7 @@ export function AgentSetupSteps({
         <CopyBlock value={bootstrapToken} />
       </div>
 
-      <hr className="border-border" />
+      <Separator />
 
       <div>
         <h4 className="text-sm font-medium mb-2">
@@ -66,19 +70,13 @@ export function AgentSetupSteps({
         <CopyBlock value={helmInstallCmd} multiline />
 
         <p className="text-xs text-muted-foreground mt-4 mb-3">
-          Option 2: dotnet run (local dev)
+          Option 2: Go (local dev)
         </p>
-        <CopyBlock value={dotnetRunCmd} multiline />
+        <CopyBlock value={goRunCmd} multiline />
       </div>
 
       <div className="flex justify-end pt-2">
-        <button
-          type="button"
-          onClick={onDone}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Done
-        </button>
+        <Button onClick={onDone}>Done</Button>
       </div>
     </div>
   );
@@ -109,18 +107,19 @@ function CopyBlock({
       >
         {value}
       </code>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={copy}
-        className="shrink-0 mt-0.5 text-muted-foreground hover:text-foreground transition-colors"
         aria-label="Copy"
+        className="shrink-0"
       >
         {copied ? (
           <Check className="h-4 w-4 text-connected" />
         ) : (
           <Copy className="h-4 w-4" />
         )}
-      </button>
+      </Button>
     </div>
   );
 }

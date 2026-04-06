@@ -1,9 +1,9 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
-import { usePathname } from "next/navigation";
-import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Server, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -15,6 +15,7 @@ const navItems = [
 export function NavHeader() {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <header className="border-b">
@@ -26,18 +27,17 @@ export function NavHeader() {
           </div>
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
-              <Link
+              <Button
                 key={item.href}
-                href={item.href}
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push(item.href)}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm transition-colors",
-                  pathname === item.href
-                    ? "bg-accent font-medium text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  pathname === item.href && "bg-accent font-medium text-accent-foreground",
                 )}
               >
                 {item.label}
-              </Link>
+              </Button>
             ))}
           </nav>
         </div>
@@ -48,14 +48,10 @@ export function NavHeader() {
               {session.user.email}
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={() => signOut({ callbackUrl: "/login" })}>
             <LogOut className="h-3.5 w-3.5" />
             Sign out
-          </button>
+          </Button>
         </div>
       </div>
     </header>

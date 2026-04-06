@@ -1,11 +1,14 @@
 import { cn } from "@/lib/utils";
 import type { Cluster, ClusterStatus } from "@/types/api";
 import { Server, Clock, Tag, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
-const statusStyles: Record<ClusterStatus, string> = {
-  Connected: "bg-connected/10 text-connected",
-  Pending: "bg-pending/10 text-pending",
-  Disconnected: "bg-destructive/10 text-destructive",
+const statusVariant: Record<ClusterStatus, "default" | "secondary" | "destructive" | "outline"> = {
+  Connected: "default",
+  Pending: "secondary",
+  Disconnected: "destructive",
 };
 
 interface ClusterCardProps {
@@ -19,13 +22,13 @@ export function ClusterCard({ cluster, selected, onSelect, onDelete }: ClusterCa
   const labelEntries = Object.entries(cluster.labels);
 
   return (
-    <div
+    <Card
       role="button"
       tabIndex={0}
       onClick={() => onSelect(cluster)}
       onKeyDown={(e) => e.key === "Enter" && onSelect(cluster)}
       className={cn(
-        "w-full text-left rounded-lg border p-4 transition-colors",
+        "w-full text-left p-4 cursor-pointer transition-colors",
         "hover:border-primary/40 hover:bg-accent/50",
         selected && "border-primary bg-accent",
       )}
@@ -37,25 +40,21 @@ export function ClusterCard({ cluster, selected, onSelect, onDelete }: ClusterCa
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-              statusStyles[cluster.status],
-            )}
-          >
+          <Badge variant={statusVariant[cluster.status]}>
             {cluster.status}
-          </span>
-          <button
-            type="button"
+          </Badge>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             title="Delete cluster"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(cluster);
             }}
-            className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -83,15 +82,12 @@ export function ClusterCard({ cluster, selected, onSelect, onDelete }: ClusterCa
       {labelEntries.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1 pl-6">
           {labelEntries.map(([k, v]) => (
-            <span
-              key={k}
-              className="rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
-            >
+            <Badge key={k} variant="secondary" className="font-mono text-xs">
               {k}={v}
-            </span>
+            </Badge>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
