@@ -1,24 +1,16 @@
 using Clustral.ControlPlane.Domain;
-using System.ComponentModel.DataAnnotations;
-
 namespace Clustral.ControlPlane.Api.Models;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Request bodies
 // ─────────────────────────────────────────────────────────────────────────────
 
-public sealed record ListClustersQuery(
-    string?       StatusFilter  = null,
-    string?       LabelSelector = null,
-    int           PageSize      = 50,
-    string?       PageToken     = null);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/clusters — register a new cluster
 // ─────────────────────────────────────────────────────────────────────────────
 
 public sealed record RegisterClusterRestRequest(
-    [Required] string Name,
+    string Name,
     string Description = "",
     string AgentPublicKeyPem = "",
     Dictionary<string, string>? Labels = null);

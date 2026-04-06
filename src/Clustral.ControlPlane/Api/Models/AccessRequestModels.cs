@@ -1,10 +1,8 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Clustral.ControlPlane.Api.Models;
 
 public sealed record CreateAccessRequestRequest(
-    [Required] Guid RoleId,
-    [Required] Guid ClusterId,
+    Guid RoleId,
+    Guid ClusterId,
     string? Reason,
     string? RequestedDuration,
     List<string>? SuggestedReviewerEmails);
@@ -13,7 +11,7 @@ public sealed record ApproveAccessRequestRequest(
     string? DurationOverride);
 
 public sealed record DenyAccessRequestRequest(
-    [Required] string Reason);
+    string Reason);
 
 public sealed record RevokeAccessRequestRequest(
     string? Reason);

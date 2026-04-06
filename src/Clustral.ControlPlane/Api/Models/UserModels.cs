@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Clustral.ControlPlane.Api.Models;
 
 public sealed record UserResponse(
@@ -13,8 +11,8 @@ public sealed record UserListResponse(
     IReadOnlyList<UserResponse> Users);
 
 public sealed record AssignRoleRequest(
-    [Required] Guid RoleId,
-    [Required] Guid ClusterId);
+    Guid RoleId,
+    Guid ClusterId);
 
 public sealed record RoleAssignmentResponse(
     Guid           Id,

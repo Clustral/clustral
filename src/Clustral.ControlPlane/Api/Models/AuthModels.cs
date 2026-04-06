@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Clustral.ControlPlane.Api.Models;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7,7 +5,7 @@ namespace Clustral.ControlPlane.Api.Models;
 // ─────────────────────────────────────────────────────────────────────────────
 
 public sealed record IssueKubeconfigCredentialRequest(
-    [Required] Guid   ClusterId,
+    Guid   ClusterId,
     /// <summary>
     /// Optional. ISO 8601 duration string (e.g. "PT4H"). The server caps this
     /// at <c>Keycloak:MaxKubeconfigCredentialTtl</c>.
@@ -32,7 +30,7 @@ public sealed record RevokeCredentialRequest(string? Reason = null);
 // POST /api/v1/auth/revoke-by-token
 // ─────────────────────────────────────────────────────────────────────────────
 
-public sealed record RevokeByTokenRequest([Required] string Token);
+public sealed record RevokeByTokenRequest(string Token);
 
 public sealed record RevokeCredentialResponse(
     bool           Revoked,

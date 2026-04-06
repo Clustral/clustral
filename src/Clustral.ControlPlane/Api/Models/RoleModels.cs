@@ -1,9 +1,7 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Clustral.ControlPlane.Api.Models;
 
 public sealed record CreateRoleRequest(
-    [Required] string Name,
+    string Name,
     string Description = "",
     List<string>? KubernetesGroups = null);
 

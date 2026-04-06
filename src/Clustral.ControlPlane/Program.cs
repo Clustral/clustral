@@ -131,6 +131,19 @@ builder.Services.AddSingleton<TunnelSessionManager>();
 // Background cleanup: expire pending access requests past their TTL.
 builder.Services.AddHostedService<AccessRequestCleanupService>();
 
+// MediatR + FluentValidation vertical slicing infrastructure.
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
+FluentValidation.ServiceCollectionExtensions
+    .AddValidatorsFromAssembly(builder.Services, typeof(Program).Assembly);
+builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>),
+    typeof(Clustral.ControlPlane.Features.Shared.ValidationBehavior<,>));
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Clustral.ControlPlane.Features.Shared.ICurrentUserProvider,
+    Clustral.ControlPlane.Features.Shared.HttpCurrentUserProvider>();
+builder.Services.AddSingleton<Clustral.ControlPlane.Features.Shared.TokenHashingService>();
+builder.Services.AddScoped<Clustral.ControlPlane.Features.AccessRequests.AccessRequestEnricher>();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Build
 // ─────────────────────────────────────────────────────────────────────────────
