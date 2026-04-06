@@ -70,7 +70,7 @@ public sealed class ClusterServiceImpl(
         var filter = Builders<DomainCluster>.Filter.Empty;
 
         // Status filter
-        if (request.StatusFilter != Clustral.V1.ClusterStatus.Unspecified)
+        if (request.StatusFilter != ClusterStatus.Unspecified)
         {
             var domainStatus = MapStatus(request.StatusFilter);
             filter &= Builders<DomainCluster>.Filter.Eq(c => c.Status, domainStatus);
@@ -94,7 +94,7 @@ public sealed class ClusterServiceImpl(
         return response;
     }
 
-    public override async Task<Clustral.V1.Cluster> Get(
+    public override async Task<Cluster> Get(
         GetClusterRequest request,
         ServerCallContext context)
     {
@@ -157,9 +157,9 @@ public sealed class ClusterServiceImpl(
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static Clustral.V1.Cluster ToProto(DomainCluster c)
+    private static Cluster ToProto(DomainCluster c)
     {
-        var proto = new Clustral.V1.Cluster
+        var proto = new Cluster
         {
             Id                = c.Id.ToString(),
             Name              = c.Name,
@@ -174,19 +174,19 @@ public sealed class ClusterServiceImpl(
         return proto;
     }
 
-    private static Clustral.V1.ClusterStatus MapStatus(DomainClusterStatus s) => s switch
+    private static ClusterStatus MapStatus(DomainClusterStatus s) => s switch
     {
-        DomainClusterStatus.Pending      => Clustral.V1.ClusterStatus.Pending,
-        DomainClusterStatus.Connected    => Clustral.V1.ClusterStatus.Connected,
-        DomainClusterStatus.Disconnected => Clustral.V1.ClusterStatus.Disconnected,
-        _                                => Clustral.V1.ClusterStatus.Unspecified,
+        DomainClusterStatus.Pending      => ClusterStatus.Pending,
+        DomainClusterStatus.Connected    => ClusterStatus.Connected,
+        DomainClusterStatus.Disconnected => ClusterStatus.Disconnected,
+        _                                => ClusterStatus.Unspecified,
     };
 
-    private static DomainClusterStatus MapStatus(Clustral.V1.ClusterStatus s) => s switch
+    private static DomainClusterStatus MapStatus(ClusterStatus s) => s switch
     {
-        Clustral.V1.ClusterStatus.Pending      => DomainClusterStatus.Pending,
-        Clustral.V1.ClusterStatus.Connected    => DomainClusterStatus.Connected,
-        Clustral.V1.ClusterStatus.Disconnected => DomainClusterStatus.Disconnected,
+        ClusterStatus.Pending      => DomainClusterStatus.Pending,
+        ClusterStatus.Connected    => DomainClusterStatus.Connected,
+        ClusterStatus.Disconnected => DomainClusterStatus.Disconnected,
         _                                      => DomainClusterStatus.Pending,
     };
 

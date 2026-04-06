@@ -5,7 +5,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Clustral.ControlPlane.Api.Controllers;
+namespace Clustral.ControlPlane.Api.Controllers.V1;
 
 /// <summary>
 /// Thin controller for JIT access requests. Delegates to MediatR handlers

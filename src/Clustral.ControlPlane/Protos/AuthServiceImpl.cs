@@ -118,7 +118,7 @@ public sealed class AuthServiceImpl(
             return Invalid(InvalidationReason.Expired);
 
         // Look up the owning user for principal info.
-        Domain.User? user = null;
+        User? user = null;
         if (credential.UserId.HasValue)
         {
             user = await db.Users

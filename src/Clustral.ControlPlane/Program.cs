@@ -2,6 +2,7 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Clustral.ControlPlane.Protos;
+using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -25,14 +26,11 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 // If any required config is missing, the app aborts immediately with a clear error.
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services.AddOptionsWithValidation<OidcOptions,
-    Clustral.ControlPlane.Features.Shared.OidcOptionsValidator>(OidcOptions.SectionName);
+builder.Services.AddOptionsWithValidation<OidcOptions, OidcOptionsValidator>(OidcOptions.SectionName);
 
-builder.Services.AddOptionsWithValidation<MongoDbOptions,
-    Clustral.ControlPlane.Features.Shared.MongoDbOptionsValidator>(MongoDbOptions.SectionName);
+builder.Services.AddOptionsWithValidation<MongoDbOptions, MongoDbOptionsValidator>(MongoDbOptions.SectionName);
 
-var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>()
-               ?? new OidcOptions();
+var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MongoDB — resolved lazily via IOptions<MongoDbOptions>.
@@ -44,11 +42,7 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
     var opts = sp.GetRequiredService<IOptions<MongoDbOptions>>().Value;
     return new MongoClient(opts.ConnectionString);
 });
-builder.Services.AddSingleton(sp =>
-{
-    var opts = sp.GetRequiredService<IOptions<MongoDbOptions>>().Value;
-    return new ClustralDb(sp.GetRequiredService<IMongoClient>(), opts.DatabaseName);
-});
+builder.Services.AddSingleton<ClustralDb>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Authentication — OIDC (JWT Bearer)
@@ -134,14 +128,11 @@ builder.Services.AddHostedService<AccessRequestCleanupService>();
 // MediatR + FluentValidation vertical slicing infrastructure.
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
-FluentValidation.ServiceCollectionExtensions
-    .AddValidatorsFromAssembly(builder.Services, typeof(Program).Assembly);
-builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>),
-    typeof(Clustral.ControlPlane.Features.Shared.ValidationBehavior<,>));
+builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
+builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<Clustral.ControlPlane.Features.Shared.ICurrentUserProvider,
-    Clustral.ControlPlane.Features.Shared.HttpCurrentUserProvider>();
-builder.Services.AddSingleton<Clustral.ControlPlane.Features.Shared.TokenHashingService>();
+builder.Services.AddScoped<ICurrentUserProvider, HttpCurrentUserProvider>();
+builder.Services.AddSingleton<TokenHashingService>();
 builder.Services.AddScoped<Clustral.ControlPlane.Features.AccessRequests.AccessRequestEnricher>();
 
 // ─────────────────────────────────────────────────────────────────────────────

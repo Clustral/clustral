@@ -74,7 +74,7 @@ internal static class LogoutCommand
                     var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, ct);
 
                     if (response.IsSuccessStatusCode)
-                        Spectre.Console.AnsiConsole.MarkupLine($"  [red]✗[/] Revoked credential for [cyan]{contextName.EscapeMarkup()}[/]");
+                        AnsiConsole.MarkupLine($"  [red]✗[/] Revoked credential for [cyan]{contextName.EscapeMarkup()}[/]");
                 }
                 catch
                 {
@@ -87,13 +87,13 @@ internal static class LogoutCommand
         foreach (var (contextName, _) in clustralContexts)
         {
             writer.RemoveClusterEntry(contextName);
-            Spectre.Console.AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context: [cyan]{contextName.EscapeMarkup()}[/]");
+            AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context: [cyan]{contextName.EscapeMarkup()}[/]");
         }
 
         // ── 4. Clear the JWT ──────────────────────────────────────────────
         await cache.ClearAsync(ct);
 
-        Spectre.Console.AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Logged out.[/]");
+        AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Logged out.[/]");
     }
 
     /// <summary>

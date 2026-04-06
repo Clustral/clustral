@@ -56,7 +56,7 @@ internal sealed class OidcFlowHandler
         var authUrl = BuildAuthorizationUrl(challenge, state, redirectUri);
 
         // ── Open browser ──────────────────────────────────────────────────────
-        Spectre.Console.AnsiConsole.MarkupLine("  [cyan]●[/] Opening browser for SSO login...");
+        AnsiConsole.MarkupLine("  [cyan]●[/] Opening browser for SSO login...");
 
         OpenBrowser(authUrl);
 
@@ -64,9 +64,9 @@ internal sealed class OidcFlowHandler
         string callbackQuery;
         using (var server = new OidcCallbackServer(_port))
         {
-            Spectre.Console.AnsiConsole.MarkupLine("  [yellow]●[/] Waiting for authentication...");
-            Spectre.Console.AnsiConsole.MarkupLine($"    [dim]If the browser did not open, visit:[/]");
-            Spectre.Console.AnsiConsole.MarkupLine($"    [dim]{authUrl.EscapeMarkup()}[/]");
+            AnsiConsole.MarkupLine("  [yellow]●[/] Waiting for authentication...");
+            AnsiConsole.MarkupLine($"    [dim]If the browser did not open, visit:[/]");
+            AnsiConsole.MarkupLine($"    [dim]{authUrl.EscapeMarkup()}[/]");
             Console.Error.WriteLine();
 
             callbackQuery = await server.WaitForCallbackAsync(ct);

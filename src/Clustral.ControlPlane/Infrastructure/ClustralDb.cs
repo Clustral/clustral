@@ -1,4 +1,5 @@
 using Clustral.ControlPlane.Domain;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Infrastructure;
@@ -11,9 +12,9 @@ public sealed class ClustralDb
 {
     private readonly IMongoDatabase _database;
 
-    public ClustralDb(IMongoClient client, string databaseName = "clustral")
+    public ClustralDb(IMongoClient client, IOptions<MongoDbOptions> options)
     {
-        _database = client.GetDatabase(databaseName);
+        _database = client.GetDatabase(options.Value.DatabaseName);
     }
 
     public IMongoCollection<Cluster>        Clusters        => _database.GetCollection<Cluster>("clusters");

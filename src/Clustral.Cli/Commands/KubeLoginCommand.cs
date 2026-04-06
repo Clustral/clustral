@@ -159,13 +159,13 @@ internal static class KubeLoginCommand
             return;
         }
 
-        Spectre.Console.AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Kubeconfig updated[/]");
-        Spectre.Console.AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");
-        Spectre.Console.AnsiConsole.MarkupLine($"  [grey]Server[/]    {serverUrl.EscapeMarkup()}");
-        Spectre.Console.AnsiConsole.MarkupLine($"  [grey]Expires[/]   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
+        AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Kubeconfig updated[/]");
+        AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"  [grey]Server[/]    {serverUrl.EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"  [grey]Expires[/]   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
 
         if (!noSetContext)
-            Spectre.Console.AnsiConsole.MarkupLine("  [grey]Active[/]    [green]current-context set[/]");
+            AnsiConsole.MarkupLine("  [grey]Active[/]    [green]current-context set[/]");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -47,7 +47,7 @@ public readonly struct Result<T>
 
     /// <summary>Transforms the error; passes through success values unchanged.</summary>
     public Result<T> MapError(Func<ResultError, ResultError> map) =>
-        IsFailure ? Result<T>.Fail(map(_error!)) : this;
+        IsFailure ? Fail(map(_error!)) : this;
 
     /// <summary>Async version of <see cref="Map{TOut}"/>.</summary>
     public async Task<Result<TOut>> MapAsync<TOut>(Func<T, Task<TOut>> map) =>
