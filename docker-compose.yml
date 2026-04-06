@@ -47,9 +47,6 @@ services:
     restart: unless-stopped
     networks:
       - clustral
-    depends_on:
-      controlplane:
-        condition: service_healthy
     environment:
       NEXTAUTH_URL: "http://192.168.88.17:3000"
       CONTROLPLANE_URL: "http://192.168.88.17:5100"
