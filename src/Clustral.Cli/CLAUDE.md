@@ -135,10 +135,39 @@ Example config file:
 
 ---
 
+## Input Validation
+
+The CLI uses **FluentValidation** for all input validation. Validators live in
+`Validation/` with input records, validator classes, and a shared helper.
+
+```
+Validation/
+├── CommandInputs.cs         ← Input records: KubeLoginInput, AccessRequestInput, etc.
+├── Iso8601Duration.cs       ← AOT-safe [GeneratedRegex] ISO 8601 validator
+├── KubeLoginValidator.cs    ← cluster-id (GUID) + ttl (ISO 8601)
+├── AccessRequestValidator.cs ← role + cluster (required) + duration
+├── AccessActionValidator.cs  ← request-id (GUID) — used by approve/revoke
+├── AccessDenyValidator.cs    ← request-id (GUID) + reason (required)
+└── ValidationHelper.cs       ← Runs validator + displays errors + sets exit code
+```
+
+**Every new CLI command with non-trivial input must use FluentValidation.**
+Do not use manual `string.IsNullOrWhiteSpace` checks for validation. Instead:
+
+1. Create an input record in `CommandInputs.cs`.
+2. Create a validator class extending `AbstractValidator<T>`.
+3. Call `ValidationHelper.Validate(console, new FooValidator(), input, ctx)`
+   before proceeding with HTTP calls or business logic.
+4. Write unit tests for the validator.
+
+Validators are instantiated directly (no DI) — `new FooValidator().Validate(input)`.
+
+---
+
 ## Error Display
 
 The CLI uses `Ui/CliErrors.cs` for consistent, card-style error output via
-Spectre.Console panels. Four methods are available:
+Spectre.Console panels. Five methods are available:
 
 | Method | Purpose |
 |---|---|
@@ -146,6 +175,7 @@ Spectre.Console panels. Four methods are available:
 | `WriteConnectionError` | Displays connection failures (e.g. ControlPlane unreachable) with actionable hints |
 | `WriteError` | General-purpose error panel for unexpected errors |
 | `WriteNotConfigured` | Shown when `~/.clustral/config.json` is missing or incomplete; guides the user to run `clustral login` |
+| `WriteValidationErrors` | Displays FluentValidation failures as a yellow-bordered card listing each field and its error |
 
 ---
 
@@ -160,14 +190,15 @@ capabilities.
 
 ## Testing
 
-Every new CLI command or feature must include tests in `src/Clustral.Cli.Tests/`:
+Every new CLI command or feature must include tests in `src/Clustral.Cli.Tests/`.
+**All tests must use FluentAssertions** (`.Should().Be(...)`) — do not use
+`Assert.Equal` or `Assert.True`.
 
+- **Validator tests**: test FluentValidation rules (valid/invalid inputs, error messages, multi-field errors) in `Validation/`.
 - **Command tree tests**: verify the command is registered with correct options/arguments.
 - **Render tests**: use `TestConsole` from `Spectre.Console.Testing` to capture and assert on visual output via `ITestOutputHelper`.
 - **Wire type tests**: verify JSON serialization round-trips for any new DTO types in `CliJsonContext`.
 - **Error display tests**: test `CliErrors.*` card rendering for new error scenarios.
-
-Frontend (Web UI) tests are not yet required but will be added later.
 
 ---
 

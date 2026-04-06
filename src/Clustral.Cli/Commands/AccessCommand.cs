@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Cli.Ui;
+using Clustral.Cli.Validation;
 using Clustral.Sdk.Auth;
 using Spectre.Console;
 
@@ -136,6 +137,11 @@ internal static class AccessCommand
         var duration    = ctx.ParseResult.GetValueForOption(DurationOption);
         var reviewers   = ctx.ParseResult.GetValueForOption(ReviewerOption);
         var wait        = ctx.ParseResult.GetValueForOption(WaitOption);
+
+        // Validate input before making HTTP calls.
+        var input = new AccessRequestInput(roleName, clusterName, duration);
+        if (!ValidationHelper.Validate(AnsiConsole.Console, new AccessRequestValidator(), input, ctx))
+            return;
 
         // Resolve role name → ID.
         var rolesJson = await http.GetStringAsync("api/v1/roles", ct);
@@ -272,11 +278,16 @@ internal static class AccessCommand
     private static async Task HandleApproveAsync(InvocationContext ctx)
     {
         var ct = ctx.GetCancellationToken();
-        using var http = CreateClient(ctx, out var exitCode);
-        if (http is null) { ctx.ExitCode = exitCode; return; }
 
         var requestId = ctx.ParseResult.GetValueForArgument(
             (Argument<string>)ctx.ParseResult.CommandResult.Command.Arguments.First());
+
+        if (!ValidationHelper.Validate(AnsiConsole.Console, new AccessActionValidator(),
+            new AccessActionInput(requestId), ctx))
+            return;
+
+        using var http = CreateClient(ctx, out var exitCode);
+        if (http is null) { ctx.ExitCode = exitCode; return; }
 
         var body = new AccessRequestApproveRequest();
         var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestApproveRequest);
@@ -304,12 +315,17 @@ internal static class AccessCommand
     private static async Task HandleDenyAsync(InvocationContext ctx)
     {
         var ct = ctx.GetCancellationToken();
-        using var http = CreateClient(ctx, out var exitCode);
-        if (http is null) { ctx.ExitCode = exitCode; return; }
 
         var requestId = ctx.ParseResult.GetValueForArgument(
             (Argument<string>)ctx.ParseResult.CommandResult.Command.Arguments.First());
         var reason = ctx.ParseResult.GetValueForOption(DenyReasonOption)!;
+
+        if (!ValidationHelper.Validate(AnsiConsole.Console, new AccessDenyValidator(),
+            new AccessDenyInput(requestId, reason), ctx))
+            return;
+
+        using var http = CreateClient(ctx, out var exitCode);
+        if (http is null) { ctx.ExitCode = exitCode; return; }
 
         var body = new AccessRequestDenyRequest { Reason = reason };
         var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestDenyRequest);
@@ -331,11 +347,17 @@ internal static class AccessCommand
     private static async Task HandleRevokeAsync(InvocationContext ctx)
     {
         var ct = ctx.GetCancellationToken();
-        using var http = CreateClient(ctx, out var exitCode);
-        if (http is null) { ctx.ExitCode = exitCode; return; }
 
         var requestId = ctx.ParseResult.GetValueForArgument(
             (Argument<string>)ctx.ParseResult.CommandResult.Command.Arguments.First());
+
+        if (!ValidationHelper.Validate(AnsiConsole.Console, new AccessActionValidator(),
+            new AccessActionInput(requestId), ctx))
+            return;
+
+        using var http = CreateClient(ctx, out var exitCode);
+        if (http is null) { ctx.ExitCode = exitCode; return; }
+
         var reason = ctx.ParseResult.GetValueForOption(
             ctx.ParseResult.CommandResult.Command.Options.FirstOrDefault(o => o.Name == "reason") as Option<string?>);
 

@@ -5,7 +5,7 @@ ASP.NET Core web host that is the heart of the Clustral platform. It exposes:
 - **REST API** on `:5000` — consumed by the Web UI and CLI.
 - **gRPC server** on `:5001` — consumed by Agents (tunnel) and the CLI (auth).
 - **Swagger UI** at `http://localhost:5000/swagger` (dev only).
-- **Health endpoint** at `GET /healthz` (no auth required).
+- **Health endpoints**: `GET /healthz` (liveness), `GET /healthz/ready` (readiness — MongoDB + OIDC), `GET /healthz/detail` (detailed, auth required).
 
 ---
 
@@ -189,8 +189,9 @@ To add a new feature:
 5. Add a thin controller action in `Api/Controllers/` that calls `mediator.Send(...)` and maps via `ToActionResult()`. No business logic in the controller.
 6. Add request/response DTOs to `Api/Models/` if not already present.
 7. **Write unit tests** for the validator and handler in `Tests/Features/<FeatureName>/`.
-8. **Write integration tests** in `Tests/Features/<FeatureName>/` or `Tests/Integration/` using `ClustralWebApplicationFactory`. Use FluentAssertions.
-9. Do NOT use `[Required]` or other data annotations — FluentValidation handles all validation via the `ValidationBehavior` MediatR pipeline.
+8. **Write integration tests** in `Tests/Features/<FeatureName>/` or `Tests/Integration/` using `ClustralWebApplicationFactory`.
+9. **Use FluentAssertions** in all tests (`.Should().Be(...)`) — do not use `Assert.Equal` or `Assert.True`.
+10. **Use FluentValidation** for all input validation — do NOT use `[Required]` or other data annotations. FluentValidation handles validation via the `ValidationBehavior` MediatR pipeline.
 
 ## Adding a new gRPC method
 

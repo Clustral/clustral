@@ -189,13 +189,14 @@ Services:
 
 ## Testing
 
-524 tests across 3 projects. Run all with:
+618 tests across 3 .NET projects + 35 Go tests. Run all with:
 ```bash
 dotnet test Clustral.slnx
+cd src/clustral-agent && go test -race ./...
 ```
 
 - **Unit tests**: `*.Tests` projects alongside each `src/` project.
-- **Integration tests**: `src/Clustral.ControlPlane.IntegrationTests` — uses Testcontainers (MongoDB) + `WebApplicationFactory`; requires Docker running. Do not mock the database.
+- **Integration tests**: `src/Clustral.ControlPlane.Tests/Integration/` — uses Testcontainers (MongoDB) + `WebApplicationFactory`; requires Docker running. Do not mock the database.
 - **Web tests**: `src/Clustral.Web` uses Vitest (`bun test`) and Playwright for e2e (`bun e2e`).
 
 ---
@@ -214,8 +215,9 @@ dotnet test Clustral.slnx
 - **Keep PRs focused.** Proto change, migration, and implementation should be reviewable together but should be called out as distinct layers in the PR description.
 - **Vertical slicing architecture** in ControlPlane: every new feature goes in `Features/<FeatureName>/` with command/query + handler + validator in the same folder. Controllers are thin MediatR dispatchers — no business logic. Use `IRequest<Result<T>>`, `IRequestHandler`, and `AbstractValidator<T>`.
 - **Use `Result<T>` in handlers** instead of throwing exceptions. Use `ResultErrors.*` catalog for consistent error codes across the codebase. Controllers map results via `ToActionResult()`.
-- **FluentValidation** handles all input validation via `ValidationBehavior` MediatR pipeline. Do not use `[Required]` or other data annotation attributes on DTOs.
-- **FluentAssertions** in tests — use `.Should().Be(...)` style assertions for ControlPlane tests.
+- **FluentValidation everywhere.** Every new feature in the ControlPlane or CLI **must** use FluentValidation for input validation. In the ControlPlane, validators run automatically via the `ValidationBehavior` MediatR pipeline. In the CLI, validators are instantiated directly via `ValidationHelper.Validate()`. Do not use `[Required]` or other data annotation attributes on DTOs. Do not use manual `string.IsNullOrWhiteSpace` checks for validation — use a FluentValidation validator instead.
+- **FluentAssertions everywhere.** All tests across ControlPlane, CLI, and SDK **must** use FluentAssertions (`.Should().Be(...)` style assertions). Do not use `Assert.Equal` / `Assert.True` — use `.Should().Be()` / `.Should().BeTrue()` instead.
+- **CLI input validation** uses `Validation/` folder with input records, validators, and `ValidationHelper`. Validation errors are displayed as yellow-bordered cards via `CliErrors.WriteValidationErrors()`.
 - **CLI error display** uses `CliErrors.*` card-style display for user-friendly error output.
 - **Command aliases**: all listing commands support both `list` and `ls` aliases.
 - **xUnit test output**: use `ITestOutputHelper` in xUnit tests, not `Console.WriteLine`.

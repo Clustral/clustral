@@ -123,6 +123,33 @@ internal static class CliErrors
         console.WriteLine();
     }
 
+    /// <summary>
+    /// Displays a validation error card listing each invalid field and its message.
+    /// </summary>
+    internal static void WriteValidationErrors(IReadOnlyList<FluentValidation.Results.ValidationFailure> errors) =>
+        WriteValidationErrors(AnsiConsole.Console, errors);
+
+    internal static void WriteValidationErrors(IAnsiConsole console, IReadOnlyList<FluentValidation.Results.ValidationFailure> errors)
+    {
+        var table = new Table().Border(TableBorder.None).HideHeaders()
+            .AddColumn("Field").AddColumn("Message");
+
+        foreach (var e in errors)
+            table.AddRow(
+                $"[yellow]{e.PropertyName.EscapeMarkup()}[/]",
+                e.ErrorMessage.EscapeMarkup());
+
+        var panel = new Panel(table)
+            .Header("[yellow] Validation [/]")
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(new Style(Color.Yellow))
+            .Padding(1, 0);
+
+        console.WriteLine();
+        console.Write(panel);
+        console.WriteLine();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
 
     private static (string Message, string? Code, string? Field, string? TraceId)

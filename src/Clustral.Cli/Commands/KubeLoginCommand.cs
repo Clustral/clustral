@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Cli.Ui;
+using Clustral.Cli.Validation;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -91,6 +92,11 @@ internal static class KubeLoginCommand
         var noSetContext    = ctx.ParseResult.GetValueForOption(NoSetContextOption);
         var insecure        = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var controlPlaneUrl = config.ControlPlaneUrl;
+
+        // ── Validate input ───────────────────────────────────────────────────
+        var input = new KubeLoginInput(clusterId, ttl);
+        if (!ValidationHelper.Validate(AnsiConsole.Console, new KubeLoginValidator(), input, ctx))
+            return;
 
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
