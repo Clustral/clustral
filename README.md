@@ -326,20 +326,52 @@ clustral login app.clustral.example
 # Force re-authentication
 clustral login --force
 
-# List available clusters
+# Sign out — revokes credentials, removes kubeconfig contexts
+clustral logout
+
+# --- Kubernetes ---
+
+# List available clusters for kubectl
 clustral kube ls
 
 # Connect to a cluster (writes kubeconfig)
 clustral kube login <cluster-id>
 
+# Disconnect from a cluster (removes kubeconfig entry)
+clustral kube logout <cluster-id>
+
 # kubectl works transparently
 kubectl get pods -A
+
+# --- Management ---
 
 # List all registered clusters
 clustral clusters list
 
-# Sign out — revokes credentials, removes kubeconfig contexts
-clustral logout
+# List all users
+clustral users list
+
+# List all roles
+clustral roles list
+
+# --- Access Requests ---
+
+# Request access to a cluster
+clustral access request <cluster-id> --role <role-name>
+
+# List access requests
+clustral access list
+
+# Approve a pending access request
+clustral access approve <request-id>
+
+# Deny a pending access request
+clustral access deny <request-id> --reason "not authorized"
+
+# Revoke an active access grant
+clustral access revoke <request-id>
+
+# --- Utility ---
 
 # Check version
 clustral version
@@ -614,12 +646,15 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET
+# .NET (524 tests — unit + Testcontainers integration tests)
 dotnet test Clustral.slnx
 
 # Go Agent
 cd src/clustral-agent && go test ./...
 ```
+
+> Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) to
+> spin up real MongoDB instances. Docker must be running to execute them.
 
 ## Web UI Environment Variables
 
