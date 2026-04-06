@@ -20,7 +20,7 @@ public class AccessCommandTests(ITestOutputHelper output)
         Assert.Equal("access", access.Name);
         var subs = access.Subcommands.Select(s => s.Name).ToList();
         Assert.Contains("request", subs);
-        Assert.Contains("ls", subs);
+        Assert.Contains("list", subs);
         Assert.Contains("approve", subs);
         Assert.Contains("deny", subs);
         Assert.Contains("revoke", subs);
@@ -49,7 +49,7 @@ public class AccessCommandTests(ITestOutputHelper output)
     public void AccessLs_HasStatusOption()
     {
         var access = AccessCommand.BuildAccessCommand();
-        var ls = access.Subcommands.First(s => s.Name == "ls");
+        var ls = access.Subcommands.First(s => s.Name == "list");
 
         output.WriteLine($"Options for 'access ls':");
         foreach (var opt in ls.Options)
@@ -215,7 +215,7 @@ public class AccessCommandTests(ITestOutputHelper output)
     public void AccessLs_HasActiveOption()
     {
         var access = AccessCommand.BuildAccessCommand();
-        var ls = access.Subcommands.First(s => s.Name == "ls");
+        var ls = access.Subcommands.First(s => s.Name == "list");
 
         output.WriteLine("Options for 'access ls':");
         foreach (var opt in ls.Options)

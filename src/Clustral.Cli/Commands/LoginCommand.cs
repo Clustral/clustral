@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Text.Json;
 using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Spectre.Console;
 
@@ -71,11 +72,8 @@ internal static class LoginCommand
 
         if (string.IsNullOrWhiteSpace(cpUrl))
         {
-            await Console.Error.WriteLineAsync(
-                "error: Provide a ControlPlane URL, e.g.:\n" +
-                "  clustral login controlplane.clustral.example\n" +
-                "  clustral login http://localhost:5100\n\n" +
-                "Or set ControlPlaneUrl in ~/.clustral/config.json.");
+            CliErrors.WriteNotConfigured("ControlPlane URL not configured",
+                "clustral login <controlplane-url>");
             ctx.ExitCode = 1;
             return;
         }
@@ -119,7 +117,7 @@ internal static class LoginCommand
         var discovered = await DiscoverConfigAsync(http, cpUrl, ct);
         if (discovered is null)
         {
-            await Console.Error.WriteLineAsync("error: Could not reach the ControlPlane.");
+            CliErrors.WriteError("Could not reach the ControlPlane.");
             ctx.ExitCode = 1;
             return;
         }
@@ -151,12 +149,12 @@ internal static class LoginCommand
         }
         catch (OperationCanceledException)
         {
-            await Console.Error.WriteLineAsync("Login cancelled.");
+            CliErrors.WriteError("Operation cancelled.");
             ctx.ExitCode = 130;
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"error: {ex.Message}");
+            CliErrors.WriteConnectionError(ex);
             ctx.ExitCode = 1;
         }
     }

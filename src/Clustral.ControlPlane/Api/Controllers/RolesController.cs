@@ -1,6 +1,7 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Infrastructure;
+using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
@@ -30,9 +31,31 @@ public sealed class RolesController(ClustralDb db, ILogger<RolesController> logg
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateRoleRequest request, CancellationToken ct)
     {
+        var result = await CreateRoleAsync(request, ct);
+        return result.ToCreatedResult(nameof(List));
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateRoleRequest request, CancellationToken ct)
+    {
+        var result = await UpdateRoleAsync(id, request, ct);
+        return result.ToActionResult();
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var result = await DeleteRoleAsync(id, ct);
+        return result.ToActionResult();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private async Task<Result<RoleResponse>> CreateRoleAsync(CreateRoleRequest request, CancellationToken ct)
+    {
         var exists = await db.Roles.Find(r => r.Name == request.Name).AnyAsync(ct);
         if (exists)
-            return Conflict(new { error = $"Role '{request.Name}' already exists." });
+            return ResultErrors.DuplicateRoleName(request.Name);
 
         var role = new Role
         {
@@ -45,12 +68,10 @@ public sealed class RolesController(ClustralDb db, ILogger<RolesController> logg
         await db.Roles.InsertOneAsync(role, cancellationToken: ct);
         logger.LogInformation("Role {Name} created with id {Id}", role.Name, role.Id);
 
-        return CreatedAtAction(nameof(List), new RoleResponse(
-            role.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt));
+        return new RoleResponse(role.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt);
     }
 
-    [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateRoleRequest request, CancellationToken ct)
+    private async Task<Result<RoleResponse>> UpdateRoleAsync(Guid id, UpdateRoleRequest request, CancellationToken ct)
     {
         var update = Builders<Role>.Update.Combine();
         if (request.Name is not null)
@@ -62,23 +83,21 @@ public sealed class RolesController(ClustralDb db, ILogger<RolesController> logg
 
         var result = await db.Roles.UpdateOneAsync(r => r.Id == id, update, cancellationToken: ct);
         if (result.MatchedCount == 0)
-            return NotFound();
+            return ResultErrors.RoleNotFound(id.ToString());
 
         var role = await db.Roles.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
-        return Ok(new RoleResponse(role!.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt));
+        return new RoleResponse(role!.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt);
     }
 
-    [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    private async Task<Result> DeleteRoleAsync(Guid id, CancellationToken ct)
     {
-        var result = await db.Roles.DeleteOneAsync(r => r.Id == id, ct);
-        if (result.DeletedCount == 0)
-            return NotFound();
+        var deleteResult = await db.Roles.DeleteOneAsync(r => r.Id == id, ct);
+        if (deleteResult.DeletedCount == 0)
+            return ResultErrors.RoleNotFound(id.ToString());
 
-        // Cascade: remove all assignments for this role.
         await db.RoleAssignments.DeleteManyAsync(a => a.RoleId == id, ct);
         logger.LogInformation("Role {RoleId} deleted", id);
 
-        return NoContent();
+        return Result.Success();
     }
 }

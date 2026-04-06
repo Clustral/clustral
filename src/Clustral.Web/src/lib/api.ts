@@ -36,8 +36,15 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`${res.status}: ${detail || res.statusText}`);
+    // Controllers return RFC 7807 Problem Details JSON on errors.
+    let message = res.statusText;
+    try {
+      const body = await res.json();
+      message = body.detail || body.error || body.title || message;
+    } catch {
+      message = (await res.text().catch(() => "")) || message;
+    }
+    throw new Error(message);
   }
 
   return res.json() as Promise<T>;

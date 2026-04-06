@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -93,8 +94,7 @@ internal static class KubeLoginCommand
 
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
-            await Console.Error.WriteLineAsync(
-                "error: ControlPlaneUrl is not set in ~/.clustral/config.json.");
+            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
             ctx.ExitCode = 1;
             return;
         }
@@ -105,8 +105,7 @@ internal static class KubeLoginCommand
 
         if (token is null)
         {
-            await Console.Error.WriteLineAsync(
-                "error: No token found. Run 'clustral login' first.");
+            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
             ctx.ExitCode = 1;
             return;
         }
@@ -120,21 +119,20 @@ internal static class KubeLoginCommand
         }
         catch (OperationCanceledException)
         {
-            await Console.Error.WriteLineAsync("Cancelled.");
+            CliErrors.WriteError("Operation cancelled.");
             ctx.ExitCode = 130;
             return;
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"error: {ex.Message}");
+            CliErrors.WriteConnectionError(ex);
             ctx.ExitCode = 1;
             return;
         }
 
         if (string.IsNullOrEmpty(credential.Token))
         {
-            await Console.Error.WriteLineAsync(
-                "error: ControlPlane returned an empty token. Your session may have expired — run 'clustral login' first.");
+            CliErrors.WriteError("ControlPlane returned an empty token. Your session may have expired — run 'clustral login' first.");
             ctx.ExitCode = 1;
             return;
         }
@@ -156,7 +154,7 @@ internal static class KubeLoginCommand
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"error writing kubeconfig: {ex.Message}");
+            CliErrors.WriteError($"Writing kubeconfig failed: {ex.Message}");
             ctx.ExitCode = 1;
             return;
         }

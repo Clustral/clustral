@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Spectre.Console;
 
@@ -81,7 +82,8 @@ internal static class AccessCommand
 
     private static Command BuildLsSubcommand()
     {
-        var cmd = new Command("ls", "List access requests.");
+        var cmd = new Command("list", "List access requests.");
+        cmd.AddAlias("ls");
         cmd.AddOption(StatusFilterOption);
         cmd.AddOption(ActiveOption);
         cmd.AddOption(InsecureOption);
@@ -152,7 +154,7 @@ internal static class AccessCommand
         }
         if (roleId is null)
         {
-            await Console.Error.WriteLineAsync($"error: Role '{roleName}' not found.");
+            CliErrors.WriteError($"Role '{roleName}' not found.");
             ctx.ExitCode = 1;
             return;
         }
@@ -164,7 +166,7 @@ internal static class AccessCommand
             c.Name.Equals(clusterName, StringComparison.OrdinalIgnoreCase) || c.Id == clusterName);
         if (cluster is null)
         {
-            await Console.Error.WriteLineAsync($"error: Cluster '{clusterName}' not found.");
+            CliErrors.WriteError($"Cluster '{clusterName}' not found.");
             ctx.ExitCode = 1;
             return;
         }
@@ -185,7 +187,7 @@ internal static class AccessCommand
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(ct);
-            await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+            CliErrors.WriteHttpError((int)response.StatusCode, detail);
             ctx.ExitCode = 1;
             return;
         }
@@ -250,7 +252,7 @@ internal static class AccessCommand
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(ct);
-            await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+            CliErrors.WriteHttpError((int)response.StatusCode, detail);
             ctx.ExitCode = 1;
             return;
         }
@@ -284,7 +286,7 @@ internal static class AccessCommand
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(ct);
-            await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+            CliErrors.WriteHttpError((int)response.StatusCode, detail);
             ctx.ExitCode = 1;
             return;
         }
@@ -317,7 +319,7 @@ internal static class AccessCommand
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(ct);
-            await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+            CliErrors.WriteHttpError((int)response.StatusCode, detail);
             ctx.ExitCode = 1;
             return;
         }
@@ -345,7 +347,7 @@ internal static class AccessCommand
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(ct);
-            await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+            CliErrors.WriteHttpError((int)response.StatusCode, detail);
             ctx.ExitCode = 1;
             return;
         }
@@ -417,7 +419,7 @@ internal static class AccessCommand
 
         if (string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
         {
-            Console.Error.WriteLine("error: ControlPlaneUrl not set. Run 'clustral login <url>' first.");
+            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
             exitCode = 1;
             return null;
         }
@@ -426,7 +428,7 @@ internal static class AccessCommand
         var token = cache.ReadAsync().GetAwaiter().GetResult();
         if (token is null)
         {
-            Console.Error.WriteLine("error: No token found. Run 'clustral login' first.");
+            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
             exitCode = 1;
             return null;
         }

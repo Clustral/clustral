@@ -19,16 +19,22 @@ Clustral.ControlPlane/
 │
 ├── Api/
 │   ├── Controllers/
-│   │   ├── ClustersController.cs   ← GET /api/v1/clusters, DELETE /api/v1/clusters/{id}
-│   │   └── AuthController.cs       ← POST /api/v1/auth/kubeconfig-credential, DELETE /api/v1/auth/credentials/{id}
+│   │   ├── ClustersController.cs          ← GET /api/v1/clusters, DELETE /api/v1/clusters/{id}
+│   │   ├── AuthController.cs              ← POST /api/v1/auth/kubeconfig-credential, DELETE /api/v1/auth/credentials/{id}
+│   │   ├── AccessRequestsController.cs    ← JIT access request endpoints (request, list, approve, deny, revoke)
+│   │   ├── RolesController.cs             ← Role CRUD
+│   │   └── UsersController.cs             ← User + role assignment management
+│   ├── GlobalExceptionHandlerMiddleware.cs ← RFC 7807 Problem Details for unhandled errors
 │   └── Models/
-│       ├── ClusterModels.cs        ← REST request/response records
-│       └── AuthModels.cs
+│       ├── ClusterModels.cs               ← REST request/response records
+│       ├── AuthModels.cs
+│       └── AccessRequestModels.cs         ← JIT access request/response records
 │
 ├── Domain/
 │   ├── Cluster.cs                  ← Cluster aggregate root + ClusterStatus enum
 │   ├── User.cs                     ← Keycloak-backed user record
-│   └── AccessToken.cs              ← Issued credential (user kubeconfig or agent) + CredentialKind enum
+│   ├── AccessToken.cs              ← Issued credential (user kubeconfig or agent) + CredentialKind enum
+│   └── AccessRequest.cs            ← JIT access request entity (pending, approved, denied, revoked)
 │
 ├── Infrastructure/
 │   ├── ClustralDbContext.cs        ← EF Core DbContext, entity configs, snake_case naming

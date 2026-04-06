@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Infrastructure;
+using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
@@ -27,33 +28,10 @@ public sealed class ClustersController(ClustralDb db, ILogger<ClustersController
         [FromBody] RegisterClusterRestRequest request,
         CancellationToken ct)
     {
-        var exists = await db.Clusters
-            .Find(c => c.Name == request.Name)
-            .AnyAsync(ct);
-
-        if (exists)
-            return Conflict(new { error = $"A cluster named '{request.Name}' is already registered." });
-
-        var bootstrapToken = GenerateToken();
-        var tokenHash      = HashToken(bootstrapToken);
-
-        var cluster = new Cluster
-        {
-            Id                 = Guid.NewGuid(),
-            Name               = request.Name,
-            Description        = request.Description,
-            AgentPublicKeyPem  = request.AgentPublicKeyPem,
-            BootstrapTokenHash = tokenHash,
-            Status             = ClusterStatus.Pending,
-            Labels             = request.Labels ?? new Dictionary<string, string>(),
-        };
-
-        await db.Clusters.InsertOneAsync(cluster, cancellationToken: ct);
-
-        logger.LogInformation("Cluster {Name} registered with id {Id} via REST", cluster.Name, cluster.Id);
-
-        return CreatedAtAction(nameof(Get), new { id = cluster.Id },
-            new RegisterClusterRestResponse(cluster.Id, bootstrapToken));
+        var result = await RegisterClusterAsync(request, ct);
+        return result.Match<IActionResult>(
+            value => CreatedAtAction(nameof(Get), new { id = value.ClusterId }, value),
+            error => error.ToActionResult());
     }
 
     // GET /api/v1/clusters
@@ -111,7 +89,7 @@ public sealed class ClustersController(ClustralDb db, ILogger<ClustersController
             .FirstOrDefaultAsync(ct);
 
         if (cluster is null)
-            return NotFound();
+            return ResultErrors.ClusterNotFound(id.ToString()).ToActionResult();
 
         return Ok(ClusterResponse.From(cluster));
     }
@@ -122,16 +100,49 @@ public sealed class ClustersController(ClustralDb db, ILogger<ClustersController
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var result = await db.Clusters.DeleteOneAsync(c => c.Id == id, ct);
+        var result = await DeleteClusterAsync(id, ct);
+        return result.ToActionResult();
+    }
 
-        if (result.DeletedCount == 0)
-            return NotFound();
+    // ─────────────────────────────────────────────────────────────────────────
 
-        // Cascade: delete all access tokens for this cluster.
+    private async Task<Result<RegisterClusterRestResponse>> RegisterClusterAsync(
+        RegisterClusterRestRequest request, CancellationToken ct)
+    {
+        var exists = await db.Clusters.Find(c => c.Name == request.Name).AnyAsync(ct);
+        if (exists)
+            return ResultErrors.DuplicateClusterName(request.Name);
+
+        var bootstrapToken = GenerateToken();
+        var tokenHash = HashToken(bootstrapToken);
+
+        var cluster = new Cluster
+        {
+            Id                 = Guid.NewGuid(),
+            Name               = request.Name,
+            Description        = request.Description,
+            AgentPublicKeyPem  = request.AgentPublicKeyPem,
+            BootstrapTokenHash = tokenHash,
+            Status             = ClusterStatus.Pending,
+            Labels             = request.Labels ?? new Dictionary<string, string>(),
+        };
+
+        await db.Clusters.InsertOneAsync(cluster, cancellationToken: ct);
+        logger.LogInformation("Cluster {Name} registered with id {Id} via REST", cluster.Name, cluster.Id);
+
+        return new RegisterClusterRestResponse(cluster.Id, bootstrapToken);
+    }
+
+    private async Task<Result> DeleteClusterAsync(Guid id, CancellationToken ct)
+    {
+        var deleteResult = await db.Clusters.DeleteOneAsync(c => c.Id == id, ct);
+        if (deleteResult.DeletedCount == 0)
+            return ResultErrors.ClusterNotFound(id.ToString());
+
         await db.AccessTokens.DeleteManyAsync(t => t.ClusterId == id, ct);
-
         logger.LogInformation("Cluster {ClusterId} deregistered", id);
-        return NoContent();
+
+        return Result.Success();
     }
 
     // -------------------------------------------------------------------------

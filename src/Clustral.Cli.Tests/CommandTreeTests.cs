@@ -56,7 +56,7 @@ public class CommandTreeTests(ITestOutputHelper output)
         var subcommands = kube.Subcommands.Select(s => s.Name).ToList();
         Assert.Contains("login", subcommands);
         Assert.Contains("logout", subcommands);
-        Assert.Contains("ls", subcommands);
+        Assert.Contains("list", subcommands);
     }
 
     [Fact]

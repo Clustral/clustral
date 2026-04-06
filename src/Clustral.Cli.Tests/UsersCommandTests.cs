@@ -18,14 +18,14 @@ public class UsersCommandTests(ITestOutputHelper output)
             output.WriteLine($"  {sub.Name} — {sub.Description}");
 
         Assert.Equal("users", users.Name);
-        Assert.Contains(users.Subcommands, s => s.Name == "ls");
+        Assert.Contains(users.Subcommands, s => s.Name == "list");
     }
 
     [Fact]
     public void UsersLs_HasInsecureOption()
     {
         var users = UsersCommand.BuildUsersCommand();
-        var ls = users.Subcommands.First(s => s.Name == "ls");
+        var ls = users.Subcommands.First(s => s.Name == "list");
 
         Assert.Contains(ls.Options, o => o.Name == "insecure");
     }

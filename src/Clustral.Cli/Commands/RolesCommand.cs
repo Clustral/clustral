@@ -10,24 +10,24 @@ using Spectre.Console;
 namespace Clustral.Cli.Commands;
 
 /// <summary>
-/// Implements <c>clustral users ls</c>: lists all users for reviewer discovery.
+/// Implements <c>clustral roles ls</c>: lists all roles with their K8s groups.
 /// </summary>
-internal static class UsersCommand
+internal static class RolesCommand
 {
     private static readonly Option<bool> InsecureOption = new(
         "--insecure",
         "Skip TLS verification.");
 
-    public static Command BuildUsersCommand()
+    public static Command BuildRolesCommand()
     {
-        var users = new Command("users", "Manage users.");
-        users.AddCommand(BuildLsSubcommand());
-        return users;
+        var roles = new Command("roles", "Manage roles.");
+        roles.AddCommand(BuildLsSubcommand());
+        return roles;
     }
 
     private static Command BuildLsSubcommand()
     {
-        var cmd = new Command("list", "List all users.");
+        var cmd = new Command("list", "List all roles.");
         cmd.AddAlias("ls");
         cmd.AddOption(InsecureOption);
         cmd.SetHandler(HandleAsync);
@@ -70,7 +70,7 @@ internal static class UsersCommand
 
         try
         {
-            var response = await http.GetAsync("api/v1/users", ct);
+            var response = await http.GetAsync("api/v1/roles", ct);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -81,15 +81,15 @@ internal static class UsersCommand
             }
 
             var json = await response.Content.ReadAsStringAsync(ct);
-            var result = JsonSerializer.Deserialize(json, CliJsonContext.Default.UserListResponse);
+            var result = JsonSerializer.Deserialize(json, CliJsonContext.Default.RoleListResponse);
 
-            if (result is null || result.Users.Count == 0)
+            if (result is null || result.Roles.Count == 0)
             {
-                AnsiConsole.MarkupLine("[dim]No users found.[/]");
+                AnsiConsole.MarkupLine("[dim]No roles found.[/]");
                 return;
             }
 
-            RenderUsersTable(AnsiConsole.Console, result.Users);
+            RenderRolesTable(AnsiConsole.Console, result.Roles);
         }
         catch (Exception ex)
         {
@@ -98,24 +98,24 @@ internal static class UsersCommand
         }
     }
 
-    internal static void RenderUsersTable(IAnsiConsole console, List<UserResponse> users)
+    internal static void RenderRolesTable(IAnsiConsole console, List<RoleResponse> roles)
     {
         var table = new Table()
             .Border(TableBorder.None)
-            .AddColumn("Email")
-            .AddColumn("Display Name")
-            .AddColumn("Last Seen");
+            .AddColumn("Role")
+            .AddColumn("Description")
+            .AddColumn("K8s Groups");
 
-        foreach (var u in users)
+        foreach (var r in roles)
         {
-            var lastSeen = u.LastSeenAt.HasValue
-                ? ClustersListCommand.TimeAgo(u.LastSeenAt.Value)
+            var groups = r.KubernetesGroups.Count > 0
+                ? $"[dim]{string.Join(", ", r.KubernetesGroups).EscapeMarkup()}[/]"
                 : "[dim]-[/]";
 
             table.AddRow(
-                u.Email.EscapeMarkup(),
-                u.DisplayName?.EscapeMarkup() ?? "[dim]-[/]",
-                lastSeen);
+                $"[yellow]{r.Name.EscapeMarkup()}[/]",
+                r.Description.EscapeMarkup(),
+                groups);
         }
 
         console.Write(table);

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Clustral.Cli.Ui;
 
 namespace Clustral.Cli.Commands;
 
@@ -103,8 +104,7 @@ internal static class UpdateCommand
 
             if (assetUrl is null)
             {
-                await Console.Error.WriteLineAsync(
-                    $"error: No binary found for {artifactName} in release {tagName}.");
+                CliErrors.WriteError($"No binary found for {artifactName} in release {tagName}.");
                 ctx.ExitCode = 1;
                 return;
             }
@@ -118,7 +118,7 @@ internal static class UpdateCommand
 
             if (string.IsNullOrEmpty(currentPath))
             {
-                await Console.Error.WriteLineAsync("error: Could not determine binary path.");
+                CliErrors.WriteError("Could not determine binary path.");
                 ctx.ExitCode = 1;
                 return;
             }
@@ -146,7 +146,7 @@ internal static class UpdateCommand
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"error: {ex.Message}");
+            CliErrors.WriteConnectionError(ex);
             ctx.ExitCode = 1;
         }
     }

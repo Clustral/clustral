@@ -9,9 +9,26 @@ authenticating with Keycloak and writing kubeconfig credentials.
 
 ```
 clustral
-├── login                         ← OIDC PKCE flow; writes JWT to ~/.clustral/token
-└── kube
-    └── login <cluster-id>        ← REST call to ControlPlane; writes ~/.kube/config entry
+├── login [controlplane-url]        ← OIDC PKCE flow
+├── logout                          ← Revoke all credentials, clear JWT
+├── kube
+│   ├── login <cluster-id>          ← Issue kubeconfig credential
+│   ├── logout <cluster>            ← Revoke credential, remove context
+│   └── list (alias: ls)            ← List available clusters
+├── clusters
+│   └── list (alias: ls)            ← List registered clusters
+├── users
+│   └── list (alias: ls)            ← List all users
+├── roles
+│   └── list (alias: ls)            ← List all roles
+├── access
+│   ├── request                     ← Request JIT access
+│   ├── list (alias: ls)            ← List access requests
+│   ├── approve <id>                ← Approve pending request
+│   ├── deny <id>                   ← Deny pending request
+│   └── revoke <id>                 ← Revoke active grant
+├── update                          ← Self-update from GitHub
+└── version                         ← Show CLI version
 ```
 
 ---
@@ -24,7 +41,14 @@ Clustral.Cli/
 │
 ├── Commands/
 │   ├── LoginCommand.cs           ← clustral login
-│   └── KubeLoginCommand.cs       ← clustral kube / clustral kube login
+│   ├── KubeLoginCommand.cs       ← clustral kube / clustral kube login
+│   ├── KubeLogoutCommand.cs      ← clustral kube logout
+│   ├── UsersCommand.cs           ← clustral users list
+│   ├── RolesCommand.cs           ← clustral roles list
+│   └── AccessCommand.cs          ← clustral access (request, list, approve, deny, revoke)
+│
+├── Ui/
+│   └── CliErrors.cs              ← Card-style error display via Spectre.Console panels
 │
 ├── Auth/
 │   ├── OidcFlowHandler.cs        ← PKCE orchestration (verifier, challenge, browser, exchange)
@@ -111,6 +135,29 @@ Example config file:
 
 ---
 
+## Error Display
+
+The CLI uses `Ui/CliErrors.cs` for consistent, card-style error output via
+Spectre.Console panels. Four methods are available:
+
+| Method | Purpose |
+|---|---|
+| `WriteHttpError` | Formats HTTP error responses (status code + body) into a bordered panel |
+| `WriteConnectionError` | Displays connection failures (e.g. ControlPlane unreachable) with actionable hints |
+| `WriteError` | General-purpose error panel for unexpected errors |
+| `WriteNotConfigured` | Shown when `~/.clustral/config.json` is missing or incomplete; guides the user to run `clustral login` |
+
+---
+
+## Spectre.Console
+
+The CLI uses [Spectre.Console](https://spectreconsole.net/) for rich terminal
+output including tables, panels, and markup formatting. The previous custom
+`Ansi.cs` helper was removed in favour of Spectre.Console's built-in
+capabilities.
+
+---
+
 ## Build & publish
 
 ```bash
@@ -134,8 +181,6 @@ The output binary is at:
 
 | # | What | Where |
 |---|---|---|
-| 1 | `clustral logout` — clears `~/.clustral/token` | new `Commands/LogoutCommand.cs` |
-| 2 | `clustral kube list` — lists available cluster IDs from ControlPlane | new subcommand under `kube` |
-| 3 | `clustral kube remove <context-name>` — calls `KubeconfigWriter.RemoveClusterEntry` | new subcommand under `kube` |
-| 4 | `clustral configure` — interactive wizard that writes `~/.clustral/config.json` | new command |
-| 5 | Token refresh / expiry detection before `kube login` | `LoginCommand` or new `RefreshCommand` |
+| 1 | Token refresh / expiry detection before `kube login` | `OidcFlowHandler` or new `RefreshCommand` |
+| 2 | `clustral configure` — interactive wizard that writes `~/.clustral/config.json` | new `Commands/ConfigureCommand.cs` |
+| 3 | Credential rotation detection — warn when agent credential is near expiry | `KubeLoginCommand` + SDK |

@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -22,7 +23,8 @@ internal static class KubeLsCommand
 
     public static Command Build()
     {
-        var cmd = new Command("ls", "List available Kubernetes clusters.");
+        var cmd = new Command("list", "List available Kubernetes clusters.");
+        cmd.AddAlias("ls");
         cmd.AddOption(InsecureOption);
         cmd.SetHandler(HandleAsync);
         return cmd;
@@ -37,8 +39,7 @@ internal static class KubeLsCommand
         var controlPlaneUrl = config.ControlPlaneUrl;
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
-            await Console.Error.WriteLineAsync(
-                "error: ControlPlaneUrl not set. Run 'clustral login <url>' first.");
+            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
             ctx.ExitCode = 1;
             return;
         }
@@ -47,8 +48,7 @@ internal static class KubeLsCommand
         var token = await cache.ReadAsync(ct);
         if (token is null)
         {
-            await Console.Error.WriteLineAsync(
-                "error: No token found. Run 'clustral login' first.");
+            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
             ctx.ExitCode = 1;
             return;
         }
@@ -71,7 +71,7 @@ internal static class KubeLsCommand
             if (!response.IsSuccessStatusCode)
             {
                 var detail = await response.Content.ReadAsStringAsync(ct);
-                await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+                CliErrors.WriteHttpError((int)response.StatusCode, detail);
                 ctx.ExitCode = 1;
                 return;
             }
@@ -90,7 +90,7 @@ internal static class KubeLsCommand
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"error: {ex.Message}");
+            CliErrors.WriteConnectionError(ex);
             ctx.ExitCode = 1;
         }
     }

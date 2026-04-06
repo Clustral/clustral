@@ -1,0 +1,41 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- gRPC / Protobuf -->
+    <PackageVersion Include="Google.Protobuf" Version="3.29.3" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.67.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.67.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.67.0" />
+
+    <!-- MongoDB -->
+    <PackageVersion Include="MongoDB.Driver" Version="3.4.0" />
+
+    <!-- Auth -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
+
+    <!-- Logging -->
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+
+    <!-- OpenAPI -->
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.3.1" />
+
+    <!-- YAML -->
+    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
+
+    <!-- CLI -->
+    <PackageVersion Include="Spectre.Console" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console.Testing" Version="0.55.0" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+
+    <!-- Testing -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.5" />
+    <PackageVersion Include="Testcontainers.MongoDb" Version="4.5.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+  </ItemGroup>
+</Project>

@@ -8,25 +8,9 @@
     <RootNamespace>Clustral.Cli</RootNamespace>
     <AssemblyName>clustral</AssemblyName>
     <Version>0.1.0</Version>
-
-    <!--
-      NativeAOT — produces a self-contained native binary with no .NET runtime
-      dependency.  Enable during publish:
-        dotnet publish -r osx-arm64 -c Release
-      Keep <PublishAot> enabled at build time so the compiler enforces
-      AOT-safety rules (no unbounded reflection, no dynamic).
-    -->
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
     <StripSymbols>true</StripSymbols>
-
-
-    <!--
-      Suppress the YamlDotNet reflection warning surfaced through Clustral.Sdk.
-      KubeconfigWriter is the only reflection-heavy path; its DynamicDependency
-      attributes are added there.  Any new reflection usage in this project must
-      be explicitly annotated instead of suppressing globally.
-    -->
     <NoWarn>IL2026;IL3050</NoWarn>
   </PropertyGroup>
 
@@ -34,7 +18,6 @@
     <InternalsVisibleTo Include="Clustral.Cli.Tests" />
   </ItemGroup>
 
-  <!-- macOS: NativeAOT linker needs OpenSSL from Homebrew -->
   <!-- macOS: NativeAOT linker needs Homebrew libs (OpenSSL, brotli) -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <LinkerArg Include="-L/opt/homebrew/lib" />
@@ -42,8 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Spectre.Console" Version="0.55.0" />
-    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>

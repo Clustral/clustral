@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Spectre.Console;
 
@@ -49,8 +50,7 @@ internal static class ClustersListCommand
         var controlPlaneUrl = config.ControlPlaneUrl;
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
-            await Console.Error.WriteLineAsync(
-                "error: ControlPlaneUrl not set. Run 'clustral login <url>' first.");
+            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
             ctx.ExitCode = 1;
             return;
         }
@@ -59,8 +59,7 @@ internal static class ClustersListCommand
         var token = await cache.ReadAsync(ct);
         if (token is null)
         {
-            await Console.Error.WriteLineAsync(
-                "error: No token found. Run 'clustral login' first.");
+            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
             ctx.ExitCode = 1;
             return;
         }
@@ -85,8 +84,7 @@ internal static class ClustersListCommand
             if (!response.IsSuccessStatusCode)
             {
                 var detail = await response.Content.ReadAsStringAsync(ct);
-                await Console.Error.WriteLineAsync(
-                    $"error: {(int)response.StatusCode} {detail}");
+                CliErrors.WriteHttpError((int)response.StatusCode, detail);
                 ctx.ExitCode = 1;
                 return;
             }
@@ -104,7 +102,7 @@ internal static class ClustersListCommand
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"error: {ex.Message}");
+            CliErrors.WriteConnectionError(ex);
             ctx.ExitCode = 1;
         }
     }

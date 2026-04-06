@@ -3,6 +3,7 @@ using System.Xml;
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Infrastructure;
+using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
@@ -28,21 +29,21 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
         CancellationToken ct)
     {
         var user = await ResolveCurrentUserAsync(ct);
-        if (user is null) return Unauthorized();
+        if (user is null) return ResultErrors.UserUnauthorized().ToActionResult();
 
         // Validate role and cluster exist.
         var role = await db.Roles.Find(r => r.Id == request.RoleId).FirstOrDefaultAsync(ct);
-        if (role is null) return NotFound(new { error = "Role not found." });
+        if (role is null) return ResultErrors.RoleNotFound(request.RoleId.ToString()).ToActionResult();
 
         var cluster = await db.Clusters.Find(c => c.Id == request.ClusterId).FirstOrDefaultAsync(ct);
-        if (cluster is null) return NotFound(new { error = "Cluster not found." });
+        if (cluster is null) return ResultErrors.ClusterNotFound(request.ClusterId.ToString()).ToActionResult();
 
         // Check user doesn't already have static access.
         var existingAssignment = await db.RoleAssignments
             .Find(a => a.UserId == user.Id && a.ClusterId == request.ClusterId)
             .FirstOrDefaultAsync(ct);
         if (existingAssignment is not null)
-            return Conflict(new { error = "You already have a static role assignment for this cluster." });
+            return ResultErrors.StaticAssignmentExists().ToActionResult();
 
         // Check no duplicate pending request.
         var existingPending = await db.AccessRequests
@@ -51,7 +52,7 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
                      && r.Status == AccessRequestStatus.Pending)
             .FirstOrDefaultAsync(ct);
         if (existingPending is not null)
-            return Conflict(new { error = "You already have a pending request for this cluster.", requestId = existingPending.Id });
+            return ResultErrors.PendingRequestExists(existingPending.Id).ToActionResult();
 
         // Check no active grant already exists.
         var now = DateTimeOffset.UtcNow;
@@ -62,14 +63,14 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
                      && r.GrantExpiresAt > now)
             .FirstOrDefaultAsync(ct);
         if (existingGrant is not null)
-            return Conflict(new { error = "You already have an active JIT grant for this cluster.", requestId = existingGrant.Id });
+            return ResultErrors.GrantAlreadyActive(existingGrant.Id).ToActionResult();
 
         // Parse duration.
         var duration = DefaultGrantDuration;
         if (!string.IsNullOrEmpty(request.RequestedDuration))
         {
             try { duration = XmlConvert.ToTimeSpan(request.RequestedDuration); }
-            catch { return BadRequest(new { error = "Invalid duration format. Use ISO 8601 (e.g., PT8H)." }); }
+            catch { return ResultErrors.InvalidDuration(request.RequestedDuration).ToActionResult(); }
         }
 
         // Resolve suggested reviewer emails to user IDs.
@@ -138,7 +139,7 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
         if (mine)
         {
             var user = await ResolveCurrentUserAsync(ct);
-            if (user is null) return Unauthorized();
+            if (user is null) return ResultErrors.UserUnauthorized().ToActionResult();
             filter &= builder.Eq(r => r.RequesterId, user.Id);
         }
 
@@ -163,7 +164,7 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
         var request = await db.AccessRequests.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
-        if (request is null) return NotFound();
+        if (request is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.").ToActionResult();
 
         return Ok(await EnrichAsync(request, ct));
     }
@@ -179,16 +180,16 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
         CancellationToken ct)
     {
         var reviewer = await ResolveCurrentUserAsync(ct);
-        if (reviewer is null) return Unauthorized();
+        if (reviewer is null) return ResultErrors.UserUnauthorized().ToActionResult();
 
         var request = await db.AccessRequests.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
-        if (request is null) return NotFound();
+        if (request is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.").ToActionResult();
 
         if (request.Status != AccessRequestStatus.Pending)
-            return Conflict(new { error = $"Request is already {request.Status}." });
+            return ResultErrors.RequestNotPending(request.Status.ToString()).ToActionResult();
 
         if (request.IsPendingExpired)
-            return Conflict(new { error = "Request has expired." });
+            return ResultErrors.RequestExpired().ToActionResult();
 
         var now = DateTimeOffset.UtcNow;
         var grantDuration = request.RequestedDuration;
@@ -226,13 +227,13 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
         CancellationToken ct)
     {
         var reviewer = await ResolveCurrentUserAsync(ct);
-        if (reviewer is null) return Unauthorized();
+        if (reviewer is null) return ResultErrors.UserUnauthorized().ToActionResult();
 
         var request = await db.AccessRequests.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
-        if (request is null) return NotFound();
+        if (request is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.").ToActionResult();
 
         if (request.Status != AccessRequestStatus.Pending)
-            return Conflict(new { error = $"Request is already {request.Status}." });
+            return ResultErrors.RequestNotPending(request.Status.ToString()).ToActionResult();
 
         var now = DateTimeOffset.UtcNow;
         var update = Builders<AccessRequest>.Update
@@ -262,19 +263,19 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
         CancellationToken ct)
     {
         var revoker = await ResolveCurrentUserAsync(ct);
-        if (revoker is null) return Unauthorized();
+        if (revoker is null) return ResultErrors.UserUnauthorized().ToActionResult();
 
         var request = await db.AccessRequests.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
-        if (request is null) return NotFound();
+        if (request is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.").ToActionResult();
 
         if (request.Status != AccessRequestStatus.Approved)
-            return Conflict(new { error = $"Only approved grants can be revoked. Current status: {request.Status}." });
+            return ResultErrors.GrantNotApproved(request.Status.ToString()).ToActionResult();
 
         if (request.IsRevoked)
-            return Conflict(new { error = "Grant has already been revoked." });
+            return ResultErrors.GrantAlreadyRevoked().ToActionResult();
 
         if (!request.IsGrantActive)
-            return Conflict(new { error = "Grant has already expired." });
+            return ResultErrors.GrantAlreadyExpired().ToActionResult();
 
         var now = DateTimeOffset.UtcNow;
         var update = Builders<AccessRequest>.Update

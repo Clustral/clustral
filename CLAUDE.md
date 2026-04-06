@@ -10,7 +10,7 @@ Clustral is an open-source Kubernetes access proxy (Teleport alternative) built 
 clustral/
 ├── src/
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, EF Core, Keycloak OIDC
-│   ├── Clustral.Agent/          # .NET Worker Service — gRPC client, kubectl reverse proxy, Helm-deployed
+│   ├── clustral-agent/          # Go 1.23 service — gRPC client, kubectl reverse proxy, Helm-deployed
 │   ├── Clustral.Cli/            # System.CommandLine, NativeAOT — clustral login / clustral kube login
 │   └── Clustral.Web/            # Vite + React 18 + TypeScript, shadcn/ui, TanStack Query, Zustand
 ├── packages/
@@ -19,6 +19,7 @@ clustral/
 ├── infra/
 │   ├── helm/                    # Agent Helm chart
 │   └── k8s/                     # Local kind cluster manifests for dev
+├── Directory.Packages.props     # Central package version management
 ├── docker-compose.yml
 └── CLAUDE.md
 ```
@@ -39,7 +40,7 @@ clustral/
       │  EF Core → PostgreSQL (clusters, users, audit log)
       │  Keycloak OIDC — token introspection / JWKS validation
       ▼
-  Agent  (Worker Service, runs in-cluster via Helm)
+  Agent  (Go service, runs in-cluster via Helm)
       │  gRPC client → TunnelService on ControlPlane
       │  Receives proxied kubectl HTTP traffic over the tunnel
       │  Forwards locally to the Kubernetes API server
@@ -51,6 +52,7 @@ Key flows:
 - **clustral login** — OIDC device-code flow against Keycloak, writes token to `~/.clustral/token`.
 - **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
 - **Tunnel** — agent opens a persistent gRPC stream to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
+- **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
 
 ---
 
@@ -89,8 +91,8 @@ dotnet run
 # Create local kind cluster first (one-time)
 kind create cluster --config infra/k8s/kind-config.yaml
 
-cd src/Clustral.Agent
-dotnet run -- --control-plane-url=http://localhost:5001
+cd src/clustral-agent
+go run . --control-plane-url=http://localhost:5001
 ```
 
 ### CLI
@@ -98,7 +100,18 @@ dotnet run -- --control-plane-url=http://localhost:5001
 ```bash
 cd src/Clustral.Cli
 dotnet run -- login
+dotnet run -- logout
 dotnet run -- kube login --cluster <name>
+dotnet run -- kube logout <cluster>
+dotnet run -- kube list
+dotnet run -- clusters list
+dotnet run -- users list
+dotnet run -- roles list
+dotnet run -- access request --role <name> --cluster <name>
+dotnet run -- access list
+dotnet run -- access approve <id>
+dotnet run -- access deny <id> --reason "..."
+dotnet run -- access revoke <id>
 ```
 
 NativeAOT publish:
@@ -114,6 +127,8 @@ bun install
 bun dev
 # Listens: http://localhost:5173
 ```
+
+The Web UI includes pages for clusters, users, roles, and access requests management.
 
 ---
 
@@ -172,8 +187,13 @@ Services:
 
 ## Testing
 
-- **Unit tests**: `*.Tests` projects alongside each `src/` project. Run with `dotnet test`.
-- **Integration tests**: `src/Clustral.ControlPlane.IntegrationTests` — spins up a real PostgreSQL via Testcontainers; do not mock the database.
+524 tests across 3 projects. Run all with:
+```bash
+dotnet test Clustral.slnx
+```
+
+- **Unit tests**: `*.Tests` projects alongside each `src/` project.
+- **Integration tests**: `src/Clustral.ControlPlane.IntegrationTests` — uses Testcontainers (MongoDB) + `WebApplicationFactory`; requires Docker running. Do not mock the database.
 - **Web tests**: `src/Clustral.Web` uses Vitest (`bun test`) and Playwright for e2e (`bun e2e`).
 
 ---

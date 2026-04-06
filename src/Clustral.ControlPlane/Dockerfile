@@ -6,6 +6,9 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
 WORKDIR /src
 
+# Copy Central Package Management props first (required for restore).
+COPY Directory.Packages.props    Directory.Packages.props
+
 # Copy everything needed for build.
 COPY packages/proto/              packages/proto/
 COPY packages/Clustral.Sdk/      packages/Clustral.Sdk/

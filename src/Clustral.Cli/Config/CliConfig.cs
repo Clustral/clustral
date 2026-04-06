@@ -97,6 +97,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(ClusterListResponse))]
 [JsonSerializable(typeof(UserProfileResponse))]
 [JsonSerializable(typeof(UserListResponse))]
+[JsonSerializable(typeof(RoleListResponse))]
 [JsonSerializable(typeof(AccessRequestCreateRequest))]
 [JsonSerializable(typeof(AccessRequestResponse))]
 [JsonSerializable(typeof(AccessRequestListResponse))]
@@ -205,6 +206,22 @@ internal sealed class UserResponse
     [JsonPropertyName("email")]       public string         Email       { get; set; } = string.Empty;
     [JsonPropertyName("displayName")] public string?        DisplayName { get; set; }
     [JsonPropertyName("lastSeenAt")]  public DateTimeOffset? LastSeenAt { get; set; }
+}
+
+// ── Roles ───────────────────────────────────────────────────────────────────
+
+internal sealed class RoleListResponse
+{
+    [JsonPropertyName("roles")] public List<RoleResponse> Roles { get; set; } = [];
+}
+
+internal sealed class RoleResponse
+{
+    [JsonPropertyName("id")]               public string       Id               { get; set; } = string.Empty;
+    [JsonPropertyName("name")]             public string       Name             { get; set; } = string.Empty;
+    [JsonPropertyName("description")]      public string       Description      { get; set; } = string.Empty;
+    [JsonPropertyName("kubernetesGroups")] public List<string> KubernetesGroups { get; set; } = [];
+    [JsonPropertyName("createdAt")]        public DateTimeOffset CreatedAt      { get; set; }
 }
 
 // ── Access requests ─────────────────────────────────────────────────────────

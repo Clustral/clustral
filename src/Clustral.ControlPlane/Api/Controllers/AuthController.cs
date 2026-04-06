@@ -5,6 +5,7 @@ using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
+using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -44,7 +45,7 @@ public sealed class AuthController(
             .FirstOrDefaultAsync(ct);
 
         if (cluster is null)
-            return NotFound(new { error = $"Cluster {request.ClusterId} not found." });
+            return ResultErrors.ClusterNotFound(request.ClusterId.ToString()).ToActionResult();
 
         // 2. Determine TTL — cap at the configured maximum.
         var opts = keycloakOptions.Value;
@@ -164,7 +165,7 @@ public sealed class AuthController(
             .FirstOrDefaultAsync(ct);
 
         if (credential is null)
-            return NotFound();
+            return ResultErrors.CredentialNotFound().ToActionResult();
 
         // Users may only revoke their own credentials.
         var subject = User.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
@@ -174,7 +175,7 @@ public sealed class AuthController(
                 .Find(u => u.Id == credential.UserId.Value)
                 .FirstOrDefaultAsync(ct);
             if (owner?.KeycloakSubject != subject)
-                return Forbid();
+                return ResultErrors.CredentialOwnerMismatch().ToActionResult();
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -206,7 +207,7 @@ public sealed class AuthController(
             .FirstOrDefaultAsync(ct);
 
         if (credential is null)
-            return NotFound();
+            return ResultErrors.CredentialNotFound().ToActionResult();
 
         var now = DateTimeOffset.UtcNow;
         var update = Builders<AccessToken>.Update

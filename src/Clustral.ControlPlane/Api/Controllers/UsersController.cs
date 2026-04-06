@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Infrastructure;
+using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
@@ -21,14 +22,14 @@ public sealed class UsersController(ClustralDb db, ILogger<UsersController> logg
                    ?? User.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
 
         if (string.IsNullOrEmpty(subject))
-            return Unauthorized();
+            return ResultErrors.UserUnauthorized().ToActionResult();
 
         var user = await db.Users
             .Find(u => u.KeycloakSubject == subject)
             .FirstOrDefaultAsync(ct);
 
         if (user is null)
-            return NotFound(new { error = "User not found. This is your first API call — try again." });
+            return ResultErrors.UserNotFound().ToActionResult();
 
         var assignments = await db.RoleAssignments
             .Find(a => a.UserId == user.Id)
@@ -134,13 +135,13 @@ public sealed class UsersController(ClustralDb db, ILogger<UsersController> logg
     {
         // Verify user, role, and cluster exist.
         var user = await db.Users.Find(u => u.Id == id).FirstOrDefaultAsync(ct);
-        if (user is null) return NotFound(new { error = "User not found." });
+        if (user is null) return ResultErrors.UserNotFound().ToActionResult();
 
         var role = await db.Roles.Find(r => r.Id == request.RoleId).FirstOrDefaultAsync(ct);
-        if (role is null) return NotFound(new { error = "Role not found." });
+        if (role is null) return ResultErrors.RoleNotFound(request.RoleId.ToString()).ToActionResult();
 
         var cluster = await db.Clusters.Find(c => c.Id == request.ClusterId).FirstOrDefaultAsync(ct);
-        if (cluster is null) return NotFound(new { error = "Cluster not found." });
+        if (cluster is null) return ResultErrors.ClusterNotFound(request.ClusterId.ToString()).ToActionResult();
 
         // Upsert — replace existing assignment for this user+cluster.
         var callerEmail = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value
@@ -177,7 +178,8 @@ public sealed class UsersController(ClustralDb db, ILogger<UsersController> logg
         var result = await db.RoleAssignments.DeleteOneAsync(
             a => a.Id == assignmentId && a.UserId == userId, ct);
 
-        if (result.DeletedCount == 0) return NotFound();
+        if (result.DeletedCount == 0)
+            return ResultError.NotFound("ASSIGNMENT_NOT_FOUND", "Role assignment not found.").ToActionResult();
 
         logger.LogInformation("Removed role assignment {Id} for user {UserId}", assignmentId, userId);
         return NoContent();

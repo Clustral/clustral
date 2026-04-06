@@ -141,6 +141,9 @@ var app = builder.Build();
 // Middleware pipeline
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Global exception handler — must be first to catch all unhandled exceptions.
+app.UseMiddleware<Clustral.ControlPlane.Api.GlobalExceptionHandlerMiddleware>();
+
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
@@ -193,3 +196,6 @@ var db = app.Services.GetRequiredService<ClustralDb>();
 await db.EnsureIndexesAsync();
 
 app.Run();
+
+// Marker class for WebApplicationFactory<Program> in integration tests.
+public partial class Program { }
