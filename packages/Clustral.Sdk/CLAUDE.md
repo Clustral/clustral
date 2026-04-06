@@ -127,10 +127,10 @@ See `packages/proto/README.md` for full regeneration instructions.
 
 ## Adding a new shared utility
 
-1. Place it under a descriptive subdirectory (`Auth/`, `Kubeconfig/`, `Grpc/`, etc.).
+1. Place it under a descriptive subdirectory (`Auth/`, `Kubeconfig/`, `Grpc/`, `Results/`, etc.).
 2. If the CLI will call it, audit for NativeAOT compatibility (no unbounded
    reflection, no `dynamic`, no `Activator.CreateInstance` without a `[DynamicDependency]`).
-3. Add at least happy-path + error-path tests in `Clustral.Sdk.Tests`.
+3. **Write unit tests** in `Clustral.Sdk.Tests` — at minimum happy-path + error-path coverage. Use `ITestOutputHelper` for test output.
 4. Update this file.
 
 ---

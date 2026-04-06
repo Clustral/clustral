@@ -158,6 +158,19 @@ capabilities.
 
 ---
 
+## Testing
+
+Every new CLI command or feature must include tests in `src/Clustral.Cli.Tests/`:
+
+- **Command tree tests**: verify the command is registered with correct options/arguments.
+- **Render tests**: use `TestConsole` from `Spectre.Console.Testing` to capture and assert on visual output via `ITestOutputHelper`.
+- **Wire type tests**: verify JSON serialization round-trips for any new DTO types in `CliJsonContext`.
+- **Error display tests**: test `CliErrors.*` card rendering for new error scenarios.
+
+Frontend (Web UI) tests are not yet required but will be added later.
+
+---
+
 ## Build & publish
 
 ```bash

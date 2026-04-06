@@ -159,9 +159,12 @@ dotnet run --project src/Clustral.ControlPlane
 
 1. Add request/response records to `Api/Models/`.
 2. Implement the action in the relevant controller (or create a new one).
-3. Annotate with `[ProducesResponseType]` for accurate Swagger output.
-4. Add the corresponding gRPC method if the endpoint is also exposed over
+3. Use `Result<T>` for error paths, mapped via `ToActionResult()`.
+4. Annotate with `[ProducesResponseType]` for accurate Swagger output.
+5. Add the corresponding gRPC method if the endpoint is also exposed over
    the agent-facing gRPC API.
+6. **Write unit tests** in `Clustral.ControlPlane.Tests/` for the new models and domain logic.
+7. **Write integration tests** in `Clustral.ControlPlane.Tests/Integration/` that exercise the endpoint over real HTTP with Testcontainers MongoDB. Use `ClustralWebApplicationFactory` and `CreateAuthenticatedClient()`.
 
 ## Adding a new gRPC method
 
@@ -170,6 +173,7 @@ dotnet run --project src/Clustral.ControlPlane
 3. Implement the method in the corresponding `*Impl.cs` file here.
 4. If the method requires a new DB query, add it to `ClustralDbContext` or
    use LINQ directly in the impl — no repository abstraction is needed yet.
+5. **Write tests** for the new method — at minimum unit tests for the logic, integration tests if it touches MongoDB.
 
 ## Security-sensitive paths
 

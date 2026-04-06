@@ -217,3 +217,4 @@ dotnet test Clustral.slnx
 - **Command aliases**: all listing commands support both `list` and `ls` aliases.
 - **xUnit test output**: use `ITestOutputHelper` in xUnit tests, not `Console.WriteLine`.
 - **Integration tests need Docker** running for Testcontainers.
+- **Every new feature must include tests.** Write both unit tests and integration tests for ControlPlane, CLI, and SDK changes. Integration tests use `WebApplicationFactory` + Testcontainers MongoDB. Frontend (Web UI) tests are not yet required but will be added later.
