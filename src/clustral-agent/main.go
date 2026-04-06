@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	pb "github.com/Clustral/clustral/src/clustral-agent/gen/clustral/v1"
-	"github.com/Clustral/clustral/src/clustral-agent/internal/config"
-	"github.com/Clustral/clustral/src/clustral-agent/internal/credential"
-	"github.com/Clustral/clustral/src/clustral-agent/internal/proxy"
-	"github.com/Clustral/clustral/src/clustral-agent/internal/tunnel"
+	pb "clustral-agent/gen/clustral/v1"
+	"clustral-agent/internal/config"
+	"clustral-agent/internal/credential"
+	"clustral-agent/internal/proxy"
+	"clustral-agent/internal/tunnel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

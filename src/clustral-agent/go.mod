@@ -1,4 +1,4 @@
-module github.com/Clustral/clustral/src/clustral-agent
+module clustral-agent
 
 go 1.23.0
 
