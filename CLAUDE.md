@@ -1,6 +1,6 @@
 # Clustral — Claude Code Guide
 
-Clustral is an open-source Kubernetes access proxy (Teleport alternative) built entirely on .NET 9. It lets users authenticate via Keycloak, then transparently proxies `kubectl` traffic through a control plane to registered cluster agents.
+Clustral is an open-source Kubernetes access proxy (Teleport alternative) built entirely on .NET 9. It lets users authenticate via any OIDC provider (Keycloak, Auth0, Okta, Azure AD), then transparently proxies `kubectl` traffic through a control plane to registered cluster agents.
 
 ---
 
@@ -9,7 +9,7 @@ Clustral is an open-source Kubernetes access proxy (Teleport alternative) built 
 ```
 clustral/
 ├── src/
-│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, EF Core, Keycloak OIDC
+│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB, OIDC
 │   ├── clustral-agent/          # Go 1.23 service — gRPC client, kubectl reverse proxy, Helm-deployed
 │   ├── Clustral.Cli/            # System.CommandLine, NativeAOT — clustral login / clustral kube login
 │   └── Clustral.Web/            # Vite + React 18 + TypeScript, shadcn/ui, TanStack Query, Zustand
@@ -30,15 +30,15 @@ clustral/
 
 ```
   clustral CLI
-      │  OIDC device flow → Keycloak
+      │  OIDC device flow → OIDC Provider
       │  JWT stored in TokenCache
       │  kubeconfig written via KubeconfigWriter
       ▼
   ControlPlane  (ASP.NET Core)
       │  REST  — Web UI + CLI management calls
       │  gRPC  — TunnelService (bidirectional streaming to agents)
-      │  EF Core → PostgreSQL (clusters, users, audit log)
-      │  Keycloak OIDC — token introspection / JWKS validation
+      │  MongoDB (clusters, users, audit log)
+      │  OIDC — token introspection / JWKS validation
       ▼
   Agent  (Go service, runs in-cluster via Helm)
       │  gRPC client → TunnelService on ControlPlane
@@ -49,7 +49,7 @@ clustral/
 ```
 
 Key flows:
-- **clustral login** — OIDC device-code flow against Keycloak, writes token to `~/.clustral/token`.
+- **clustral login** — OIDC device-code flow against the configured OIDC provider, writes token to `~/.clustral/token`.
 - **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
 - **Tunnel** — agent opens a persistent gRPC stream to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
@@ -207,7 +207,7 @@ dotnet test Clustral.slnx
 - **EF Core migrations are append-only.** Never edit existing migration files. Add a new migration for any schema change.
 - **NativeAOT constraints apply to the CLI.** Avoid reflection, `dynamic`, and runtime code generation in `Clustral.Cli` and anything in `Clustral.Sdk` that the CLI uses. Prefer source generators.
 - **gRPC stubs are generated.** Files under `*/Generated/` must not be edited manually.
-- **Keycloak realm config is in `infra/keycloak/`.** If adding a new OAuth scope or client, the realm export there must be updated too.
+- **OIDC provider config** — the ControlPlane reads OIDC settings from the `Oidc` section in appsettings.json (falls back to `Keycloak` for backward compatibility). If using Keycloak, the realm export in `infra/keycloak/` must be updated when adding new OAuth scopes or clients.
 - **Web state management**: local/ephemeral UI state → React `useState`; server state → TanStack Query; cross-component shared state → Zustand. Do not reach for Zustand for data that TanStack Query already owns.
 - **Helm chart changes** in `infra/helm/` must keep `values.yaml` as the source of truth; do not hardcode values in templates.
 - **Security-sensitive paths** (token handling in `TokenCache`, tunnel auth in `TunnelService`) require extra care. Flag any change that touches these for explicit review rather than silently implementing.

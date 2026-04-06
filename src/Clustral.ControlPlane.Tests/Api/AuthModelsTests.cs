@@ -110,14 +110,14 @@ public class AuthModelsTests(ITestOutputHelper output)
         Assert.NotEqual(hash1, hash2);
     }
 
-    // ── KeycloakOptions defaults ────────────────────────────────────────────
+    // ── OidcOptions defaults ────────────────────────────────────────────
 
     [Fact]
-    public void KeycloakOptions_Defaults()
+    public void OidcOptions_Defaults()
     {
-        var opts = new KeycloakOptions();
+        var opts = new OidcOptions();
 
-        output.WriteLine($"=== KeycloakOptions Defaults ===");
+        output.WriteLine($"=== OidcOptions Defaults ===");
         output.WriteLine($"  Authority:          \"{opts.Authority}\"");
         output.WriteLine($"  ClientId:           \"{opts.ClientId}\"");
         output.WriteLine($"  Audience:           \"{opts.Audience}\"");
@@ -136,7 +136,7 @@ public class AuthModelsTests(ITestOutputHelper output)
     [Fact]
     public void CredentialTtl_CappedAtMax()
     {
-        var opts = new KeycloakOptions
+        var opts = new OidcOptions
         {
             DefaultKubeconfigCredentialTtl = TimeSpan.FromHours(8),
             MaxKubeconfigCredentialTtl = TimeSpan.FromHours(8),
@@ -157,7 +157,7 @@ public class AuthModelsTests(ITestOutputHelper output)
     [Fact]
     public void CredentialTtl_UnderMax_UsesRequested()
     {
-        var opts = new KeycloakOptions
+        var opts = new OidcOptions
         {
             MaxKubeconfigCredentialTtl = TimeSpan.FromHours(8),
         };

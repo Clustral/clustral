@@ -231,11 +231,11 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Clustral: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Keycloak__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
-      Keycloak__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
-      Keycloak__ClientId: "clustral-control-plane"
-      Keycloak__Audience: "clustral-control-plane"
-      Keycloak__RequireHttpsMetadata: "false"
+      Oidc__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
+      Oidc__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
+      Oidc__ClientId: "clustral-control-plane"
+      Oidc__Audience: "clustral-control-plane"
+      Oidc__RequireHttpsMetadata: "false"
     ports:
       - "5100:5000"
       - "5101:5001"

@@ -15,7 +15,7 @@ public record IssueKubeconfigCredentialCommand(Guid ClusterId, string? Requested
 
 public sealed class IssueKubeconfigCredentialHandler(
     ClustralDb db,
-    IOptions<KeycloakOptions> keycloakOptions,
+    IOptions<OidcOptions> oidcOptions,
     ICurrentUserProvider currentUser,
     TokenHashingService tokens,
     ILogger<IssueKubeconfigCredentialHandler> logger)
@@ -33,7 +33,7 @@ public sealed class IssueKubeconfigCredentialHandler(
             return ResultErrors.ClusterNotFound(request.ClusterId.ToString());
 
         // 2. Determine TTL.
-        var opts = keycloakOptions.Value;
+        var opts = oidcOptions.Value;
         var ttl = opts.DefaultKubeconfigCredentialTtl;
 
         if (!string.IsNullOrEmpty(request.RequestedTtl) &&

@@ -3,20 +3,20 @@ using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Infrastructure;
 
-public class KeycloakOptionsTests(ITestOutputHelper output)
+public class OidcOptionsTests(ITestOutputHelper output)
 {
     [Fact]
-    public void SectionName_IsKeycloak()
+    public void SectionName_IsOidc()
     {
-        output.WriteLine($"SectionName: {KeycloakOptions.SectionName}");
+        output.WriteLine($"SectionName: {OidcOptions.SectionName}");
 
-        Assert.Equal("Keycloak", KeycloakOptions.SectionName);
+        Assert.Equal("Oidc", OidcOptions.SectionName);
     }
 
     [Fact]
     public void DefaultCredentialTtl_Is8Hours()
     {
-        var opts = new KeycloakOptions();
+        var opts = new OidcOptions();
 
         output.WriteLine($"DefaultKubeconfigCredentialTtl: {opts.DefaultKubeconfigCredentialTtl}");
 
@@ -26,7 +26,7 @@ public class KeycloakOptionsTests(ITestOutputHelper output)
     [Fact]
     public void MaxCredentialTtl_Is8Hours()
     {
-        var opts = new KeycloakOptions();
+        var opts = new OidcOptions();
 
         output.WriteLine($"MaxKubeconfigCredentialTtl: {opts.MaxKubeconfigCredentialTtl}");
 
@@ -36,7 +36,7 @@ public class KeycloakOptionsTests(ITestOutputHelper output)
     [Fact]
     public void RequireHttpsMetadata_DefaultsToTrue()
     {
-        var opts = new KeycloakOptions();
+        var opts = new OidcOptions();
 
         output.WriteLine($"RequireHttpsMetadata: {opts.RequireHttpsMetadata} (production default)");
 
@@ -46,7 +46,7 @@ public class KeycloakOptionsTests(ITestOutputHelper output)
     [Fact]
     public void Audience_EmptyByDefault_FallsBackToClientId()
     {
-        var opts = new KeycloakOptions { ClientId = "clustral-api" };
+        var opts = new OidcOptions { ClientId = "clustral-api" };
 
         output.WriteLine($"ClientId: {opts.ClientId}");
         output.WriteLine($"Audience: \"{opts.Audience}\" (empty => use ClientId)");
@@ -58,7 +58,7 @@ public class KeycloakOptionsTests(ITestOutputHelper output)
     [Fact]
     public void TtlCapping_RequestedExceedsMax_CappedToMax()
     {
-        var opts = new KeycloakOptions
+        var opts = new OidcOptions
         {
             DefaultKubeconfigCredentialTtl = TimeSpan.FromHours(8),
             MaxKubeconfigCredentialTtl = TimeSpan.FromHours(12),

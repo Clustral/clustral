@@ -20,7 +20,7 @@ namespace Clustral.ControlPlane.Protos;
 /// </summary>
 public sealed class AuthServiceImpl(
     ClustralDb db,
-    IOptions<KeycloakOptions> keycloakOpts,
+    IOptions<OidcOptions> oidcOpts,
     ILogger<AuthServiceImpl> logger)
     : AuthService.AuthServiceBase
 {
@@ -30,8 +30,8 @@ public sealed class AuthServiceImpl(
         IssueKubeconfigCredentialRequest request,
         ServerCallContext context)
     {
-        // TODO: Validate the Keycloak OIDC access token in request.OidcAccessToken
-        //       using the Keycloak JWKS endpoint configured in KeycloakOptions.
+        // TODO: Validate the OIDC access token in request.OidcAccessToken
+        //       using the JWKS endpoint configured in OidcOptions.
         //       For now we accept any non-empty token (dev scaffolding only).
         if (string.IsNullOrWhiteSpace(request.OidcAccessToken))
             throw new RpcException(new Status(StatusCode.InvalidArgument,
@@ -49,7 +49,7 @@ public sealed class AuthServiceImpl(
             throw new RpcException(new Status(StatusCode.NotFound,
                 $"Cluster {request.ClusterId} not found"));
 
-        var opts = keycloakOpts.Value;
+        var opts = oidcOpts.Value;
         var ttl  = opts.DefaultKubeconfigCredentialTtl;
 
         if (request.RequestedTtl is { } requestedTtl)

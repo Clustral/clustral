@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Clustral.ControlPlane.Protos;
@@ -20,66 +21,71 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .WriteTo.Console());
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Options
+// Options — validated at startup via FluentValidation + ValidateOnStart().
+// If any required config is missing, the app aborts immediately with a clear error.
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services
-    .AddOptions<KeycloakOptions>()
-    .BindConfiguration(KeycloakOptions.SectionName)
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
+builder.Services.AddOptionsWithValidation<OidcOptions,
+    Clustral.ControlPlane.Features.Shared.OidcOptionsValidator>(OidcOptions.SectionName);
 
-var keycloakSection = builder.Configuration.GetSection(KeycloakOptions.SectionName);
-var keycloakOpts    = keycloakSection.Get<KeycloakOptions>()!;
+builder.Services.AddOptionsWithValidation<MongoDbOptions,
+    Clustral.ControlPlane.Features.Shared.MongoDbOptionsValidator>(MongoDbOptions.SectionName);
+
+var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>()
+               ?? new OidcOptions();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MongoDB
+// MongoDB — resolved lazily via IOptions<MongoDbOptions>.
+// ValidateOnStart() ensures config is valid before first access.
 // ─────────────────────────────────────────────────────────────────────────────
 
-var mongoConnectionString = builder.Configuration.GetConnectionString("Clustral")
-                            ?? "mongodb://localhost:27017";
-var mongoDatabaseName     = builder.Configuration["MongoDB:DatabaseName"] ?? "clustral";
-
-builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoConnectionString));
+builder.Services.AddSingleton<IMongoClient>(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<MongoDbOptions>>().Value;
+    return new MongoClient(opts.ConnectionString);
+});
 builder.Services.AddSingleton(sp =>
-    new ClustralDb(sp.GetRequiredService<IMongoClient>(), mongoDatabaseName));
+{
+    var opts = sp.GetRequiredService<IOptions<MongoDbOptions>>().Value;
+    return new ClustralDb(sp.GetRequiredService<IMongoClient>(), opts.DatabaseName);
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Authentication — Keycloak OIDC (JWT Bearer)
+// Authentication — OIDC (JWT Bearer)
 // ─────────────────────────────────────────────────────────────────────────────
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opts =>
     {
-        opts.RequireHttpsMetadata = keycloakOpts.RequireHttpsMetadata;
-        opts.Audience             = string.IsNullOrEmpty(keycloakOpts.Audience)
-            ? keycloakOpts.ClientId
-            : keycloakOpts.Audience;
+        opts.RequireHttpsMetadata = oidcOpts.RequireHttpsMetadata;
+        opts.Audience = string.IsNullOrEmpty(oidcOpts.Audience)
+            ? oidcOpts.ClientId
+            : oidcOpts.Audience;
 
-        if (!string.IsNullOrEmpty(keycloakOpts.MetadataAddress))
+        if (!string.IsNullOrEmpty(oidcOpts.MetadataAddress))
         {
             // When MetadataAddress is set, the ControlPlane fetches JWKS from
             // an internal URL but the token issuer varies depending on how the
-            // user accessed Keycloak (localhost vs LAN IP vs hostname).
+            // user accessed the OIDC provider (localhost vs LAN IP vs hostname).
             // Set Authority to null and use MetadataAddress only — this
             // prevents the JwtBearer middleware from doing its own issuer
             // validation against the Authority URL.
-            opts.Authority       = null;
-            opts.MetadataAddress = keycloakOpts.MetadataAddress;
+            opts.Authority = null;
+            opts.MetadataAddress = oidcOpts.MetadataAddress;
         }
         else
         {
-            opts.Authority = keycloakOpts.Authority;
+            opts.Authority = oidcOpts.Authority;
         }
 
         opts.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer           = false,   // issuer varies by access URL
-            ValidateAudience         = true,
-            ValidateLifetime         = true,
-            ValidateIssuerSigningKey = true,    // JWKS key check proves authenticity
-            ClockSkew                = TimeSpan.FromSeconds(30),
+            ValidateIssuer = false, // issuer varies by access URL
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true, // JWKS key check proves authenticity
+            ClockSkew = TimeSpan.FromSeconds(30),
         };
     });
 
@@ -90,22 +96,19 @@ builder.Services.AddAuthorization();
 // ─────────────────────────────────────────────────────────────────────────────
 
 builder.Services.AddScoped<Clustral.ControlPlane.Api.UserSyncFilter>();
-builder.Services.AddControllers(opts =>
-{
-    opts.Filters.AddService<Clustral.ControlPlane.Api.UserSyncFilter>();
-});
+builder.Services.AddControllers(opts => { opts.Filters.AddService<Clustral.ControlPlane.Api.UserSyncFilter>(); });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opts =>
 {
     opts.SwaggerDoc("v1", new() { Title = "Clustral Control Plane", Version = "v1" });
 
-    // Wire up the Keycloak bearer token in the Swagger UI.
+    // Wire up the bearer token in the Swagger UI.
     opts.AddSecurityDefinition("Bearer", new()
     {
-        Type         = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme       = "bearer",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
         BearerFormat = "JWT",
-        Description  = "Paste a Keycloak access token (obtained via `clustral login`).",
+        Description = "Paste an OIDC access token (obtained via `clustral login`).",
     });
     opts.AddSecurityRequirement(new()
     {
@@ -120,10 +123,7 @@ builder.Services.AddSwaggerGen(opts =>
 // gRPC
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services.AddGrpc(opts =>
-{
-    opts.EnableDetailedErrors = builder.Environment.IsDevelopment();
-});
+builder.Services.AddGrpc(opts => { opts.EnableDetailedErrors = builder.Environment.IsDevelopment(); });
 
 // Singleton session registry shared between TunnelServiceImpl instances.
 builder.Services.AddSingleton<TunnelSessionManager>();
@@ -186,18 +186,18 @@ app.MapGrpcService<AuthServiceImpl>();
 
 // Health check — used by docker-compose and Kubernetes readiness probes.
 app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }))
-   .AllowAnonymous();
+    .AllowAnonymous();
 
 // Public config endpoint — CLI auto-discovers OIDC settings from here
-// so users only need to know the ControlPlane URL, not the Keycloak URL.
-app.MapGet("/api/v1/config", (IOptions<KeycloakOptions> kc) =>
+// so users only need to know the ControlPlane URL, not the OIDC provider URL.
+app.MapGet("/api/v1/config", (IOptions<OidcOptions> oidc) =>
 {
-    var o = kc.Value;
+    var o = oidc.Value;
     return Results.Ok(new
     {
         oidcAuthority = o.Authority,
-        oidcClientId  = "clustral-cli",
-        oidcScopes    = "openid email profile",
+        oidcClientId = "clustral-cli",
+        oidcScopes = "openid email profile",
     });
 }).AllowAnonymous();
 
@@ -211,4 +211,6 @@ await db.EnsureIndexesAsync();
 app.Run();
 
 // Marker class for WebApplicationFactory<Program> in integration tests.
-public partial class Program { }
+public partial class Program
+{
+}
