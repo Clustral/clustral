@@ -1,9 +1,13 @@
+using System.Reflection;
+using System.Text.Json;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Clustral.ControlPlane.Protos;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
@@ -125,6 +129,19 @@ builder.Services.AddSingleton<TunnelSessionManager>();
 // Background cleanup: expire pending access requests past their TTL.
 builder.Services.AddHostedService<AccessRequestCleanupService>();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Health checks
+// ─────────────────────────────────────────────────────────────────────────────
+
+var oidcDiscoveryUrl = !string.IsNullOrEmpty(oidcOpts.MetadataAddress)
+    ? oidcOpts.MetadataAddress
+    : $"{oidcOpts.Authority.TrimEnd('/')}/.well-known/openid-configuration";
+
+builder.Services.AddHealthChecks()
+    .AddMongoDb(tags: ["ready"], name: "mongodb", timeout: TimeSpan.FromSeconds(5))
+    .AddUrlGroup(new Uri(oidcDiscoveryUrl), "oidc", tags: ["ready"],
+        timeout: TimeSpan.FromSeconds(5));
+
 // MediatR + FluentValidation vertical slicing infrastructure.
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
@@ -175,9 +192,27 @@ app.MapGrpcService<ClusterServiceImpl>();
 app.MapGrpcService<TunnelServiceImpl>();
 app.MapGrpcService<AuthServiceImpl>();
 
-// Health check — used by docker-compose and Kubernetes readiness probes.
-app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }))
-    .AllowAnonymous();
+// ─────────────────────────────────────────────────────────────────────────────
+// Health check endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Liveness — is the process alive? No dependency checks.
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    Predicate = _ => false, // run no checks — if the process responds, it's alive
+}).AllowAnonymous();
+
+// Readiness — can it serve traffic? Checks MongoDB + OIDC.
+app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+}).AllowAnonymous();
+
+// Detailed — all checks with timings. Requires authentication.
+app.MapHealthChecks("/healthz/detail", new HealthCheckOptions
+{
+    ResponseWriter = WriteDetailedHealthResponse,
+}).RequireAuthorization();
 
 // Public config endpoint — CLI auto-discovers OIDC settings from here
 // so users only need to know the ControlPlane URL, not the OIDC provider URL.
@@ -204,4 +239,33 @@ app.Run();
 // Marker class for WebApplicationFactory<Program> in integration tests.
 public partial class Program
 {
+    private static readonly DateTimeOffset StartTime = DateTimeOffset.UtcNow;
+
+    private static Task WriteDetailedHealthResponse(HttpContext context, HealthReport report)
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+
+        var result = new
+        {
+            status = report.Status.ToString(),
+            version,
+            uptime = (DateTimeOffset.UtcNow - StartTime).ToString(@"dd\.hh\:mm\:ss"),
+            totalDuration = report.TotalDuration.TotalMilliseconds.ToString("F0") + "ms",
+            checks = report.Entries.ToDictionary(
+                e => e.Key,
+                e => new
+                {
+                    status = e.Value.Status.ToString(),
+                    duration = e.Value.Duration.TotalMilliseconds.ToString("F0") + "ms",
+                    description = e.Value.Description,
+                }),
+        };
+
+        context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.StatusCode = report.Status == HealthStatus.Healthy ? 200 : 503;
+
+        return context.Response.WriteAsync(
+            JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+    }
 }
