@@ -15,6 +15,9 @@ public sealed record ApproveAccessRequestRequest(
 public sealed record DenyAccessRequestRequest(
     [Required] string Reason);
 
+public sealed record RevokeAccessRequestRequest(
+    string? Reason);
+
 public sealed record AccessRequestResponse(
     Guid            Id,
     Guid            RequesterId,
@@ -34,7 +37,10 @@ public sealed record AccessRequestResponse(
     string?         ReviewerEmail,
     DateTimeOffset? ReviewedAt,
     string?         DenialReason,
-    DateTimeOffset? GrantExpiresAt);
+    DateTimeOffset? GrantExpiresAt,
+    DateTimeOffset? RevokedAt,
+    string?         RevokedByEmail,
+    string?         RevokedReason);
 
 public sealed record ReviewerInfo(
     Guid    Id,

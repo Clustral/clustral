@@ -127,4 +127,62 @@ public class AccessRequestCleanupServiceTests(ITestOutputHelper output)
 
         Assert.Equal(2, toExpire.Count);
     }
+
+    // ── Grant expiry cleanup ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Simulates the grant expiry filter: approved grants past GrantExpiresAt, not revoked.
+    /// </summary>
+    private static List<AccessRequest> FilterForGrantExpiry(
+        List<AccessRequest> requests,
+        DateTimeOffset now)
+    {
+        return requests
+            .Where(r => r.Status == AccessRequestStatus.Approved
+                     && r.GrantExpiresAt <= now
+                     && r.RevokedAt == null)
+            .ToList();
+    }
+
+    [Fact]
+    public void ApprovedGrant_PastExpiry_ShouldExpire()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var requests = new List<AccessRequest>
+        {
+            new()
+            {
+                Status = AccessRequestStatus.Approved,
+                GrantExpiresAt = now.AddMinutes(-30),
+                RevokedAt = null,
+            },
+        };
+
+        var toExpire = FilterForGrantExpiry(requests, now);
+
+        output.WriteLine($"Approved grant expired 30m ago => should transition to Expired: {toExpire.Count}");
+
+        Assert.Single(toExpire);
+    }
+
+    [Fact]
+    public void RevokedGrant_NotAffectedByCleanup()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var requests = new List<AccessRequest>
+        {
+            new()
+            {
+                Status = AccessRequestStatus.Approved,
+                GrantExpiresAt = now.AddMinutes(-30),
+                RevokedAt = now.AddMinutes(-60), // Already revoked
+            },
+        };
+
+        var toExpire = FilterForGrantExpiry(requests, now);
+
+        output.WriteLine("Revoked grant (already handled) => not affected by expiry cleanup");
+
+        Assert.Empty(toExpire);
+    }
 }

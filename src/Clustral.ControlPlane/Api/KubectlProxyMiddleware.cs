@@ -147,7 +147,8 @@ public sealed class KubectlProxyMiddleware
                         .Find(r => r.RequesterId == user.Id
                                 && r.ClusterId == clusterId
                                 && r.Status == Domain.AccessRequestStatus.Approved
-                                && r.GrantExpiresAt > now)
+                                && r.GrantExpiresAt > now
+                                && r.RevokedAt == null)
                         .FirstOrDefaultAsync(ct);
 
                     if (grant is null)

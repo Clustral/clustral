@@ -114,7 +114,8 @@ public sealed class AuthController(
                 .Find(r => r.RequesterId == userId
                          && r.ClusterId == cluster.Id
                          && r.Status == AccessRequestStatus.Approved
-                         && r.GrantExpiresAt > now)
+                         && r.GrantExpiresAt > now
+                         && r.RevokedAt == null)
                 .FirstOrDefaultAsync(ct);
 
             if (activeGrant?.GrantExpiresAt is not null && activeGrant.GrantExpiresAt.Value < expiresAt)

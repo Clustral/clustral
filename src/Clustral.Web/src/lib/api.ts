@@ -154,11 +154,12 @@ export async function removeAssignment(
 
 export function fetchAccessRequests(
   token: string,
-  params?: { status?: string; mine?: boolean },
+  params?: { status?: string; mine?: boolean; active?: boolean },
 ): Promise<AccessRequestListResponse> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.mine) qs.set("mine", "true");
+  if (params?.active) qs.set("active", "true");
   const query = qs.toString();
   return apiFetch<AccessRequestListResponse>(
     `/access-requests${query ? `?${query}` : ""}`,
@@ -199,6 +200,17 @@ export function denyAccessRequest(
   reason: string,
 ): Promise<AccessRequest> {
   return apiFetch<AccessRequest>(`/access-requests/${requestId}/deny`, token, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function revokeAccessRequest(
+  token: string,
+  requestId: string,
+  reason?: string,
+): Promise<AccessRequest> {
+  return apiFetch<AccessRequest>(`/access-requests/${requestId}/revoke`, token, {
     method: "POST",
     body: JSON.stringify({ reason }),
   });

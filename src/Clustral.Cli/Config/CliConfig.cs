@@ -102,6 +102,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(AccessRequestListResponse))]
 [JsonSerializable(typeof(AccessRequestApproveRequest))]
 [JsonSerializable(typeof(AccessRequestDenyRequest))]
+[JsonSerializable(typeof(AccessRequestRevokeRequest))]
 [JsonSerializable(typeof(RevokeByTokenRequest))]
 internal partial class CliJsonContext : JsonSerializerContext { }
 
@@ -237,6 +238,9 @@ internal sealed class AccessRequestResponse
     [JsonPropertyName("reviewedAt")]          public DateTimeOffset? ReviewedAt         { get; set; }
     [JsonPropertyName("denialReason")]        public string?        DenialReason        { get; set; }
     [JsonPropertyName("grantExpiresAt")]      public DateTimeOffset? GrantExpiresAt     { get; set; }
+    [JsonPropertyName("revokedAt")]           public DateTimeOffset? RevokedAt          { get; set; }
+    [JsonPropertyName("revokedByEmail")]      public string?        RevokedByEmail      { get; set; }
+    [JsonPropertyName("revokedReason")]       public string?        RevokedReason       { get; set; }
 }
 
 internal sealed class AccessRequestListResponse
@@ -252,6 +256,11 @@ internal sealed class AccessRequestApproveRequest
 internal sealed class AccessRequestDenyRequest
 {
     [JsonPropertyName("reason")] public string Reason { get; set; } = string.Empty;
+}
+
+internal sealed class AccessRequestRevokeRequest
+{
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
 }
 
 internal sealed class RevokeByTokenRequest

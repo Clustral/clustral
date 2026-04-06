@@ -31,6 +31,17 @@ public sealed class AccessRequestCleanupService(
 
                 if (expireResult.ModifiedCount > 0)
                     logger.LogInformation("Expired {Count} pending access request(s)", expireResult.ModifiedCount);
+
+                // Expire approved grants past their natural expiry (not revoked).
+                var grantExpireResult = await db.AccessRequests.UpdateManyAsync(
+                    r => r.Status == AccessRequestStatus.Approved
+                      && r.GrantExpiresAt <= now
+                      && r.RevokedAt == null,
+                    Builders<AccessRequest>.Update.Set(r => r.Status, AccessRequestStatus.Expired),
+                    cancellationToken: stoppingToken);
+
+                if (grantExpireResult.ModifiedCount > 0)
+                    logger.LogInformation("Expired {Count} approved grant(s) past their TTL", grantExpireResult.ModifiedCount);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

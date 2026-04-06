@@ -70,6 +70,21 @@ public sealed class AccessRequest
     [BsonIgnoreIfNull]
     public DateTimeOffset? GrantExpiresAt { get; set; }
 
+    // ── Revocation fields ────────────────────────────────────────────────
+
+    /// <summary>When the grant was revoked (before natural expiry).</summary>
+    [BsonIgnoreIfNull]
+    public DateTimeOffset? RevokedAt { get; set; }
+
+    /// <summary>Who revoked the grant.</summary>
+    [BsonIgnoreIfNull]
+    [BsonRepresentation(BsonType.String)]
+    public Guid? RevokedBy { get; set; }
+
+    /// <summary>Reason for revocation.</summary>
+    [BsonIgnoreIfNull]
+    public string? RevokedReason { get; set; }
+
     // ── Computed helpers ─────────────────────────────────────────────────
 
     [BsonIgnore]
@@ -78,10 +93,14 @@ public sealed class AccessRequest
         DateTimeOffset.UtcNow >= RequestExpiresAt;
 
     [BsonIgnore]
+    public bool IsRevoked => RevokedAt.HasValue;
+
+    [BsonIgnore]
     public bool IsGrantActive =>
         Status == AccessRequestStatus.Approved &&
         GrantExpiresAt.HasValue &&
-        DateTimeOffset.UtcNow < GrantExpiresAt.Value;
+        DateTimeOffset.UtcNow < GrantExpiresAt.Value &&
+        !RevokedAt.HasValue;
 }
 
 public enum AccessRequestStatus
@@ -90,4 +109,5 @@ public enum AccessRequestStatus
     Approved = 1,
     Denied   = 2,
     Expired  = 3,
+    Revoked  = 4,
 }

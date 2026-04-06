@@ -9,6 +9,7 @@ import {
   createAccessRequest,
   approveAccessRequest,
   denyAccessRequest,
+  revokeAccessRequest,
   fetchRoles,
   fetchClusters,
   fetchUsers,
@@ -39,6 +40,8 @@ const statusBadge = (status: AccessRequestStatus) => {
       return <Badge variant="destructive">Denied</Badge>;
     case "Expired":
       return <Badge variant="secondary">Expired</Badge>;
+    case "Revoked":
+      return <Badge variant="destructive">Revoked</Badge>;
   }
 };
 
@@ -55,10 +58,12 @@ export default function AccessRequestsPage() {
   const token = (session as any)?.accessToken as string | undefined;
   const queryClient = useQueryClient();
 
-  const [tab, setTab] = useState<"mine" | "pending">("mine");
+  const [tab, setTab] = useState<"mine" | "pending" | "active">("mine");
   const [showCreate, setShowCreate] = useState(false);
   const [denyTarget, setDenyTarget] = useState<AccessRequest | null>(null);
   const [denyReason, setDenyReason] = useState("");
+  const [revokeTarget, setRevokeTarget] = useState<AccessRequest | null>(null);
+  const [revokeReason, setRevokeReason] = useState("");
 
   const { data: myRequests, isLoading: loadingMine } = useQuery({
     queryKey: ["access-requests", "mine"],
@@ -71,6 +76,13 @@ export default function AccessRequestsPage() {
     queryKey: ["access-requests", "pending"],
     queryFn: () => fetchAccessRequests(token!, { status: "Pending" }),
     enabled: !!token && tab === "pending",
+    refetchInterval: 10000,
+  });
+
+  const { data: activeGrants, isLoading: loadingActive } = useQuery({
+    queryKey: ["access-requests", "active"],
+    queryFn: () => fetchAccessRequests(token!, { active: true }),
+    enabled: !!token && tab === "active",
     refetchInterval: 10000,
   });
 
@@ -91,6 +103,16 @@ export default function AccessRequestsPage() {
     },
   });
 
+  const revokeMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      revokeAccessRequest(token!, id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["access-requests"] });
+      setRevokeTarget(null);
+      setRevokeReason("");
+    },
+  });
+
   if (status === "loading")
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -99,8 +121,12 @@ export default function AccessRequestsPage() {
     );
   if (status === "unauthenticated") redirect("/login");
 
-  const requests = tab === "mine" ? myRequests?.requests : pendingRequests?.requests;
-  const loading = tab === "mine" ? loadingMine : loadingPending;
+  const requests = tab === "mine"
+    ? myRequests?.requests
+    : tab === "pending"
+      ? pendingRequests?.requests
+      : activeGrants?.requests;
+  const loading = tab === "mine" ? loadingMine : tab === "pending" ? loadingPending : loadingActive;
 
   return (
     <div className="min-h-screen bg-background">
@@ -134,6 +160,13 @@ export default function AccessRequestsPage() {
             onClick={() => setTab("pending")}
           >
             Pending Reviews
+          </Button>
+          <Button
+            variant={tab === "active" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTab("active")}
+          >
+            Active Grants
           </Button>
         </div>
 
@@ -186,8 +219,16 @@ export default function AccessRequestsPage() {
                         Reason: {r.denialReason}
                       </span>
                     )}
+                    {r.status === "Revoked" && r.revokedReason && (
+                      <span className="text-red-600">
+                        Revoked: {r.revokedReason}
+                      </span>
+                    )}
                     {r.reviewerEmail && (
                       <span>Reviewed by {r.reviewerEmail}</span>
+                    )}
+                    {r.revokedByEmail && (
+                      <span>Revoked by {r.revokedByEmail}</span>
                     )}
                   </div>
                   {r.suggestedReviewers.length > 0 && r.status === "Pending" && (
@@ -220,6 +261,16 @@ export default function AccessRequestsPage() {
                       Deny
                     </Button>
                   </div>
+                )}
+                {tab === "active" && r.status === "Approved" && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setRevokeTarget(r)}
+                  >
+                    <X className="mr-1 h-3.5 w-3.5" />
+                    Revoke
+                  </Button>
                 )}
               </div>
             </Card>
@@ -270,6 +321,46 @@ export default function AccessRequestsPage() {
                 }
               >
                 Deny
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke Dialog */}
+      <Dialog open={!!revokeTarget} onOpenChange={() => setRevokeTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke Access Grant</DialogTitle>
+            <DialogDescription>
+              This will immediately revoke the user's access to the cluster.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Reason (optional)</Label>
+              <Input
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                placeholder="e.g., User no longer needs access"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRevokeTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={revokeMutation.isPending}
+                onClick={() =>
+                  revokeTarget &&
+                  revokeMutation.mutate({
+                    id: revokeTarget.id,
+                    reason: revokeReason || undefined,
+                  })
+                }
+              >
+                Revoke Access
               </Button>
             </div>
           </div>
@@ -341,10 +432,13 @@ function CreateRequestDialog({
   };
 
   const durations = [
-    { label: "1 hour", value: "PT1H" },
-    { label: "4 hours", value: "PT4H" },
-    { label: "8 hours", value: "PT8H" },
-    { label: "24 hours", value: "PT24H" },
+    { label: "30m", value: "PT30M" },
+    { label: "1h", value: "PT1H" },
+    { label: "2h", value: "PT2H" },
+    { label: "4h", value: "PT4H" },
+    { label: "8h", value: "PT8H" },
+    { label: "12h", value: "PT12H" },
+    { label: "24h", value: "PT24H" },
   ];
 
   return (

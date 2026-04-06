@@ -42,7 +42,10 @@ internal static class AccessCommand
     // ── access ls ────────────────────────────────────────────────────────────
 
     private static readonly Option<string?> StatusFilterOption = new(
-        "--status", "Filter by status (Pending, Approved, Denied, Expired).");
+        "--status", "Filter by status (Pending, Approved, Denied, Expired, Revoked).");
+
+    private static readonly Option<bool> ActiveOption = new(
+        "--active", "Show only active grants (approved, not expired, not revoked).");
 
     // ── access deny ──────────────────────────────────────────────────────────
 
@@ -58,6 +61,7 @@ internal static class AccessCommand
         access.AddCommand(BuildLsSubcommand());
         access.AddCommand(BuildApproveSubcommand());
         access.AddCommand(BuildDenySubcommand());
+        access.AddCommand(BuildRevokeSubcommand());
         return access;
     }
 
@@ -79,6 +83,7 @@ internal static class AccessCommand
     {
         var cmd = new Command("ls", "List access requests.");
         cmd.AddOption(StatusFilterOption);
+        cmd.AddOption(ActiveOption);
         cmd.AddOption(InsecureOption);
         cmd.SetHandler(HandleLsAsync);
         return cmd;
@@ -100,6 +105,16 @@ internal static class AccessCommand
         cmd.AddOption(DenyReasonOption);
         cmd.AddOption(InsecureOption);
         cmd.SetHandler(HandleDenyAsync);
+        return cmd;
+    }
+
+    private static Command BuildRevokeSubcommand()
+    {
+        var cmd = new Command("revoke", "Revoke an active access grant.");
+        cmd.AddArgument(new Argument<string>("request-id", "ID of the access request/grant to revoke."));
+        cmd.AddOption(new Option<string?>("--reason", "Reason for revocation."));
+        cmd.AddOption(InsecureOption);
+        cmd.SetHandler(HandleRevokeAsync);
         return cmd;
     }
 
@@ -226,8 +241,10 @@ internal static class AccessCommand
         if (http is null) { ctx.ExitCode = exitCode; return; }
 
         var status = ctx.ParseResult.GetValueForOption(StatusFilterOption);
+        var active = ctx.ParseResult.GetValueForOption(ActiveOption);
         var qs = "?mine=true";
-        if (!string.IsNullOrEmpty(status)) qs += $"&status={status}";
+        if (active) qs += "&active=true";
+        else if (!string.IsNullOrEmpty(status)) qs += $"&status={status}";
 
         var response = await http.GetAsync($"api/v1/access-requests{qs}", ct);
         if (!response.IsSuccessStatusCode)
@@ -309,6 +326,41 @@ internal static class AccessCommand
         AnsiConsole.MarkupLine($"  [grey]Reason[/]  {reason.EscapeMarkup()}");
     }
 
+    private static async Task HandleRevokeAsync(InvocationContext ctx)
+    {
+        var ct = ctx.GetCancellationToken();
+        using var http = CreateClient(ctx, out var exitCode);
+        if (http is null) { ctx.ExitCode = exitCode; return; }
+
+        var requestId = ctx.ParseResult.GetValueForArgument(
+            (Argument<string>)ctx.ParseResult.CommandResult.Command.Arguments.First());
+        var reason = ctx.ParseResult.GetValueForOption(
+            ctx.ParseResult.CommandResult.Command.Options.FirstOrDefault(o => o.Name == "reason") as Option<string?>);
+
+        var body = new AccessRequestRevokeRequest { Reason = reason };
+        var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestRevokeRequest);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await http.PostAsync($"api/v1/access-requests/{requestId}/revoke", content, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = await response.Content.ReadAsStringAsync(ct);
+            await Console.Error.WriteLineAsync($"error: {(int)response.StatusCode} {detail}");
+            ctx.ExitCode = 1;
+            return;
+        }
+
+        var respJson = await response.Content.ReadAsStringAsync(ct);
+        var req = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
+
+        AnsiConsole.MarkupLine($"[red]✗[/] Revoked grant [cyan]{req!.Id[..8]}...[/]");
+        AnsiConsole.MarkupLine($"  [grey]User[/]     {req.RequesterEmail.EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"  [grey]Role[/]     [yellow]{req.RoleName.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"  [grey]Cluster[/]  [cyan]{req.ClusterName.EscapeMarkup()}[/]");
+        if (reason is not null)
+            AnsiConsole.MarkupLine($"  [grey]Reason[/]   {reason.EscapeMarkup()}");
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Rendering
     // ─────────────────────────────────────────────────────────────────────────
@@ -332,6 +384,7 @@ internal static class AccessCommand
                 "Pending"  => "[yellow]● Pending[/]",
                 "Approved" => "[green]● Approved[/]",
                 "Denied"   => "[red]● Denied[/]",
+                "Revoked"  => "[red]● Revoked[/]",
                 _          => "[dim]● Expired[/]",
             };
 

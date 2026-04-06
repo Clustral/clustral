@@ -100,7 +100,7 @@ export interface RoleAssignmentListResponse {
 
 // ── Access Requests (JIT) ───────────────────────────────────────────────────
 
-export type AccessRequestStatus = "Pending" | "Approved" | "Denied" | "Expired";
+export type AccessRequestStatus = "Pending" | "Approved" | "Denied" | "Expired" | "Revoked";
 
 export interface ReviewerInfo {
   id: string;
@@ -128,6 +128,9 @@ export interface AccessRequest {
   reviewedAt: string | null;
   denialReason: string | null;
   grantExpiresAt: string | null;
+  revokedAt: string | null;
+  revokedByEmail: string | null;
+  revokedReason: string | null;
 }
 
 export interface AccessRequestListResponse {

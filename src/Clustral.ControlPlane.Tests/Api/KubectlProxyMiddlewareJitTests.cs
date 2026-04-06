@@ -130,6 +130,43 @@ public class KubectlProxyMiddlewareJitTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void NoStaticAssignment_RevokedGrant_Returns403()
+    {
+        var grant = new AccessRequest
+        {
+            RoleId = Guid.NewGuid(),
+            Status = AccessRequestStatus.Approved,
+            GrantExpiresAt = DateTimeOffset.UtcNow.AddHours(4),
+            RevokedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+        };
+
+        var result = ResolveAccessRoleId(null, grant);
+
+        output.WriteLine($"Grant approved but revoked 5m ago => IsGrantActive: {grant.IsGrantActive}");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void NoStaticAssignment_NonRevokedActiveGrant_StillWorks()
+    {
+        var grantRoleId = Guid.NewGuid();
+        var grant = new AccessRequest
+        {
+            RoleId = grantRoleId,
+            Status = AccessRequestStatus.Approved,
+            GrantExpiresAt = DateTimeOffset.UtcNow.AddHours(4),
+            RevokedAt = null,
+        };
+
+        var result = ResolveAccessRoleId(null, grant);
+
+        output.WriteLine($"Grant approved, not revoked => roleId: {result}");
+
+        Assert.Equal(grantRoleId, result);
+    }
+
+    [Fact]
     public void ImpersonationGroups_AlwaysIncludeSystemAuthenticated()
     {
         var groups = new List<string> { "system:authenticated" };

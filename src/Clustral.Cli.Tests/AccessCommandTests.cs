@@ -23,6 +23,7 @@ public class AccessCommandTests(ITestOutputHelper output)
         Assert.Contains("ls", subs);
         Assert.Contains("approve", subs);
         Assert.Contains("deny", subs);
+        Assert.Contains("revoke", subs);
     }
 
     [Fact]
@@ -190,5 +191,64 @@ public class AccessCommandTests(ITestOutputHelper output)
 
         Assert.Contains("Pending", console.Output);
         Assert.Contains("staging", console.Output);
+    }
+
+    // ── Revoke subcommand ───────────────────────────────────────────────────
+
+    [Fact]
+    public void AccessRevoke_HasRequestIdAndReasonOption()
+    {
+        var access = AccessCommand.BuildAccessCommand();
+        var revoke = access.Subcommands.First(s => s.Name == "revoke");
+
+        output.WriteLine($"Command: access revoke");
+        output.WriteLine($"Arguments: {revoke.Arguments.Count}");
+        foreach (var opt in revoke.Options)
+            output.WriteLine($"  --{opt.Name}");
+
+        Assert.Single(revoke.Arguments);
+        Assert.Contains(revoke.Options, o => o.Name == "reason");
+        Assert.Contains(revoke.Options, o => o.Name == "insecure");
+    }
+
+    [Fact]
+    public void AccessLs_HasActiveOption()
+    {
+        var access = AccessCommand.BuildAccessCommand();
+        var ls = access.Subcommands.First(s => s.Name == "ls");
+
+        output.WriteLine("Options for 'access ls':");
+        foreach (var opt in ls.Options)
+            output.WriteLine($"  --{opt.Name}");
+
+        Assert.Contains(ls.Options, o => o.Name == "active");
+    }
+
+    [Fact]
+    public void RenderAccessTable_RevokedStatus()
+    {
+        var requests = new List<AccessRequestResponse>
+        {
+            new()
+            {
+                Id = "revoked-1234-5678-9abc-def012345678",
+                RoleName = "admin", ClusterName = "production",
+                Status = "Revoked", RequesterEmail = "alice@example.com",
+                CreatedAt = DateTimeOffset.UtcNow.AddHours(-3),
+                RequestExpiresAt = DateTimeOffset.UtcNow.AddHours(-2),
+                GrantExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+                RevokedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+                RevokedReason = "security incident",
+            },
+        };
+
+        var console = new TestConsole();
+        console.Profile.Width = 120;
+        AccessCommand.RenderAccessTable(console, requests);
+
+        output.WriteLine("=== Revoked Status ===");
+        output.WriteLine(console.Output);
+
+        Assert.Contains("Revoked", console.Output);
     }
 }

@@ -52,7 +52,8 @@ public sealed class UsersController(ClustralDb db, ILogger<UsersController> logg
         var activeRequests = await db.AccessRequests
             .Find(r => r.RequesterId == user.Id
                      && r.Status == Domain.AccessRequestStatus.Approved
-                     && r.GrantExpiresAt > now)
+                     && r.GrantExpiresAt > now
+                     && r.RevokedAt == null)
             .ToListAsync(ct);
 
         var grantClusterIds = activeRequests.Select(r => r.ClusterId).Distinct().ToList();

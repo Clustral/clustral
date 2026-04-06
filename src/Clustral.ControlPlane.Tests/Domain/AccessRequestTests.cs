@@ -149,10 +149,78 @@ public class AccessRequestTests(ITestOutputHelper output)
         output.WriteLine($"Approved: {(int)AccessRequestStatus.Approved}");
         output.WriteLine($"Denied:   {(int)AccessRequestStatus.Denied}");
         output.WriteLine($"Expired:  {(int)AccessRequestStatus.Expired}");
+        output.WriteLine($"Revoked:  {(int)AccessRequestStatus.Revoked}");
 
         Assert.Equal(0, (int)AccessRequestStatus.Pending);
         Assert.Equal(1, (int)AccessRequestStatus.Approved);
         Assert.Equal(2, (int)AccessRequestStatus.Denied);
         Assert.Equal(3, (int)AccessRequestStatus.Expired);
+        Assert.Equal(4, (int)AccessRequestStatus.Revoked);
+    }
+
+    // ── Revocation ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void IsGrantActive_False_WhenRevoked()
+    {
+        var request = new AccessRequest
+        {
+            Status = AccessRequestStatus.Approved,
+            GrantExpiresAt = DateTimeOffset.UtcNow.AddHours(4),
+            RevokedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+        };
+
+        output.WriteLine($"Status: Approved, GrantExpiresAt: +4h, RevokedAt: -5m");
+        output.WriteLine($"IsGrantActive: {request.IsGrantActive}");
+        output.WriteLine($"IsRevoked: {request.IsRevoked}");
+
+        Assert.False(request.IsGrantActive);
+        Assert.True(request.IsRevoked);
+    }
+
+    [Fact]
+    public void IsGrantActive_False_WhenRevokedEvenIfGrantStillValid()
+    {
+        var request = new AccessRequest
+        {
+            Status = AccessRequestStatus.Approved,
+            GrantExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            RevokedAt = DateTimeOffset.UtcNow,
+        };
+
+        output.WriteLine("Grant valid for 7 more days but revoked => IsGrantActive: false");
+
+        Assert.False(request.IsGrantActive);
+    }
+
+    [Fact]
+    public void IsRevoked_False_ByDefault()
+    {
+        var request = new AccessRequest();
+
+        output.WriteLine($"RevokedAt: {request.RevokedAt?.ToString() ?? "null"}");
+        output.WriteLine($"IsRevoked: {request.IsRevoked}");
+
+        Assert.False(request.IsRevoked);
+        Assert.Null(request.RevokedAt);
+        Assert.Null(request.RevokedBy);
+        Assert.Null(request.RevokedReason);
+    }
+
+    [Fact]
+    public void IsRevoked_True_WhenRevokedAtSet()
+    {
+        var request = new AccessRequest
+        {
+            RevokedAt = DateTimeOffset.UtcNow,
+            RevokedBy = Guid.NewGuid(),
+            RevokedReason = "compromised",
+        };
+
+        output.WriteLine($"RevokedAt: {request.RevokedAt}");
+        output.WriteLine($"RevokedReason: {request.RevokedReason}");
+        output.WriteLine($"IsRevoked: {request.IsRevoked}");
+
+        Assert.True(request.IsRevoked);
     }
 }

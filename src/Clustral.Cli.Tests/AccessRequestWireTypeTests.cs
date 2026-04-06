@@ -255,4 +255,58 @@ public class AccessRequestWireTypeTests(ITestOutputHelper output)
         Assert.Single(resp.ActiveGrants);
         Assert.Equal("admin", resp.ActiveGrants[0].RoleName);
     }
+
+    // ── Revocation wire types ───────────────────────────────────────────────
+
+    [Fact]
+    public void AccessRequestRevokeRequest_Serializes()
+    {
+        var req = new AccessRequestRevokeRequest { Reason = "security incident" };
+        var json = JsonSerializer.Serialize(req, CliJsonContext.Default.AccessRequestRevokeRequest);
+
+        output.WriteLine(json);
+
+        Assert.Contains("\"reason\"", json);
+        Assert.Contains("security incident", json);
+    }
+
+    [Fact]
+    public void AccessRequestResponse_WithRevocationFields()
+    {
+        var json = """
+        {
+            "id": "req-revoked",
+            "requesterId": "u1",
+            "requesterEmail": "alice@example.com",
+            "roleName": "admin",
+            "clusterId": "c1",
+            "clusterName": "production",
+            "status": "Revoked",
+            "reason": "deploy",
+            "requestedDuration": "04:00:00",
+            "createdAt": "2026-04-06T10:00:00Z",
+            "requestExpiresAt": "2026-04-06T11:00:00Z",
+            "reviewerId": "u2",
+            "reviewerEmail": "bob@example.com",
+            "reviewedAt": "2026-04-06T10:05:00Z",
+            "grantExpiresAt": "2026-04-06T14:05:00Z",
+            "revokedAt": "2026-04-06T11:00:00Z",
+            "revokedByEmail": "admin@example.com",
+            "revokedReason": "compromised"
+        }
+        """;
+
+        var resp = JsonSerializer.Deserialize(json, CliJsonContext.Default.AccessRequestResponse);
+
+        output.WriteLine($"=== Revoked AccessRequestResponse ===");
+        output.WriteLine($"  Status:       {resp!.Status}");
+        output.WriteLine($"  RevokedAt:    {resp.RevokedAt}");
+        output.WriteLine($"  RevokedBy:    {resp.RevokedByEmail}");
+        output.WriteLine($"  RevokedReason: {resp.RevokedReason}");
+
+        Assert.Equal("Revoked", resp.Status);
+        Assert.NotNull(resp.RevokedAt);
+        Assert.Equal("admin@example.com", resp.RevokedByEmail);
+        Assert.Equal("compromised", resp.RevokedReason);
+    }
 }

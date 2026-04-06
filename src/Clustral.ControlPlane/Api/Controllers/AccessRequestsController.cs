@@ -116,13 +116,24 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
     public async Task<IActionResult> List(
         [FromQuery] string? status,
         [FromQuery] bool mine,
+        [FromQuery] bool active,
         CancellationToken ct)
     {
         var builder = Builders<AccessRequest>.Filter;
         var filter = builder.Empty;
 
-        if (!string.IsNullOrEmpty(status) && Enum.TryParse<AccessRequestStatus>(status, true, out var s))
+        if (active)
+        {
+            // Active grants: approved, not revoked, not yet expired.
+            var now = DateTimeOffset.UtcNow;
+            filter &= builder.Eq(r => r.Status, AccessRequestStatus.Approved)
+                    & builder.Gt(r => r.GrantExpiresAt, now)
+                    & builder.Eq(r => r.RevokedAt, null);
+        }
+        else if (!string.IsNullOrEmpty(status) && Enum.TryParse<AccessRequestStatus>(status, true, out var s))
+        {
             filter &= builder.Eq(r => r.Status, s);
+        }
 
         if (mine)
         {
@@ -241,6 +252,48 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // POST /api/v1/access-requests/{id}/revoke
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [HttpPost("{id:guid}/revoke")]
+    public async Task<IActionResult> Revoke(
+        Guid id,
+        [FromBody] RevokeAccessRequestRequest? body,
+        CancellationToken ct)
+    {
+        var revoker = await ResolveCurrentUserAsync(ct);
+        if (revoker is null) return Unauthorized();
+
+        var request = await db.AccessRequests.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
+        if (request is null) return NotFound();
+
+        if (request.Status != AccessRequestStatus.Approved)
+            return Conflict(new { error = $"Only approved grants can be revoked. Current status: {request.Status}." });
+
+        if (request.IsRevoked)
+            return Conflict(new { error = "Grant has already been revoked." });
+
+        if (!request.IsGrantActive)
+            return Conflict(new { error = "Grant has already expired." });
+
+        var now = DateTimeOffset.UtcNow;
+        var update = Builders<AccessRequest>.Update
+            .Set(r => r.Status, AccessRequestStatus.Revoked)
+            .Set(r => r.RevokedAt, now)
+            .Set(r => r.RevokedBy, revoker.Id)
+            .Set(r => r.RevokedReason, body?.Reason);
+
+        await db.AccessRequests.UpdateOneAsync(r => r.Id == id, update, cancellationToken: ct);
+
+        logger.LogInformation(
+            "Access request {RequestId} revoked by {Revoker}: {Reason}",
+            id, revoker.Email, body?.Reason ?? "(no reason)");
+
+        var updated = await db.AccessRequests.Find(r => r.Id == id).FirstOrDefaultAsync(ct);
+        return Ok(await EnrichAsync(updated!, ct));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -278,6 +331,13 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
                 reviewerInfos.Add(new ReviewerInfo(u.Id, u.Email ?? u.KeycloakSubject, u.DisplayName));
         }
 
+        string? revokedByEmail = null;
+        if (r.RevokedBy.HasValue)
+        {
+            var revoker = await db.Users.Find(u => u.Id == r.RevokedBy.Value).FirstOrDefaultAsync(ct);
+            revokedByEmail = revoker?.Email ?? revoker?.KeycloakSubject;
+        }
+
         return new AccessRequestResponse(
             r.Id,
             r.RequesterId,
@@ -297,6 +357,9 @@ public sealed class AccessRequestsController(ClustralDb db, ILogger<AccessReques
             reviewerEmail,
             r.ReviewedAt,
             r.DenialReason,
-            r.GrantExpiresAt);
+            r.GrantExpiresAt,
+            r.RevokedAt,
+            revokedByEmail,
+            r.RevokedReason);
     }
 }

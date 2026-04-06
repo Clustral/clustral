@@ -98,7 +98,10 @@ public class AccessRequestsControllerTests(ITestOutputHelper output)
             ReviewerEmail: null,
             ReviewedAt: null,
             DenialReason: null,
-            GrantExpiresAt: null);
+            GrantExpiresAt: null,
+            RevokedAt: null,
+            RevokedByEmail: null,
+            RevokedReason: null);
 
         output.WriteLine($"=== Pending AccessRequestResponse ===");
         output.WriteLine($"  ID:        {response.Id}");
@@ -140,7 +143,10 @@ public class AccessRequestsControllerTests(ITestOutputHelper output)
             ReviewerEmail: "bob@example.com",
             ReviewedAt: now,
             DenialReason: null,
-            GrantExpiresAt: now.AddHours(4));
+            GrantExpiresAt: now.AddHours(4),
+            RevokedAt: null,
+            RevokedByEmail: null,
+            RevokedReason: null);
 
         output.WriteLine($"=== Approved AccessRequestResponse ===");
         output.WriteLine($"  Status:       {response.Status}");
@@ -177,7 +183,10 @@ public class AccessRequestsControllerTests(ITestOutputHelper output)
             ReviewerEmail: "charlie@example.com",
             ReviewedAt: now,
             DenialReason: "Not authorized without team lead approval",
-            GrantExpiresAt: null);
+            GrantExpiresAt: null,
+            RevokedAt: null,
+            RevokedByEmail: null,
+            RevokedReason: null);
 
         output.WriteLine($"=== Denied AccessRequestResponse ===");
         output.WriteLine($"  Status:       {response.Status}");
@@ -222,6 +231,7 @@ public class AccessRequestsControllerTests(ITestOutputHelper output)
     [InlineData(AccessRequestStatus.Approved, false)]
     [InlineData(AccessRequestStatus.Denied, false)]
     [InlineData(AccessRequestStatus.Expired, false)]
+    [InlineData(AccessRequestStatus.Revoked, false)]
     public void OnlyPendingRequests_CanBeApprovedOrDenied(AccessRequestStatus status, bool canTransition)
     {
         output.WriteLine($"Status: {status} => canApprove/Deny: {canTransition}");
@@ -313,5 +323,116 @@ public class AccessRequestsControllerTests(ITestOutputHelper output)
         // This test documents the expected behavior; actual HTTP tests
         // would require WebApplicationFactory + real MongoDB.
         Assert.True(true);
+    }
+
+    // ── Revocation ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RevokeAccessRequestRequest_OptionalReason()
+    {
+        var withReason = new RevokeAccessRequestRequest(Reason: "compromised account");
+        var withoutReason = new RevokeAccessRequestRequest(Reason: null);
+
+        output.WriteLine($"With reason:    {withReason.Reason}");
+        output.WriteLine($"Without reason: {withoutReason.Reason ?? "null"}");
+
+        Assert.Equal("compromised account", withReason.Reason);
+        Assert.Null(withoutReason.Reason);
+    }
+
+    [Theory]
+    [InlineData(AccessRequestStatus.Approved, true)]
+    [InlineData(AccessRequestStatus.Pending, false)]
+    [InlineData(AccessRequestStatus.Denied, false)]
+    [InlineData(AccessRequestStatus.Expired, false)]
+    [InlineData(AccessRequestStatus.Revoked, false)]
+    public void OnlyApprovedRequests_CanBeRevoked(AccessRequestStatus status, bool canRevoke)
+    {
+        output.WriteLine($"Status: {status} => canRevoke: {canRevoke}");
+
+        Assert.Equal(canRevoke, status == AccessRequestStatus.Approved);
+    }
+
+    [Fact]
+    public void RevokedGrant_NotConsideredActive()
+    {
+        var request = new AccessRequest
+        {
+            Status = AccessRequestStatus.Revoked,
+            GrantExpiresAt = DateTimeOffset.UtcNow.AddHours(4),
+            RevokedAt = DateTimeOffset.UtcNow,
+            RevokedReason = "no longer needed",
+        };
+
+        output.WriteLine($"Status: Revoked, GrantExpiresAt: +4h, RevokedAt: now");
+        output.WriteLine($"IsGrantActive: {request.IsGrantActive}");
+
+        Assert.False(request.IsGrantActive);
+    }
+
+    [Fact]
+    public void AccessRequestResponse_IncludesRevocationFields()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var response = new AccessRequestResponse(
+            Id: Guid.NewGuid(),
+            RequesterId: Guid.NewGuid(),
+            RequesterEmail: "alice@example.com",
+            RequesterDisplayName: "Alice",
+            RoleId: Guid.NewGuid(),
+            RoleName: "admin",
+            ClusterId: Guid.NewGuid(),
+            ClusterName: "production",
+            Status: "Revoked",
+            Reason: "deploy",
+            RequestedDuration: "04:00:00",
+            CreatedAt: now.AddHours(-2),
+            RequestExpiresAt: now.AddHours(-1),
+            SuggestedReviewers: [],
+            ReviewerId: Guid.NewGuid(),
+            ReviewerEmail: "bob@example.com",
+            ReviewedAt: now.AddHours(-2),
+            DenialReason: null,
+            GrantExpiresAt: now.AddHours(2),
+            RevokedAt: now,
+            RevokedByEmail: "admin@example.com",
+            RevokedReason: "security incident");
+
+        output.WriteLine($"=== Revoked AccessRequestResponse ===");
+        output.WriteLine($"  Status:        {response.Status}");
+        output.WriteLine($"  RevokedAt:     {response.RevokedAt}");
+        output.WriteLine($"  RevokedBy:     {response.RevokedByEmail}");
+        output.WriteLine($"  RevokedReason: {response.RevokedReason}");
+
+        Assert.Equal("Revoked", response.Status);
+        Assert.NotNull(response.RevokedAt);
+        Assert.Equal("admin@example.com", response.RevokedByEmail);
+        Assert.Equal("security incident", response.RevokedReason);
+    }
+
+    // ── Active filter ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void ActiveFilter_ExcludesRevokedGrants()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var requests = new List<AccessRequest>
+        {
+            new() { Status = AccessRequestStatus.Approved, GrantExpiresAt = now.AddHours(4), RevokedAt = null },
+            new() { Status = AccessRequestStatus.Approved, GrantExpiresAt = now.AddHours(2), RevokedAt = now.AddMinutes(-10) },
+            new() { Status = AccessRequestStatus.Approved, GrantExpiresAt = now.AddMinutes(-5), RevokedAt = null },
+            new() { Status = AccessRequestStatus.Pending },
+        };
+
+        var active = requests
+            .Where(r => r.Status == AccessRequestStatus.Approved
+                     && r.GrantExpiresAt > now
+                     && r.RevokedAt == null)
+            .ToList();
+
+        output.WriteLine($"Total requests: {requests.Count}");
+        output.WriteLine($"Active grants:  {active.Count}");
+
+        Assert.Single(active); // Only the first one.
     }
 }
