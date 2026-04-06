@@ -1,7 +1,7 @@
 # Clustral.Web — Claude Code Guide
 
-Vite + React 18 + TypeScript single-page application. Provides a web dashboard
-for viewing registered clusters and getting connection instructions.
+Next.js 14 application serving as the Clustral dashboard. Server-side OIDC
+authentication via NextAuth.js. UI built with shadcn/ui + Tailwind CSS 4.
 
 ---
 
@@ -9,13 +9,13 @@ for viewing registered clusters and getting connection instructions.
 
 | Layer | Library |
 |---|---|
-| Build | Vite 8, `@tailwindcss/vite` |
-| UI framework | React 18, TypeScript |
+| Framework | Next.js 14 (App Router) |
+| UI | React 18, TypeScript |
+| Components | shadcn/ui (Radix UI primitives + Tailwind) |
 | Styling | Tailwind CSS 4, `class-variance-authority`, `clsx`, `tailwind-merge` |
 | Icons | Lucide React |
+| Auth | NextAuth.js v5 (server-side OIDC) |
 | Server state | TanStack Query 5 |
-| Client state | Zustand 5 |
-| Routing | React Router 7 |
 | Package manager | bun |
 
 ---
@@ -23,70 +23,142 @@ for viewing registered clusters and getting connection instructions.
 ## File map
 
 ```
-Clustral.Web/src/
-├── main.tsx                       ← ReactDOM.createRoot entry point
-├── App.tsx                        ← QueryClientProvider + BrowserRouter + routes
-├── index.css                      ← Tailwind v4 @theme (design tokens)
+Clustral.Web/
+├── next.config.mjs                    ← Standalone output config
+├── components.json                    ← shadcn/ui configuration
+├── postcss.config.mjs                 ← Tailwind v4 PostCSS plugin
 │
-├── pages/
-│   ├── LoginPage.tsx              ← Paste-a-JWT login form
-│   └── ClustersPage.tsx           ← Cluster list + connect panel (two-column)
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx                 ← Root layout + Providers + Inter font
+│   │   ├── globals.css                ← Tailwind v4 @theme (design tokens)
+│   │   ├── page.tsx                   ← Redirect → /clusters
+│   │   ├── login/page.tsx             ← SSO login (Card + Button)
+│   │   ├── clusters/page.tsx          ← Cluster list + connect panel
+│   │   ├── users/page.tsx             ← User list + role assignments
+│   │   ├── roles/page.tsx             ← Role management (CRUD)
+│   │   ├── api/auth/[...nextauth]/    ← NextAuth route handler
+│   │   ├── api/v1/[...path]/          ← ControlPlane REST proxy
+│   │   ├── api/proxy/[...path]/       ← kubectl tunnel proxy
+│   │   └── .well-known/clustral-*/    ← CLI discovery endpoint
+│   │
+│   ├── components/
+│   │   ├── ui/                        ← shadcn/ui components (DO NOT import from packages)
+│   │   │   ├── button.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── alert.tsx
+│   │   │   ├── select.tsx
+│   │   │   ├── separator.tsx
+│   │   │   └── label.tsx
+│   │   │
+│   │   ├── NavHeader.tsx              ← Top navigation (Clusters / Users / Roles + sign out)
+│   │   ├── ClusterCard.tsx            ← Cluster row (Card + Badge + Button)
+│   │   ├── ConnectSteps.tsx           ← CLI connection instructions
+│   │   ├── RegisterClusterDialog.tsx  ← Dialog for cluster registration
+│   │   └── AgentSetupSteps.tsx        ← Post-registration agent deploy instructions
+│   │
+│   ├── hooks/
+│   │   └── useClusters.ts             ← TanStack Query, polls /api/v1/clusters every 15s
+│   │
+│   ├── lib/
+│   │   ├── api.ts                     ← Typed fetch wrapper for REST API
+│   │   ├── auth.ts                    ← NextAuth config (generic OIDC provider)
+│   │   └── utils.ts                   ← cn() — clsx + tailwind-merge
+│   │
+│   ├── providers.tsx                  ← SessionProvider + QueryClientProvider
+│   └── types/api.ts                   ← TypeScript interfaces for REST DTOs
 │
-├── components/
-│   ├── ClusterCard.tsx            ← Single cluster row: name, status badge, labels, k8s version
-│   └── ConnectSteps.tsx           ← 3-step CLI instructions with copy-to-clipboard
-│
-├── hooks/
-│   └── useClusters.ts             ← TanStack Query hook, polls GET /api/v1/clusters every 15s
-│
-├── stores/
-│   └── useAuthStore.ts            ← Zustand: token + decoded UserInfo, setAuth / clearAuth
-│
-├── lib/
-│   ├── api.ts                     ← Typed fetch wrapper for ControlPlane REST API
-│   └── utils.ts                   ← cn() — clsx + tailwind-merge
-│
-└── types/
-    └── api.ts                     ← TypeScript interfaces mirroring ControlPlane DTOs
+├── Dockerfile                         ← Multi-stage: bun build → node:20-alpine standalone
+└── package.json
 ```
 
 ---
 
-## State management rules
+## shadcn/ui
 
-Follow the conventions from the root `CLAUDE.md`:
+Components are in `src/components/ui/`. They are **owned by us** — not a
+package dependency. Modify them directly when needed.
+
+### Adding a new component
+
+```bash
+cd src/Clustral.Web
+bunx shadcn@latest add <component-name>
+# e.g. bunx shadcn@latest add table tooltip popover
+```
+
+This downloads the component source into `src/components/ui/` and installs
+any required Radix UI dependencies.
+
+### Using a component
+
+```tsx
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+<Button variant="outline" size="sm">Click me</Button>
+<Badge variant="destructive">Disconnected</Badge>
+<Dialog open={open} onOpenChange={setOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Title</DialogTitle>
+    </DialogHeader>
+    {/* content */}
+  </DialogContent>
+</Dialog>
+```
+
+### Available variants
+
+- **Button**: `default`, `outline`, `secondary`, `ghost`, `destructive`, `link`
+- **Button sizes**: `default`, `sm`, `xs`, `lg`, `icon`, `icon-xs`, `icon-sm`
+- **Badge**: `default`, `secondary`, `destructive`, `outline`
+- **Alert**: `default`, `destructive`
+
+### Guidelines
+
+- **Always** use shadcn Button instead of raw `<button>` elements
+- **Always** use shadcn Input/Label instead of raw `<input>/<label>`
+- **Always** use shadcn Dialog for modals — it handles focus trap, escape key, overlay
+- Use Badge for status indicators and tags
+- Use Card for content containers
+- Use Alert for error/warning messages
+- Keep customizations in the component files, not via className overrides
+
+---
+
+## State management
 
 | What | Where |
 |---|---|
-| Server data (clusters, credentials) | TanStack Query — the hook owns caching, refetching, and error state |
-| Auth token + decoded user info | Zustand (`useAuthStore`) — set once on login, cleared on logout |
-| Local/ephemeral UI state (selected cluster, form inputs) | React `useState` |
+| Server data (clusters, users, roles) | TanStack Query — the hook owns caching, refetching, error state |
+| Auth session | NextAuth.js `useSession()` — server-managed, access token in `session.accessToken` |
+| Local/ephemeral UI state | React `useState` |
 
-**Do not** put server-fetched data into Zustand. TanStack Query already owns it.
+**Do not** create Zustand stores. TanStack Query and NextAuth handle all shared state.
 
 ---
 
-## API proxy
+## API proxying
 
-In dev, Vite proxies `/api` requests to `http://localhost:5000` (ControlPlane):
+All API calls go through Next.js API routes at request time (not build-time rewrites):
 
-```ts
-// vite.config.ts
-server: {
-  proxy: {
-    "/api": { target: "http://localhost:5000", changeOrigin: true },
-  },
-},
-```
-
-In production, configure the reverse proxy (nginx, Caddy) to forward `/api`
-to the ControlPlane.
+| Route | Destination | Purpose |
+|---|---|---|
+| `/api/v1/*` | `CONTROLPLANE_URL/api/v1/*` | REST API proxy |
+| `/api/proxy/*` | `CONTROLPLANE_URL/api/proxy/*` | kubectl tunnel proxy |
+| `/api/auth/*` | NextAuth handler | OIDC auth |
+| `/.well-known/clustral-configuration` | `CONTROLPLANE_URL/api/v1/config` | CLI discovery |
 
 ---
 
 ## Query keys
 
-Query keys are colocated with their hooks (per root CLAUDE.md convention):
+Colocated with their hooks:
 
 ```ts
 // hooks/useClusters.ts
@@ -96,7 +168,20 @@ export const clusterKeys = {
 };
 ```
 
-Invalidate with `queryClient.invalidateQueries({ queryKey: clusterKeys.all })`.
+---
+
+## Environment variables
+
+All runtime (not build-time):
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXTAUTH_URL` | Yes | Browser-facing URL |
+| `CONTROLPLANE_URL` | Yes | ControlPlane REST API |
+| `OIDC_ISSUER` | Yes | OIDC provider URL |
+| `OIDC_CLIENT_ID` | No | Default: `clustral-web` |
+| `OIDC_CLIENT_SECRET` | Yes | OIDC client secret |
+| `AUTH_SECRET` | Yes | NextAuth encryption key |
 
 ---
 
@@ -109,25 +194,13 @@ bun dev
 # → http://localhost:5173
 ```
 
-Requires the ControlPlane running on `:5000` (see root CLAUDE.md for
-`docker-compose up -d` + `dotnet run`).
-
 ---
 
 ## Build
 
 ```bash
 bun run build
-# Output: dist/
-```
-
----
-
-## Testing
-
-```bash
-bun test          # Vitest (not yet configured)
-bun e2e           # Playwright (not yet configured)
+# Output: .next/standalone/
 ```
 
 ---
@@ -136,9 +209,9 @@ bun e2e           # Playwright (not yet configured)
 
 | # | What | Where |
 |---|---|---|
-| 1 | Keycloak OIDC redirect login (replace paste-a-token) | `LoginPage.tsx` + new `lib/oidc.ts` |
-| 2 | Cluster detail page with credential history | new `pages/ClusterDetailPage.tsx` |
-| 3 | shadcn/ui component primitives (Button, Card, Badge, Input) | `components/ui/` |
-| 4 | Dark mode toggle | `index.css` `@media (prefers-color-scheme: dark)` theme + toggle component |
-| 5 | Vitest + React Testing Library setup | `vitest.config.ts` + test files |
-| 6 | Playwright e2e setup | `playwright.config.ts` + `e2e/` directory |
+| 1 | Cluster detail page with credential history | new `app/clusters/[id]/page.tsx` |
+| 2 | Dark mode toggle | `globals.css` dark theme + toggle in NavHeader |
+| 3 | Remaining shadcn migration (users, roles pages) | Use Dialog, Select, Card in page files |
+| 4 | Data table component for users/roles lists | `bunx shadcn add table` |
+| 5 | Vitest + React Testing Library setup | `vitest.config.ts` |
+| 6 | Playwright e2e | `playwright.config.ts` + `e2e/` |
