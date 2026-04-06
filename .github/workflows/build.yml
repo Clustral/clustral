@@ -7,20 +7,22 @@ on:
     paths:
       - "packages/**"
       - "src/Clustral.ControlPlane/**"
-      - "src/Clustral.Agent/**"
       - "src/Clustral.Cli/**"
       - "src/Clustral.Web/**"
+      - "src/clustral-agent/**"
       - "Clustral.slnx"
+      - "Directory.Packages.props"
       - ".github/workflows/build.yml"
   pull_request:
     branches: [main]
     paths:
       - "packages/**"
       - "src/Clustral.ControlPlane/**"
-      - "src/Clustral.Agent/**"
       - "src/Clustral.Cli/**"
       - "src/Clustral.Web/**"
+      - "src/clustral-agent/**"
       - "Clustral.slnx"
+      - "Directory.Packages.props"
       - ".github/workflows/build.yml"
 
 jobs:
@@ -42,6 +44,7 @@ jobs:
               - "src/Clustral.ControlPlane/**"
               - "src/Clustral.Cli/**"
               - "Clustral.slnx"
+              - "Directory.Packages.props"
             web:
               - "src/Clustral.Web/**"
               - "packages/**"
@@ -88,7 +91,7 @@ jobs:
 
       - name: Test
         working-directory: src/clustral-agent
-        run: go test ./...
+        run: go test -race ./...
 
   build-web:
     name: Build (Web)
