@@ -62,6 +62,37 @@ check trimmer warnings on this class.  If warnings appear, add
 on the `KubeconfigWriter` constructor, or migrate to a source-generated YAML
 approach.
 
+**Enterprise features:** KubeconfigWriter supports deterministic ordering of
+kubeconfig entries, validation of cluster/user/context triples before writing,
+security policies (e.g. disallowing `insecure-skip-tls-verify` in production),
+credential redaction in logs, multiple auth modes (certificate, exec-based,
+token), and configurable merge strategies for multi-file `$KUBECONFIG` setups.
+
+---
+
+### `Clustral.Sdk.Results` — Result Pattern
+
+**Files:** `Results/Result.cs`, `Results/ResultError.cs`, `Results/ResultErrors.cs`,
+`Results/ResultExtensions.cs`, `Results/ResultFailureException.cs`
+
+A railway-oriented error-handling pattern used across the ControlPlane and Sdk
+instead of throwing exceptions for domain-level failures.
+
+| File | Description |
+|---|---|
+| `Results/Result.cs` | `Result<T>` immutable struct with `Map`, `MapAsync`, `Ensure`, `Match`, and `ThrowIfFailed` combinators. |
+| `Results/ResultError.cs` | Error record with `Kind`, `Code`, `Message`, `Field`, `TraceId`, and `Metadata` properties. |
+| `Results/ResultErrors.cs` | Domain error catalog — pre-defined errors such as `ClusterNotFound`, `RoleNotFound`, `AccessDenied`, etc. |
+| `Results/ResultExtensions.cs` | ASP.NET Core integration — `ToActionResult` (RFC 7807 Problem Details), `ToCreatedResult`, `ToGrpcResult`. |
+| `Results/ResultFailureException.cs` | Bridge to the exception-handler middleware for cases where a `Result` failure must propagate as an exception. |
+
+**Usage pattern:**
+
+```csharp
+Result<Cluster> result = await clusterService.GetByIdAsync(id);
+return result.ToActionResult();   // 200 with body, or RFC 7807 error
+```
+
 ---
 
 ### `Clustral.Sdk.Grpc.GrpcChannelFactory`
@@ -101,3 +132,12 @@ See `packages/proto/README.md` for full regeneration instructions.
    reflection, no `dynamic`, no `Activator.CreateInstance` without a `[DynamicDependency]`).
 3. Add at least happy-path + error-path tests in `Clustral.Sdk.Tests`.
 4. Update this file.
+
+---
+
+## Central Package Management
+
+NuGet package versions are managed centrally via `Directory.Packages.props` at
+the repository root. Do not specify `Version` attributes in individual `.csproj`
+files — use `<PackageReference Include="..." />` without a version, and add or
+update the version in `Directory.Packages.props` instead.

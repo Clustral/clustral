@@ -37,6 +37,7 @@ Clustral.Web/
 │   │   ├── clusters/page.tsx          ← Cluster list + connect panel
 │   │   ├── users/page.tsx             ← User list + role assignments
 │   │   ├── roles/page.tsx             ← Role management (CRUD)
+│   │   ├── access-requests/page.tsx  ← Access request management (My Requests, Pending Reviews, Active Grants tabs)
 │   │   ├── api/auth/[...nextauth]/    ← NextAuth route handler
 │   │   ├── api/v1/[...path]/          ← ControlPlane REST proxy
 │   │   ├── api/proxy/[...path]/       ← kubectl tunnel proxy
@@ -54,7 +55,7 @@ Clustral.Web/
 │   │   │   ├── separator.tsx
 │   │   │   └── label.tsx
 │   │   │
-│   │   ├── NavHeader.tsx              ← Top navigation (Clusters / Users / Roles + sign out)
+│   │   ├── NavHeader.tsx              ← Top navigation (Clusters / Users / Roles / Access Requests + sign out)
 │   │   ├── ClusterCard.tsx            ← Cluster row (Card + Badge + Button)
 │   │   ├── ConnectSteps.tsx           ← CLI connection instructions
 │   │   ├── RegisterClusterDialog.tsx  ← Dialog for cluster registration
@@ -64,7 +65,7 @@ Clustral.Web/
 │   │   └── useClusters.ts             ← TanStack Query, polls /api/v1/clusters every 15s
 │   │
 │   ├── lib/
-│   │   ├── api.ts                     ← Typed fetch wrapper for REST API
+│   │   ├── api.ts                     ← Typed fetch wrapper for REST API (includes revokeAccessRequest)
 │   │   ├── auth.ts                    ← NextAuth config (generic OIDC provider)
 │   │   └── utils.ts                   ← cn() — clsx + tailwind-merge
 │   │
@@ -211,7 +212,9 @@ bun run build
 |---|---|---|
 | 1 | Cluster detail page with credential history | new `app/clusters/[id]/page.tsx` |
 | 2 | Dark mode toggle | `globals.css` dark theme + toggle in NavHeader |
-| 3 | Remaining shadcn migration (users, roles pages) | Use Dialog, Select, Card in page files |
-| 4 | Data table component for users/roles lists | `bunx shadcn add table` |
+| 3 | Data table component for users/roles/access-requests lists | `bunx shadcn add table` |
+| 4 | Access request notification badges in NavHeader | `components/NavHeader.tsx` |
 | 5 | Vitest + React Testing Library setup | `vitest.config.ts` |
 | 6 | Playwright e2e | `playwright.config.ts` + `e2e/` |
+| 7 | Audit log viewer page | new `app/audit/page.tsx` |
+| 8 | Cluster health metrics dashboard | new `app/clusters/[id]/metrics/page.tsx` |

@@ -182,6 +182,8 @@ Services:
 | TanStack Query keys | array-of-strings, colocated with the hook |
 | Helm values | camelCase |
 | Proto message names | PascalCase, no namespace prefix (proto package provides namespacing) |
+| Result error codes | SCREAMING_SNAKE_CASE (e.g. `ROLE_NOT_FOUND`) via `ResultErrors.*` catalog |
+| Controller result mapping | Private methods return `Result<T>`, mapped to HTTP via `ToActionResult()` |
 
 ---
 
@@ -210,3 +212,8 @@ dotnet test Clustral.slnx
 - **Helm chart changes** in `infra/helm/` must keep `values.yaml` as the source of truth; do not hardcode values in templates.
 - **Security-sensitive paths** (token handling in `TokenCache`, tunnel auth in `TunnelService`) require extra care. Flag any change that touches these for explicit review rather than silently implementing.
 - **Keep PRs focused.** Proto change, migration, and implementation should be reviewable together but should be called out as distinct layers in the PR description.
+- **Use `Result<T>` in controllers** instead of throwing exceptions. Use `ResultErrors.*` catalog for consistent error codes across the codebase.
+- **CLI error display** uses `CliErrors.*` card-style display for user-friendly error output.
+- **Command aliases**: all listing commands support both `list` and `ls` aliases.
+- **xUnit test output**: use `ITestOutputHelper` in xUnit tests, not `Console.WriteLine`.
+- **Integration tests need Docker** running for Testcontainers.
