@@ -1,5 +1,14 @@
 # Clustral
 
+[![Build & Test](https://github.com/Clustral/clustral/actions/workflows/build.yml/badge.svg)](https://github.com/Clustral/clustral/actions/workflows/build.yml)
+[![Release CLI](https://github.com/Clustral/clustral/actions/workflows/release-cli.yml/badge.svg)](https://github.com/Clustral/clustral/actions/workflows/release-cli.yml)
+[![Release Images](https://github.com/Clustral/clustral/actions/workflows/release.yml/badge.svg)](https://github.com/Clustral/clustral/actions/workflows/release.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/Clustral/clustral?include_prereleases&sort=semver&label=release)](https://github.com/Clustral/clustral/releases)
+[![License](https://img.shields.io/github/license/Clustral/clustral)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![Go](https://img.shields.io/badge/Go-1.23-00ADD8)](https://go.dev/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-000000)](https://nextjs.org/)
+
 Kubernetes access proxy — a Teleport alternative built on .NET, Go and React.
 
 Clustral lets users authenticate via any OIDC provider (Keycloak, Auth0, Okta, Azure AD), then transparently proxies `kubectl` traffic through a control plane to registered cluster agents. No inbound firewall rules required on the cluster side.
