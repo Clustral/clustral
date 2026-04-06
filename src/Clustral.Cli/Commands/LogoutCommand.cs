@@ -73,7 +73,7 @@ internal static class LogoutCommand
                     var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, ct);
 
                     if (response.IsSuccessStatusCode)
-                        Console.WriteLine($"  Revoked credential for {contextName}");
+                        Console.WriteLine($"  {Ui.Ansi.Red(Ui.Ansi.Cross)} Revoked credential for {Ui.Ansi.Cyan(contextName)}");
                 }
                 catch
                 {
@@ -86,13 +86,14 @@ internal static class LogoutCommand
         foreach (var (contextName, _) in clustralContexts)
         {
             writer.RemoveClusterEntry(contextName);
-            Console.WriteLine($"  Removed kubeconfig context: {contextName}");
+            Console.WriteLine($"  {Ui.Ansi.Red(Ui.Ansi.Cross)} Removed kubeconfig context: {Ui.Ansi.Cyan(contextName)}");
         }
 
         // ── 4. Clear the JWT ──────────────────────────────────────────────
         await cache.ClearAsync(ct);
 
-        Console.WriteLine("Logged out.");
+        Console.WriteLine($"\n  {Ui.Ansi.Green(Ui.Ansi.Check)} {Ui.Ansi.Bold("Logged out.")}");
+
     }
 
     /// <summary>

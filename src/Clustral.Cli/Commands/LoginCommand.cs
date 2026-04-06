@@ -113,7 +113,7 @@ internal static class LoginCommand
         }
 
         // ── Discover OIDC configuration from ControlPlane ─────────────────
-        Console.Error.WriteLine($"Connecting to {cpUrl}...");
+        Console.Error.WriteLine($"\n  {Ui.Ansi.Cyan(Ui.Ansi.Dot)} Connecting to {Ui.Ansi.Bold(cpUrl)}...");
 
         var discovered = await DiscoverConfigAsync(http, cpUrl, ct);
         if (discovered is null)
@@ -239,30 +239,31 @@ internal static class LoginCommand
                 .OrderBy(c => c)
                 .ToList();
 
-            // Display Teleport-style profile.
+            // Display profile with colors and symbols.
             Console.WriteLine();
-            Console.WriteLine($"> Profile URL:        {cpUrl}");
-            Console.WriteLine($"  Logged in as:       {profile.DisplayName ?? profile.Email}");
-            Console.WriteLine($"  Email:              {profile.Email}");
-            Console.WriteLine($"  Kubernetes:         enabled");
-            Console.WriteLine($"  CLI version:        v{VersionCommand.GetVersion()}");
+            Console.WriteLine($"  {Ui.Ansi.Green(Ui.Ansi.Check)} {Ui.Ansi.Bold("Logged in successfully")}");
+            Console.WriteLine();
+            Console.WriteLine($"  {Ui.Ansi.Gray("Profile URL")}     {Ui.Ansi.Cyan(cpUrl)}");
+            Console.WriteLine($"  {Ui.Ansi.Gray("Logged in as")}    {Ui.Ansi.Bold(profile.DisplayName ?? profile.Email)}");
+            Console.WriteLine($"  {Ui.Ansi.Gray("Email")}           {profile.Email}");
+            Console.WriteLine($"  {Ui.Ansi.Gray("Kubernetes")}      {Ui.Ansi.Green("enabled")}");
+            Console.WriteLine($"  {Ui.Ansi.Gray("CLI version")}     v{VersionCommand.GetVersion()}");
 
             if (roles.Count > 0)
-                Console.WriteLine($"  Roles:              {string.Join(", ", roles)}");
+                Console.WriteLine($"  {Ui.Ansi.Gray("Roles")}           {Ui.Ansi.Yellow(string.Join(", ", roles))}");
             else
-                Console.WriteLine($"  Roles:              (none assigned)");
+                Console.WriteLine($"  {Ui.Ansi.Gray("Roles")}           {Ui.Ansi.Dim("(none assigned)")}");
 
             if (clusters.Count > 0)
-                Console.WriteLine($"  Clusters:           {string.Join(", ", clusters)}");
+                Console.WriteLine($"  {Ui.Ansi.Gray("Clusters")}        {Ui.Ansi.Cyan(string.Join(", ", clusters))}");
             else
-                Console.WriteLine($"  Clusters:           (none assigned)");
+                Console.WriteLine($"  {Ui.Ansi.Gray("Clusters")}        {Ui.Ansi.Dim("(none assigned)")}");
 
-            // Per-cluster breakdown.
             if (profile.Assignments.Count > 0)
             {
-                Console.WriteLine($"  Access:");
+                Console.WriteLine($"  {Ui.Ansi.Gray("Access")}");
                 foreach (var a in profile.Assignments)
-                    Console.WriteLine($"    {a.ClusterName,-24} → {a.RoleName}");
+                    Console.WriteLine($"    {Ui.Ansi.Cyan(a.ClusterName),-35} {Ui.Ansi.Arrow} {Ui.Ansi.Yellow(a.RoleName)}");
             }
 
             if (expiry.HasValue)
@@ -271,7 +272,8 @@ internal static class LoginCommand
                 var validFor = remaining.TotalHours >= 1
                     ? $"{(int)remaining.TotalHours}h{remaining.Minutes}m"
                     : $"{(int)remaining.TotalMinutes}m";
-                Console.WriteLine($"  Valid until:        {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [valid for {validFor}]");
+                var color = remaining.TotalMinutes < 10 ? Ui.Ansi.Red : remaining.TotalHours < 1 ? Ui.Ansi.Yellow : (Func<string, string>)Ui.Ansi.Green;
+                Console.WriteLine($"  {Ui.Ansi.Gray("Valid until")}      {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [{color($"valid for {validFor}")}]");
             }
         }
         catch

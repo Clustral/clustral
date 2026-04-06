@@ -95,21 +95,36 @@ internal static class ClustersListCommand
 
             if (result is null || result.Clusters.Count == 0)
             {
-                Console.WriteLine("No clusters found.");
+                Console.WriteLine($"  {Ui.Ansi.Dim("No clusters found.")}");
                 return;
             }
 
-            // Header
-            Console.WriteLine($"{"ID",-38} {"NAME",-20} {"STATUS",-14} {"K8S",-10} {"LAST SEEN"}");
+            Console.WriteLine(
+                $"  {Ui.Ansi.Pad(Ui.Ansi.Bold("ID"), 38)}" +
+                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("NAME"), 22)}" +
+                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("STATUS"), 16)}" +
+                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("K8S"), 12)}" +
+                $"{Ui.Ansi.Bold("LAST SEEN")}");
 
             foreach (var c in result.Clusters)
             {
                 var lastSeen = c.LastSeenAt.HasValue
                     ? TimeAgo(c.LastSeenAt.Value)
-                    : "-";
+                    : Ui.Ansi.Dim("-");
+
+                var statusText = c.Status switch
+                {
+                    "Connected" => Ui.Ansi.Green(Ui.Ansi.Dot + " " + c.Status),
+                    "Pending" => Ui.Ansi.Yellow(Ui.Ansi.Dot + " " + c.Status),
+                    _ => Ui.Ansi.Red(Ui.Ansi.Dot + " " + c.Status),
+                };
 
                 Console.WriteLine(
-                    $"{c.Id,-38} {Truncate(c.Name, 20),-20} {c.Status,-14} {c.KubernetesVersion ?? "-",-10} {lastSeen}");
+                    $"  {Ui.Ansi.Pad(Ui.Ansi.Dim(c.Id), 38)}" +
+                    $"{Ui.Ansi.Pad(Truncate(c.Name, 20), 22)}" +
+                    $"{Ui.Ansi.Pad(statusText, 16)}" +
+                    $"{Ui.Ansi.Pad(c.KubernetesVersion ?? Ui.Ansi.Dim("-"), 12)}" +
+                    $"{lastSeen}");
             }
         }
         catch (Exception ex)

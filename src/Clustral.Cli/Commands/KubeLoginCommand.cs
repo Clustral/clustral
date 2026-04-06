@@ -159,12 +159,13 @@ internal static class KubeLoginCommand
             return;
         }
 
-        Console.WriteLine($"Kubeconfig updated. Context: {contextName}");
-        Console.WriteLine($"  Server:  {serverUrl}");
-        Console.WriteLine($"  Expires: {credential.ExpiresAt:O}");
+        Console.WriteLine($"\n  {Ui.Ansi.Green(Ui.Ansi.Check)} {Ui.Ansi.Bold("Kubeconfig updated")}");
+        Console.WriteLine($"  {Ui.Ansi.Gray("Context")}   {Ui.Ansi.Cyan(contextName)}");
+        Console.WriteLine($"  {Ui.Ansi.Gray("Server")}    {serverUrl}");
+        Console.WriteLine($"  {Ui.Ansi.Gray("Expires")}   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
 
         if (!noSetContext)
-            Console.WriteLine($"  Current context set to '{contextName}'.");
+            Console.WriteLine($"  {Ui.Ansi.Gray("Active")}    {Ui.Ansi.Green("current-context set")}");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

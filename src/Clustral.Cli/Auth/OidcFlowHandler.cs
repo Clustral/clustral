@@ -55,10 +55,7 @@ internal sealed class OidcFlowHandler
         var authUrl = BuildAuthorizationUrl(challenge, state, redirectUri);
 
         // ── Open browser ──────────────────────────────────────────────────────
-        Console.Error.WriteLine($"Opening browser for authentication…");
-        Console.Error.WriteLine($"If the browser does not open, navigate to:");
-        Console.Error.WriteLine($"  {authUrl}");
-        Console.Error.WriteLine();
+        Console.Error.WriteLine($"  {Ui.Ansi.Cyan(Ui.Ansi.Dot)} Opening browser for SSO login...");
 
         OpenBrowser(authUrl);
 
@@ -66,8 +63,10 @@ internal sealed class OidcFlowHandler
         string callbackQuery;
         using (var server = new OidcCallbackServer(_port))
         {
-            Console.Error.WriteLine(
-                $"Waiting for authentication callback on port {_port}…");
+            Console.Error.WriteLine($"  {Ui.Ansi.Yellow(Ui.Ansi.Dot)} Waiting for authentication...");
+            Console.Error.WriteLine($"    {Ui.Ansi.Dim("If the browser did not open, visit:")}");
+            Console.Error.WriteLine($"    {Ui.Ansi.Dim(authUrl)}");
+            Console.Error.WriteLine();
 
             callbackQuery = await server.WaitForCallbackAsync(ct);
         }

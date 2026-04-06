@@ -80,25 +80,55 @@ internal static class KubeLsCommand
 
             if (result is null || result.Clusters.Count == 0)
             {
-                Console.WriteLine("No Kubernetes clusters found.");
+                Console.WriteLine($"  {Ui.Ansi.Dim("No Kubernetes clusters found.")}");
                 return;
             }
 
-            // Detect which cluster the current kubeconfig context points to.
             var currentContext = GetCurrentClustralContext();
 
-            Console.WriteLine($"  {"CLUSTER",-24} {"ID",-38} {"STATUS",-14} {"K8S VERSION",-14} {"LABELS"}");
+            // Pad raw text first, then apply color — ANSI codes break string padding.
+            Console.WriteLine(
+                $"  {Ui.Ansi.Pad(Ui.Ansi.Bold("CLUSTER"), 26)}" +
+                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("ID"), 38)}" +
+                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("STATUS"), 16)}" +
+                $"{Ui.Ansi.Pad(Ui.Ansi.Bold("K8S VERSION"), 14)}" +
+                $"{Ui.Ansi.Bold("LABELS")}");
 
             foreach (var c in result.Clusters)
             {
                 var contextName = $"clustral-{c.Id}";
-                var selected = contextName == currentContext ? "> " : "  ";
+                var isSelected = contextName == currentContext;
+                var pointer = isSelected ? Ui.Ansi.Green(Ui.Ansi.Pointer) + " " : "  ";
+
+                var statusDot = c.Status switch
+                {
+                    "Connected" => Ui.Ansi.Green(Ui.Ansi.Dot),
+                    "Pending" => Ui.Ansi.Yellow(Ui.Ansi.Dot),
+                    _ => Ui.Ansi.Red(Ui.Ansi.Dot),
+                };
+
+                var statusText = c.Status switch
+                {
+                    "Connected" => Ui.Ansi.Green(c.Status),
+                    "Pending" => Ui.Ansi.Yellow(c.Status),
+                    _ => Ui.Ansi.Red(c.Status),
+                };
+
+                var clusterName = Truncate(c.Name, 24);
+                if (isSelected) clusterName = Ui.Ansi.Bold(clusterName);
+
                 var labels = c.Labels.Count > 0
-                    ? string.Join(", ", c.Labels.Select(kv => $"{kv.Key}={kv.Value}"))
+                    ? Ui.Ansi.Dim(string.Join(", ", c.Labels.Select(kv => $"{kv.Key}={kv.Value}")))
                     : "";
 
+                var version = c.KubernetesVersion ?? Ui.Ansi.Dim("-");
+
                 Console.WriteLine(
-                    $"{selected}{Truncate(c.Name, 24),-24} {c.Id,-38} {c.Status,-14} {c.KubernetesVersion ?? "",-14} {labels}");
+                    $"{pointer}{Ui.Ansi.Pad(clusterName, 24)}" +
+                    $"{Ui.Ansi.Pad(Ui.Ansi.Dim(c.Id), 38)}" +
+                    $"{statusDot} {Ui.Ansi.Pad(statusText, 14)}" +
+                    $"{Ui.Ansi.Pad(version, 14)}" +
+                    $"{labels}");
             }
         }
         catch (Exception ex)
