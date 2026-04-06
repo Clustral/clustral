@@ -25,6 +25,14 @@ async function apiFetch<T>(
     },
   });
 
+  if (res.status === 401) {
+    // Token expired or invalid — auto-logout.
+    if (typeof window !== "undefined") {
+      window.location.href = "/api/auth/signout?callbackUrl=/login";
+    }
+    throw new Error("Session expired. Redirecting to login...");
+  }
+
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`${res.status}: ${detail || res.statusText}`);
