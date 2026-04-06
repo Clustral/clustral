@@ -4,7 +4,7 @@
 // - protoc             v7.34.1
 // source: auth.proto
 
-package clustralv1
+package v1
 
 import (
 	context "context"

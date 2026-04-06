@@ -4,7 +4,7 @@
 // 	protoc        v7.34.1
 // source: tunnel.proto
 
-package clustralv1
+package v1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

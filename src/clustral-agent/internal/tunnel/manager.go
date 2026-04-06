@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/Clustral/clustral/src/clustral-agent/gen/clustralv1"
+	pb "github.com/Clustral/clustral/src/clustral-agent/gen/clustral/v1"
 	"github.com/Clustral/clustral/src/clustral-agent/internal/config"
 	"github.com/Clustral/clustral/src/clustral-agent/internal/credential"
 	"github.com/Clustral/clustral/src/clustral-agent/internal/proxy"

@@ -4,7 +4,7 @@
 // - protoc             v7.34.1
 // source: cluster.proto
 
-package clustralv1
+package v1
 
 import (
 	context "context"

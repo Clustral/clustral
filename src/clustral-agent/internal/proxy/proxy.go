@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	pb "github.com/Clustral/clustral/src/clustral-agent/gen/clustralv1"
+	pb "github.com/Clustral/clustral/src/clustral-agent/gen/clustral/v1"
 )
 
 var hopByHopHeaders = map[string]bool{
