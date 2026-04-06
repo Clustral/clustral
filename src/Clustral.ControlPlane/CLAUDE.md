@@ -155,16 +155,32 @@ dotnet run --project src/Clustral.ControlPlane
 
 ---
 
-## Adding a new REST endpoint
+## Adding a new feature (vertical slicing)
 
-1. Add request/response records to `Api/Models/`.
-2. Implement the action in the relevant controller (or create a new one).
-3. Use `Result<T>` for error paths, mapped via `ToActionResult()`.
-4. Annotate with `[ProducesResponseType]` for accurate Swagger output.
-5. Add the corresponding gRPC method if the endpoint is also exposed over
-   the agent-facing gRPC API.
-6. **Write unit tests** in `Clustral.ControlPlane.Tests/` for the new models and domain logic.
-7. **Write integration tests** in `Clustral.ControlPlane.Tests/Integration/` that exercise the endpoint over real HTTP with Testcontainers MongoDB. Use `ClustralWebApplicationFactory` and `CreateAuthenticatedClient()`.
+The ControlPlane uses vertical slicing with MediatR + FluentValidation.
+Each feature lives in its own folder under `Features/`:
+
+```
+Features/
+├── Shared/              ← ValidationBehavior, ICurrentUserProvider, TokenHashingService
+├── Clusters/            ← RegisterCluster.cs, ListClusters.cs, GetCluster.cs, DeleteCluster.cs
+├── Roles/               ← CreateRole.cs, ListRoles.cs, UpdateRole.cs, DeleteRole.cs
+├── Users/               ← GetCurrentUser.cs, ListUsers.cs, AssignRole.cs, etc.
+├── Auth/                ← IssueKubeconfigCredential.cs, RevokeCredential.cs, RevokeByToken.cs
+└── AccessRequests/      ← CreateAccessRequest.cs, ApproveAccessRequest.cs, etc.
+```
+
+To add a new feature:
+
+1. Create a folder under `Features/<FeatureName>/`.
+2. Define a command or query record implementing `IRequest<Result<T>>`.
+3. Implement a handler class implementing `IRequestHandler<TCommand, Result<T>>`.
+4. Add a `FluentValidation` validator (e.g., `CreateFooValidator : AbstractValidator<CreateFooCommand>`).
+5. Add a thin controller action in `Api/Controllers/` that calls `mediator.Send(...)` and maps via `ToActionResult()`. No business logic in the controller.
+6. Add request/response DTOs to `Api/Models/` if not already present.
+7. **Write unit tests** for the validator and handler in `Tests/Features/<FeatureName>/`.
+8. **Write integration tests** in `Tests/Features/<FeatureName>/` or `Tests/Integration/` using `ClustralWebApplicationFactory`. Use FluentAssertions.
+9. Do NOT use `[Required]` or other data annotations — FluentValidation handles all validation via the `ValidationBehavior` MediatR pipeline.
 
 ## Adding a new gRPC method
 

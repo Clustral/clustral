@@ -646,15 +646,20 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET (524 tests — unit + Testcontainers integration tests)
+# .NET (558 tests — unit + integration with Testcontainers + FluentAssertions)
 dotnet test Clustral.slnx
 
-# Go Agent
-cd src/clustral-agent && go test ./...
+# Go Agent (35 tests with race detector)
+cd src/clustral-agent && go test -race ./...
 ```
 
+> **593 total tests** across .NET and Go.
 > Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) to
 > spin up real MongoDB instances. Docker must be running to execute them.
+>
+> The ControlPlane uses **vertical slicing** with MediatR + FluentValidation.
+> Each feature (Clusters, Roles, Users, Auth, AccessRequests) lives in its own
+> `Features/` folder with command/query handlers and validators.
 
 ## Web UI Environment Variables
 
