@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
@@ -25,10 +26,7 @@ public sealed class ListAccessRequestsHandler(
 
         if (request.Active)
         {
-            var now = DateTimeOffset.UtcNow;
-            filter &= builder.Eq(r => r.Status, AccessRequestStatus.Approved)
-                    & builder.Gt(r => r.GrantExpiresAt, now)
-                    & builder.Eq(r => r.RevokedAt, null);
+            filter &= AccessSpecifications.ActiveGrantFilter();
         }
         else if (!string.IsNullOrEmpty(request.Status) &&
                  Enum.TryParse<AccessRequestStatus>(request.Status, true, out var s))

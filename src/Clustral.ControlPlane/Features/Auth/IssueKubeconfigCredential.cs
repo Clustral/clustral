@@ -1,5 +1,7 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Services;
+using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
@@ -17,6 +19,8 @@ public sealed class IssueKubeconfigCredentialHandler(
     ClustralDb db,
     IOptions<OidcOptions> oidcOptions,
     ICurrentUserProvider currentUser,
+    UserSyncService userSync,
+    AccessSpecifications specs,
     TokenHashingService tokens,
     ILogger<IssueKubeconfigCredentialHandler> logger)
     : IRequestHandler<IssueKubeconfigCredentialCommand, Result<IssueKubeconfigCredentialResponse>>
@@ -44,37 +48,10 @@ public sealed class IssueKubeconfigCredentialHandler(
                 : opts.MaxKubeconfigCredentialTtl;
         }
 
-        // 3. Upsert user record.
+        // 3. Upsert user via domain service.
         var subject = currentUser.Subject ?? string.Empty;
-        var displayName = currentUser.DisplayName;
-        var email = currentUser.Email;
-
-        var existingUser = await db.Users
-            .Find(u => u.KeycloakSubject == subject)
-            .FirstOrDefaultAsync(ct);
-
-        Guid userId;
-        if (existingUser is null)
-        {
-            var newUser = new User
-            {
-                Id              = Guid.NewGuid(),
-                KeycloakSubject = subject,
-                DisplayName     = displayName,
-                Email           = email,
-            };
-            await db.Users.InsertOneAsync(newUser, cancellationToken: ct);
-            userId = newUser.Id;
-        }
-        else
-        {
-            userId = existingUser.Id;
-            var update = Builders<User>.Update
-                .Set(u => u.DisplayName, displayName)
-                .Set(u => u.Email, email)
-                .Set(u => u.LastSeenAt, DateTimeOffset.UtcNow);
-            await db.Users.UpdateOneAsync(u => u.Id == existingUser.Id, update, cancellationToken: ct);
-        }
+        var user = await userSync.SyncFromOidcClaimsAsync(
+            subject, currentUser.Email, currentUser.DisplayName, ct);
 
         // 4. Generate token.
         var rawToken = tokens.GenerateToken();
@@ -82,21 +59,10 @@ public sealed class IssueKubeconfigCredentialHandler(
         var now = DateTimeOffset.UtcNow;
         var expiresAt = now + ttl;
 
-        // Cap credential TTL to JIT grant expiry if no static assignment.
-        var staticAssignment = await db.RoleAssignments
-            .Find(a => a.UserId == userId && a.ClusterId == cluster.Id)
-            .FirstOrDefaultAsync(ct);
-
-        if (staticAssignment is null)
+        // 5. Cap credential TTL to JIT grant expiry if no static assignment.
+        if (!await specs.HasStaticAssignmentAsync(user.Id, cluster.Id, ct))
         {
-            var activeGrant = await db.AccessRequests
-                .Find(r => r.RequesterId == userId
-                         && r.ClusterId == cluster.Id
-                         && r.Status == AccessRequestStatus.Approved
-                         && r.GrantExpiresAt > now
-                         && r.RevokedAt == null)
-                .FirstOrDefaultAsync(ct);
-
+            var activeGrant = await specs.GetActiveGrantAsync(user.Id, cluster.Id, ct);
             if (activeGrant?.GrantExpiresAt is not null && activeGrant.GrantExpiresAt.Value < expiresAt)
                 expiresAt = activeGrant.GrantExpiresAt.Value;
         }
@@ -107,7 +73,7 @@ public sealed class IssueKubeconfigCredentialHandler(
             Kind      = CredentialKind.UserKubeconfig,
             TokenHash = tokenHash,
             ClusterId = cluster.Id,
-            UserId    = userId,
+            UserId    = user.Id,
             IssuedAt  = now,
             ExpiresAt = expiresAt,
         };
@@ -118,6 +84,7 @@ public sealed class IssueKubeconfigCredentialHandler(
             credential.Id, subject, cluster.Name);
 
         return new IssueKubeconfigCredentialResponse(
-            credential.Id, rawToken, credential.IssuedAt, credential.ExpiresAt, subject, displayName);
+            credential.Id, rawToken, credential.IssuedAt, credential.ExpiresAt,
+            subject, currentUser.DisplayName);
     }
 }

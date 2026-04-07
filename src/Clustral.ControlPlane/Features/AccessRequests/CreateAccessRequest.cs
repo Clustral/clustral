@@ -1,6 +1,7 @@
 using System.Xml;
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
@@ -17,6 +18,7 @@ public record CreateAccessRequestCommand(
 public sealed class CreateAccessRequestHandler(
     ClustralDb db,
     ICurrentUserProvider currentUser,
+    AccessSpecifications specs,
     AccessRequestEnricher enricher,
     ILogger<CreateAccessRequestHandler> logger)
     : IRequestHandler<CreateAccessRequestCommand, Result<AccessRequestResponse>>
@@ -36,22 +38,14 @@ public sealed class CreateAccessRequestHandler(
         var cluster = await db.Clusters.Find(c => c.Id == request.ClusterId).FirstOrDefaultAsync(ct);
         if (cluster is null) return ResultErrors.ClusterNotFound(request.ClusterId.ToString());
 
-        var existingAssignment = await db.RoleAssignments
-            .Find(a => a.UserId == user.Id && a.ClusterId == request.ClusterId)
-            .FirstOrDefaultAsync(ct);
-        if (existingAssignment is not null) return ResultErrors.StaticAssignmentExists();
+        // Conflict checks via specifications.
+        if (await specs.HasStaticAssignmentAsync(user.Id, request.ClusterId, ct))
+            return ResultErrors.StaticAssignmentExists();
 
-        var existingPending = await db.AccessRequests
-            .Find(r => r.RequesterId == user.Id && r.ClusterId == request.ClusterId
-                     && r.Status == AccessRequestStatus.Pending)
-            .FirstOrDefaultAsync(ct);
+        var existingPending = await specs.GetPendingRequestAsync(user.Id, request.ClusterId, ct);
         if (existingPending is not null) return ResultErrors.PendingRequestExists(existingPending.Id);
 
-        var now = DateTimeOffset.UtcNow;
-        var existingGrant = await db.AccessRequests
-            .Find(r => r.RequesterId == user.Id && r.ClusterId == request.ClusterId
-                     && r.Status == AccessRequestStatus.Approved && r.GrantExpiresAt > now)
-            .FirstOrDefaultAsync(ct);
+        var existingGrant = await specs.GetActiveGrantAsync(user.Id, request.ClusterId, ct);
         if (existingGrant is not null) return ResultErrors.GrantAlreadyActive(existingGrant.Id);
 
         var duration = DefaultGrantDuration;

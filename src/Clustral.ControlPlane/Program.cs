@@ -150,6 +150,7 @@ builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(Valid
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserProvider, HttpCurrentUserProvider>();
 builder.Services.AddScoped<Clustral.ControlPlane.Domain.Services.UserSyncService>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Specifications.AccessSpecifications>();
 builder.Services.AddSingleton<TokenHashingService>();
 builder.Services.AddScoped<Clustral.ControlPlane.Features.AccessRequests.AccessRequestEnricher>();
 
