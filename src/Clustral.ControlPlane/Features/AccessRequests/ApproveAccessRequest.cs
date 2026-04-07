@@ -28,33 +28,21 @@ public sealed class ApproveAccessRequestHandler(
         var ar = await db.AccessRequests.Find(r => r.Id == request.RequestId).FirstOrDefaultAsync(ct);
         if (ar is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.");
 
-        if (ar.Status != AccessRequestStatus.Pending)
-            return ResultErrors.RequestNotPending(ar.Status.ToString());
-
-        if (ar.IsPendingExpired)
-            return ResultErrors.RequestExpired();
-
-        var now = DateTimeOffset.UtcNow;
         var grantDuration = ar.RequestedDuration;
-
         if (!string.IsNullOrEmpty(request.DurationOverride))
         {
             try { grantDuration = XmlConvert.ToTimeSpan(request.DurationOverride); }
             catch { return ResultErrors.InvalidDuration(request.DurationOverride); }
         }
 
-        var update = Builders<AccessRequest>.Update
-            .Set(r => r.Status, AccessRequestStatus.Approved)
-            .Set(r => r.ReviewerId, reviewer.Id)
-            .Set(r => r.ReviewedAt, now)
-            .Set(r => r.GrantExpiresAt, now + grantDuration);
+        var result = ar.Approve(reviewer.Id, grantDuration);
+        if (result.IsFailure) return result.Error!;
 
-        await db.AccessRequests.UpdateOneAsync(r => r.Id == request.RequestId, update, cancellationToken: ct);
+        await db.AccessRequests.ReplaceOneAsync(r => r.Id == ar.Id, ar, cancellationToken: ct);
 
         logger.LogInformation("Access request {RequestId} approved by {Reviewer}",
             request.RequestId, reviewer.Email);
 
-        var updated = await db.AccessRequests.Find(r => r.Id == request.RequestId).FirstOrDefaultAsync(ct);
-        return await enricher.EnrichAsync(updated!, ct);
+        return await enricher.EnrichAsync(ar, ct);
     }
 }

@@ -27,26 +27,14 @@ public sealed class RevokeAccessRequestHandler(
         var ar = await db.AccessRequests.Find(r => r.Id == request.RequestId).FirstOrDefaultAsync(ct);
         if (ar is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.");
 
-        if (ar.Status != AccessRequestStatus.Approved)
-            return ResultErrors.GrantNotApproved(ar.Status.ToString());
-        if (ar.IsRevoked)
-            return ResultErrors.GrantAlreadyRevoked();
-        if (!ar.IsGrantActive)
-            return ResultErrors.GrantAlreadyExpired();
+        var result = ar.Revoke(revoker.Id, request.Reason);
+        if (result.IsFailure) return result.Error!;
 
-        var now = DateTimeOffset.UtcNow;
-        var update = Builders<AccessRequest>.Update
-            .Set(r => r.Status, AccessRequestStatus.Revoked)
-            .Set(r => r.RevokedAt, now)
-            .Set(r => r.RevokedBy, revoker.Id)
-            .Set(r => r.RevokedReason, request.Reason);
-
-        await db.AccessRequests.UpdateOneAsync(r => r.Id == request.RequestId, update, cancellationToken: ct);
+        await db.AccessRequests.ReplaceOneAsync(r => r.Id == ar.Id, ar, cancellationToken: ct);
 
         logger.LogInformation("Access request {RequestId} revoked by {Revoker}",
             request.RequestId, revoker.Email);
 
-        var updated = await db.AccessRequests.Find(r => r.Id == request.RequestId).FirstOrDefaultAsync(ct);
-        return await enricher.EnrichAsync(updated!, ct);
+        return await enricher.EnrichAsync(ar, ct);
     }
 }

@@ -34,7 +34,9 @@ Clustral.ControlPlane/
 │   ├── Cluster.cs                  ← Cluster aggregate root + ClusterStatus enum
 │   ├── User.cs                     ← Keycloak-backed user record
 │   ├── AccessToken.cs              ← Issued credential (user kubeconfig or agent) + CredentialKind enum
-│   └── AccessRequest.cs            ← JIT access request entity (pending, approved, denied, revoked)
+│   ├── AccessRequest.cs            ← JIT access request aggregate root (Approve/Deny/Revoke/Expire methods)
+│   └── Services/
+│       └── UserSyncService.cs      ← Centralized OIDC user upsert (used by UserSyncFilter + auth handlers)
 │
 ├── Infrastructure/
 │   ├── ClustralDbContext.cs              ← EF Core DbContext, entity configs, snake_case naming
@@ -99,6 +101,39 @@ startup; connectivity failures are logged as warnings only.
   `Dictionary<string, string>` natively.
 - Enum columns use `HasConversion<string>()` so values are human-readable in
   the database.
+
+---
+
+## Domain-Driven Design
+
+The ControlPlane uses pragmatic DDD (Phase 1 of a multi-phase roadmap).
+
+### Aggregate Roots
+- **AccessRequest** — encapsulates the full JIT access lifecycle with
+  `Approve()`, `Deny()`, `Revoke()`, `Expire()` methods that enforce
+  state machine invariants and return `Result`. Handlers call these methods
+  instead of manipulating state directly.
+- **Cluster** — aggregate root for cluster registration (methods TBD in Phase 2).
+
+### Domain Services (`Domain/Services/`)
+- **UserSyncService** — centralizes OIDC user upsert logic previously
+  duplicated in `UserSyncFilter` and `IssueKubeconfigCredential`.
+
+### DDD Rules
+- **Business logic belongs in the domain** — aggregate methods enforce
+  invariants. Handlers are thin orchestrators (fetch → call domain method →
+  persist → return).
+- **State transitions via aggregate methods** — never set `Status` directly
+  in a handler. Call `request.Approve(...)` instead.
+- **Static factories for creation** — use `AccessRequest.Create(...)` instead
+  of `new AccessRequest { ... }`.
+- **Domain services for cross-aggregate operations** — when logic spans
+  multiple aggregates or external concerns (e.g., OIDC claims).
+
+### Future Phases
+- Phase 2: Domain events (AccessRequestApproved, CredentialIssued)
+- Phase 3: Specifications for reusable query predicates
+- Phase 4: Repository interfaces (thin wrappers over ClustralDb)
 
 ---
 

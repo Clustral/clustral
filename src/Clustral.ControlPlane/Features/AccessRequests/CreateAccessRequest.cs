@@ -71,17 +71,10 @@ public sealed class CreateAccessRequestHandler(
             }
         }
 
-        var accessRequest = new AccessRequest
-        {
-            Id = Guid.NewGuid(),
-            RequesterId = user.Id,
-            RoleId = request.RoleId,
-            ClusterId = request.ClusterId,
-            Reason = request.Reason ?? string.Empty,
-            RequestedDuration = duration,
-            RequestExpiresAt = now + DefaultRequestTtl,
-            SuggestedReviewers = suggestedReviewerIds,
-        };
+        var accessRequest = AccessRequest.Create(
+            user.Id, request.RoleId, request.ClusterId,
+            request.Reason, duration, DefaultRequestTtl,
+            suggestedReviewerIds);
 
         await db.AccessRequests.InsertOneAsync(accessRequest, cancellationToken: ct);
 

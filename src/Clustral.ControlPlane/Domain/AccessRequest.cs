@@ -1,13 +1,13 @@
+using Clustral.Sdk.Results;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Clustral.ControlPlane.Domain;
 
 /// <summary>
-/// A Just-In-Time access request: a user asks for temporary elevated access
-/// to a cluster with a specific role. An admin approves or denies.
-/// The request itself carries the grant state (<see cref="GrantExpiresAt"/>)
-/// so the full audit trail lives in one document.
+/// Aggregate root for Just-In-Time access requests. A user asks for temporary
+/// elevated access to a cluster with a specific role. An admin approves or denies.
+/// The request carries the full grant lifecycle so the audit trail lives in one document.
 /// </summary>
 public sealed class AccessRequest
 {
@@ -101,6 +101,104 @@ public sealed class AccessRequest
         GrantExpiresAt.HasValue &&
         DateTimeOffset.UtcNow < GrantExpiresAt.Value &&
         !RevokedAt.HasValue;
+
+    // ── Aggregate methods (state transitions) ────────────────────────────
+
+    /// <summary>
+    /// Creates a new pending access request.
+    /// </summary>
+    public static AccessRequest Create(
+        Guid requesterId, Guid roleId, Guid clusterId,
+        string? reason, TimeSpan requestedDuration, TimeSpan requestTtl,
+        List<Guid>? suggestedReviewers = null)
+    {
+        return new AccessRequest
+        {
+            Id = Guid.NewGuid(),
+            RequesterId = requesterId,
+            RoleId = roleId,
+            ClusterId = clusterId,
+            Reason = reason ?? string.Empty,
+            RequestedDuration = requestedDuration,
+            CreatedAt = DateTimeOffset.UtcNow,
+            RequestExpiresAt = DateTimeOffset.UtcNow + requestTtl,
+            SuggestedReviewers = suggestedReviewers ?? [],
+        };
+    }
+
+    /// <summary>
+    /// Approves a pending request, granting access for the specified duration.
+    /// </summary>
+    public Result Approve(Guid reviewerId, TimeSpan grantDuration)
+    {
+        if (Status != AccessRequestStatus.Pending)
+            return ResultErrors.RequestNotPending(Status.ToString());
+        if (IsPendingExpired)
+            return ResultErrors.RequestExpired();
+
+        var now = DateTimeOffset.UtcNow;
+        Status = AccessRequestStatus.Approved;
+        ReviewerId = reviewerId;
+        ReviewedAt = now;
+        GrantExpiresAt = now + grantDuration;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Denies a pending request with a reason.
+    /// </summary>
+    public Result Deny(Guid reviewerId, string reason)
+    {
+        if (Status != AccessRequestStatus.Pending)
+            return ResultErrors.RequestNotPending(Status.ToString());
+
+        Status = AccessRequestStatus.Denied;
+        ReviewerId = reviewerId;
+        ReviewedAt = DateTimeOffset.UtcNow;
+        DenialReason = reason;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Revokes an active approved grant before its natural expiry.
+    /// </summary>
+    public Result Revoke(Guid revokedById, string? reason)
+    {
+        if (Status != AccessRequestStatus.Approved)
+            return ResultErrors.GrantNotApproved(Status.ToString());
+        if (IsRevoked)
+            return ResultErrors.GrantAlreadyRevoked();
+        if (!IsGrantActive)
+            return ResultErrors.GrantAlreadyExpired();
+
+        Status = AccessRequestStatus.Revoked;
+        RevokedAt = DateTimeOffset.UtcNow;
+        RevokedBy = revokedById;
+        RevokedReason = reason;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Expires a pending request or an approved grant that has passed its TTL.
+    /// Called by the background cleanup service.
+    /// </summary>
+    public Result Expire()
+    {
+        if (Status == AccessRequestStatus.Pending && DateTimeOffset.UtcNow >= RequestExpiresAt)
+        {
+            Status = AccessRequestStatus.Expired;
+            return Result.Success();
+        }
+
+        if (Status == AccessRequestStatus.Approved && GrantExpiresAt.HasValue
+            && DateTimeOffset.UtcNow >= GrantExpiresAt.Value && !RevokedAt.HasValue)
+        {
+            Status = AccessRequestStatus.Expired;
+            return Result.Success();
+        }
+
+        return Result.Success(); // Nothing to expire — no-op is fine.
+    }
 }
 
 public enum AccessRequestStatus

@@ -27,22 +27,14 @@ public sealed class DenyAccessRequestHandler(
         var ar = await db.AccessRequests.Find(r => r.Id == request.RequestId).FirstOrDefaultAsync(ct);
         if (ar is null) return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.");
 
-        if (ar.Status != AccessRequestStatus.Pending)
-            return ResultErrors.RequestNotPending(ar.Status.ToString());
+        var result = ar.Deny(reviewer.Id, request.Reason);
+        if (result.IsFailure) return result.Error!;
 
-        var now = DateTimeOffset.UtcNow;
-        var update = Builders<AccessRequest>.Update
-            .Set(r => r.Status, AccessRequestStatus.Denied)
-            .Set(r => r.ReviewerId, reviewer.Id)
-            .Set(r => r.ReviewedAt, now)
-            .Set(r => r.DenialReason, request.Reason);
-
-        await db.AccessRequests.UpdateOneAsync(r => r.Id == request.RequestId, update, cancellationToken: ct);
+        await db.AccessRequests.ReplaceOneAsync(r => r.Id == ar.Id, ar, cancellationToken: ct);
 
         logger.LogInformation("Access request {RequestId} denied by {Reviewer}: {Reason}",
             request.RequestId, reviewer.Email, request.Reason);
 
-        var updated = await db.AccessRequests.Find(r => r.Id == request.RequestId).FirstOrDefaultAsync(ct);
-        return await enricher.EnrichAsync(updated!, ct);
+        return await enricher.EnrichAsync(ar, ct);
     }
 }
