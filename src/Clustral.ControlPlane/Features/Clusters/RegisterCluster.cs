@@ -34,16 +34,9 @@ public sealed class RegisterClusterHandler(
         var bootstrapToken = tokens.GenerateToken();
         var tokenHash = tokens.HashToken(bootstrapToken);
 
-        var cluster = new Cluster
-        {
-            Id                 = Guid.NewGuid(),
-            Name               = request.Name,
-            Description        = request.Description,
-            AgentPublicKeyPem  = request.AgentPublicKeyPem,
-            BootstrapTokenHash = tokenHash,
-            Status             = ClusterStatus.Pending,
-            Labels             = request.Labels ?? new Dictionary<string, string>(),
-        };
+        var cluster = Cluster.Create(
+            request.Name, request.Description, request.AgentPublicKeyPem,
+            tokenHash, request.Labels);
 
         await db.Clusters.InsertOneAsync(cluster, cancellationToken: ct);
         logger.LogInformation("Cluster {Name} registered with id {Id}", cluster.Name, cluster.Id);

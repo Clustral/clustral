@@ -25,4 +25,21 @@ public sealed class RoleAssignment
     public DateTimeOffset AssignedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public string AssignedBy { get; set; } = string.Empty;
+
+    // ── Factory ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a new role assignment.
+    /// </summary>
+    public static RoleAssignment Create(Guid userId, Guid roleId, Guid clusterId, string assignedBy)
+    {
+        return new RoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            RoleId = roleId,
+            ClusterId = clusterId,
+            AssignedBy = assignedBy,
+        };
+    }
 }

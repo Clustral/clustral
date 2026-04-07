@@ -15,19 +15,14 @@ public sealed class UpdateRoleHandler(ClustralDb db)
 {
     public async Task<Result<RoleResponse>> Handle(UpdateRoleCommand request, CancellationToken ct)
     {
-        var update = Builders<Role>.Update.Combine();
-        if (request.Name is not null)
-            update = update.Set(r => r.Name, request.Name);
-        if (request.Description is not null)
-            update = update.Set(r => r.Description, request.Description);
-        if (request.KubernetesGroups is not null)
-            update = update.Set(r => r.KubernetesGroups, request.KubernetesGroups);
-
-        var result = await db.Roles.UpdateOneAsync(r => r.Id == request.Id, update, cancellationToken: ct);
-        if (result.MatchedCount == 0)
+        var role = await db.Roles.Find(r => r.Id == request.Id).FirstOrDefaultAsync(ct);
+        if (role is null)
             return ResultErrors.RoleNotFound(request.Id.ToString());
 
-        var role = await db.Roles.Find(r => r.Id == request.Id).FirstOrDefaultAsync(ct);
-        return new RoleResponse(role!.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt);
+        role.Update(request.Name, request.Description, request.KubernetesGroups);
+
+        await db.Roles.ReplaceOneAsync(r => r.Id == role.Id, role, cancellationToken: ct);
+
+        return new RoleResponse(role.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt);
     }
 }

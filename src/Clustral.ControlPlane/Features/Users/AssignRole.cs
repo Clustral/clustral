@@ -30,14 +30,8 @@ public sealed class AssignRoleHandler(
 
         var callerEmail = currentUser.Email ?? "unknown";
 
-        var assignment = new RoleAssignment
-        {
-            Id         = Guid.NewGuid(),
-            UserId     = request.UserId,
-            RoleId     = request.RoleId,
-            ClusterId  = request.ClusterId,
-            AssignedBy = callerEmail,
-        };
+        var assignment = RoleAssignment.Create(
+            request.UserId, request.RoleId, request.ClusterId, callerEmail);
 
         // Upsert: delete existing assignment for this user+cluster, then insert.
         await db.RoleAssignments.DeleteManyAsync(

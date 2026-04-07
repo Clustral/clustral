@@ -4,8 +4,7 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Clustral.ControlPlane.Domain;
 
 /// <summary>
-/// A Kubernetes cluster registered with the Clustral control plane.
-/// Mirrors the <c>Cluster</c> proto message and is the central aggregate root.
+/// Aggregate root for a Kubernetes cluster registered with the Clustral control plane.
 /// </summary>
 public sealed class Cluster
 {
@@ -38,6 +37,65 @@ public sealed class Cluster
     public DateTimeOffset? LastSeenAt   { get; set; }
 
     public Dictionary<string, string> Labels { get; set; } = new();
+
+    // ── Aggregate methods ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a new cluster in Pending state with a bootstrap token hash.
+    /// </summary>
+    public static Cluster Create(
+        string name, string description, string agentPublicKeyPem,
+        string bootstrapTokenHash, Dictionary<string, string>? labels = null)
+    {
+        return new Cluster
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Description = description,
+            AgentPublicKeyPem = agentPublicKeyPem,
+            BootstrapTokenHash = bootstrapTokenHash,
+            Status = ClusterStatus.Pending,
+            Labels = labels ?? new Dictionary<string, string>(),
+        };
+    }
+
+    /// <summary>
+    /// Marks the cluster as connected (agent tunnel established).
+    /// </summary>
+    public void Connect(string? kubernetesVersion = null)
+    {
+        Status = ClusterStatus.Connected;
+        LastSeenAt = DateTimeOffset.UtcNow;
+        if (kubernetesVersion is not null)
+            KubernetesVersion = kubernetesVersion;
+    }
+
+    /// <summary>
+    /// Marks the cluster as disconnected (agent tunnel lost).
+    /// </summary>
+    public void Disconnect()
+    {
+        Status = ClusterStatus.Disconnected;
+    }
+
+    /// <summary>
+    /// Updates the last-seen timestamp from an agent heartbeat.
+    /// </summary>
+    public void RecordHeartbeat(string? kubernetesVersion = null)
+    {
+        LastSeenAt = DateTimeOffset.UtcNow;
+        if (kubernetesVersion is not null)
+            KubernetesVersion = kubernetesVersion;
+    }
+
+    /// <summary>
+    /// Consumes the bootstrap token (clears the hash). Called once when
+    /// the agent exchanges the bootstrap token for a credential.
+    /// </summary>
+    public void ConsumeBootstrapToken()
+    {
+        BootstrapTokenHash = null;
+    }
 }
 
 public enum ClusterStatus

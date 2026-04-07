@@ -36,16 +36,8 @@ public sealed class UserSyncService(ClustralDb db)
             return user;
         }
 
-        var update = Builders<User>.Update
-            .Set(u => u.DisplayName, displayName)
-            .Set(u => u.Email, email)
-            .Set(u => u.LastSeenAt, DateTimeOffset.UtcNow);
-
-        await db.Users.UpdateOneAsync(u => u.Id == existing.Id, update, cancellationToken: ct);
-
-        existing.DisplayName = displayName;
-        existing.Email = email;
-        existing.LastSeenAt = DateTimeOffset.UtcNow;
+        existing.UpdateFromOidcClaims(email, displayName);
+        await db.Users.ReplaceOneAsync(u => u.Id == existing.Id, existing, cancellationToken: ct);
         return existing;
     }
 }

@@ -19,13 +19,7 @@ public sealed class CreateRoleHandler(ClustralDb db, ILogger<CreateRoleHandler> 
         if (exists)
             return ResultErrors.DuplicateRoleName(request.Name);
 
-        var role = new Role
-        {
-            Id               = Guid.NewGuid(),
-            Name             = request.Name,
-            Description      = request.Description,
-            KubernetesGroups = request.KubernetesGroups ?? [],
-        };
+        var role = Role.Create(request.Name, request.Description, request.KubernetesGroups);
 
         await db.Roles.InsertOneAsync(role, cancellationToken: ct);
         logger.LogInformation("Role {Name} created with id {Id}", role.Name, role.Id);
