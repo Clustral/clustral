@@ -1,12 +1,11 @@
 using System.Xml;
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
-using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.AccessRequests;
 
@@ -16,7 +15,10 @@ public record CreateAccessRequestCommand(
     : IRequest<Result<AccessRequestResponse>>;
 
 public sealed class CreateAccessRequestHandler(
-    ClustralDb db,
+    IRoleRepository roles,
+    IClusterRepository clusters,
+    IUserRepository users,
+    IAccessRequestRepository accessRequests,
     ICurrentUserProvider currentUser,
     AccessSpecifications specs,
     AccessRequestEnricher enricher,
@@ -32,10 +34,10 @@ public sealed class CreateAccessRequestHandler(
         var user = await currentUser.GetCurrentUserAsync(ct);
         if (user is null) return ResultErrors.UserUnauthorized();
 
-        var role = await db.Roles.Find(r => r.Id == request.RoleId).FirstOrDefaultAsync(ct);
+        var role = await roles.GetByIdAsync(request.RoleId, ct);
         if (role is null) return ResultErrors.RoleNotFound(request.RoleId.ToString());
 
-        var cluster = await db.Clusters.Find(c => c.Id == request.ClusterId).FirstOrDefaultAsync(ct);
+        var cluster = await clusters.GetByIdAsync(request.ClusterId, ct);
         if (cluster is null) return ResultErrors.ClusterNotFound(request.ClusterId.ToString());
 
         // Conflict checks via specifications.
@@ -60,7 +62,7 @@ public sealed class CreateAccessRequestHandler(
         {
             foreach (var email in request.SuggestedReviewerEmails)
             {
-                var reviewer = await db.Users.Find(u => u.Email == email).FirstOrDefaultAsync(ct);
+                var reviewer = await users.GetByEmailAsync(email, ct);
                 if (reviewer is not null) suggestedReviewerIds.Add(reviewer.Id);
             }
         }
@@ -70,7 +72,7 @@ public sealed class CreateAccessRequestHandler(
             request.Reason, duration, DefaultRequestTtl,
             suggestedReviewerIds);
 
-        await db.AccessRequests.InsertOneAsync(accessRequest, cancellationToken: ct);
+        await accessRequests.InsertAsync(accessRequest, ct);
 
         logger.LogInformation("Access request {RequestId} created by {Email} for role {Role} on cluster {Cluster}",
             accessRequest.Id, user.Email, role.Name, cluster.Name);

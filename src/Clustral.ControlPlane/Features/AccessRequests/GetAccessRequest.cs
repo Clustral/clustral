@@ -1,19 +1,20 @@
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Infrastructure;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.AccessRequests;
 
 public record GetAccessRequestQuery(Guid Id) : IRequest<Result<AccessRequestResponse>>;
 
-public sealed class GetAccessRequestHandler(ClustralDb db, AccessRequestEnricher enricher)
+public sealed class GetAccessRequestHandler(
+    IAccessRequestRepository accessRequests,
+    AccessRequestEnricher enricher)
     : IRequestHandler<GetAccessRequestQuery, Result<AccessRequestResponse>>
 {
     public async Task<Result<AccessRequestResponse>> Handle(GetAccessRequestQuery request, CancellationToken ct)
     {
-        var ar = await db.AccessRequests.Find(r => r.Id == request.Id).FirstOrDefaultAsync(ct);
+        var ar = await accessRequests.GetByIdAsync(request.Id, ct);
         if (ar is null)
             return ResultError.NotFound("REQUEST_NOT_FOUND", "Access request not found.");
 

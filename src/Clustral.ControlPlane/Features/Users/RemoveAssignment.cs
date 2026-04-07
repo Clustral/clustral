@@ -1,21 +1,21 @@
-using Clustral.ControlPlane.Infrastructure;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Users;
 
 public record RemoveAssignmentCommand(Guid UserId, Guid AssignmentId) : IRequest<Result>;
 
-public sealed class RemoveAssignmentHandler(ClustralDb db, ILogger<RemoveAssignmentHandler> logger)
+public sealed class RemoveAssignmentHandler(
+    IRoleAssignmentRepository assignments,
+    ILogger<RemoveAssignmentHandler> logger)
     : IRequestHandler<RemoveAssignmentCommand, Result>
 {
     public async Task<Result> Handle(RemoveAssignmentCommand request, CancellationToken ct)
     {
-        var result = await db.RoleAssignments.DeleteOneAsync(
-            a => a.Id == request.AssignmentId && a.UserId == request.UserId, ct);
+        var deleted = await assignments.DeleteAsync(request.AssignmentId, ct);
 
-        if (result.DeletedCount == 0)
+        if (!deleted)
             return ResultError.NotFound("ASSIGNMENT_NOT_FOUND", "Role assignment not found.");
 
         logger.LogInformation("Removed role assignment {Id} for user {UserId}",

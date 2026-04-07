@@ -1,10 +1,9 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
-using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Users;
 
@@ -12,20 +11,23 @@ public record AssignRoleCommand(Guid UserId, Guid RoleId, Guid ClusterId)
     : IRequest<Result<RoleAssignmentResponse>>;
 
 public sealed class AssignRoleHandler(
-    ClustralDb db,
+    IUserRepository users,
+    IRoleRepository roles,
+    IClusterRepository clusters,
+    IRoleAssignmentRepository assignments,
     ICurrentUserProvider currentUser,
     ILogger<AssignRoleHandler> logger)
     : IRequestHandler<AssignRoleCommand, Result<RoleAssignmentResponse>>
 {
     public async Task<Result<RoleAssignmentResponse>> Handle(AssignRoleCommand request, CancellationToken ct)
     {
-        var user = await db.Users.Find(u => u.Id == request.UserId).FirstOrDefaultAsync(ct);
+        var user = await users.GetByIdAsync(request.UserId, ct);
         if (user is null) return ResultErrors.UserNotFound();
 
-        var role = await db.Roles.Find(r => r.Id == request.RoleId).FirstOrDefaultAsync(ct);
+        var role = await roles.GetByIdAsync(request.RoleId, ct);
         if (role is null) return ResultErrors.RoleNotFound(request.RoleId.ToString());
 
-        var cluster = await db.Clusters.Find(c => c.Id == request.ClusterId).FirstOrDefaultAsync(ct);
+        var cluster = await clusters.GetByIdAsync(request.ClusterId, ct);
         if (cluster is null) return ResultErrors.ClusterNotFound(request.ClusterId.ToString());
 
         var callerEmail = currentUser.Email ?? "unknown";
@@ -34,9 +36,8 @@ public sealed class AssignRoleHandler(
             request.UserId, request.RoleId, request.ClusterId, callerEmail);
 
         // Upsert: delete existing assignment for this user+cluster, then insert.
-        await db.RoleAssignments.DeleteManyAsync(
-            a => a.UserId == request.UserId && a.ClusterId == request.ClusterId, ct);
-        await db.RoleAssignments.InsertOneAsync(assignment, cancellationToken: ct);
+        await assignments.DeleteByUserAndClusterAsync(request.UserId, request.ClusterId, ct);
+        await assignments.InsertAsync(assignment, ct);
 
         logger.LogInformation(
             "Assigned role {RoleName} to user {Email} on cluster {ClusterName}",

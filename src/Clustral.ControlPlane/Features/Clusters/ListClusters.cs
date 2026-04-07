@@ -1,8 +1,7 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
-using Clustral.ControlPlane.Infrastructure;
+using Clustral.ControlPlane.Domain.Repositories;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Clusters;
 
@@ -15,40 +14,40 @@ public record ListClustersQuery(
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-public sealed class ListClustersHandler(ClustralDb db)
+public sealed class ListClustersHandler(IClusterRepository clusters)
     : IRequestHandler<ListClustersQuery, ClusterListResponse>
 {
     public async Task<ClusterListResponse> Handle(ListClustersQuery request, CancellationToken ct)
     {
-        var filter = Builders<Cluster>.Filter.Empty;
+        var allClusters = await clusters.ListAsync(ct);
+
+        IEnumerable<Cluster> filtered = allClusters;
 
         if (!string.IsNullOrEmpty(request.StatusFilter) &&
             Enum.TryParse<ClusterStatus>(request.StatusFilter, ignoreCase: true, out var parsed))
         {
-            filter &= Builders<Cluster>.Filter.Eq(c => c.Status, parsed);
+            filtered = filtered.Where(c => c.Status == parsed);
         }
+
+        filtered = filtered.OrderBy(c => c.Id);
 
         if (!string.IsNullOrEmpty(request.PageToken) &&
             TryDecodePageToken(request.PageToken, out var lastId))
         {
-            filter &= Builders<Cluster>.Filter.Gt(c => c.Id, lastId);
+            filtered = filtered.Where(c => c.Id.CompareTo(lastId) > 0);
         }
 
         var pageSize = Math.Clamp(request.PageSize, 1, 200);
-        var clusters = await db.Clusters
-            .Find(filter)
-            .SortBy(c => c.Id)
-            .Limit(pageSize + 1)
-            .ToListAsync(ct);
+        var page = filtered.Take(pageSize + 1).ToList();
 
         string? nextToken = null;
-        if (clusters.Count > pageSize)
+        if (page.Count > pageSize)
         {
-            clusters.RemoveAt(clusters.Count - 1);
-            nextToken = EncodePageToken(clusters[^1].Id);
+            page.RemoveAt(page.Count - 1);
+            nextToken = EncodePageToken(page[^1].Id);
         }
 
-        var response = clusters.Select(ClusterResponse.From).ToList();
+        var response = page.Select(ClusterResponse.From).ToList();
         return new ClusterListResponse(response, nextToken);
     }
 

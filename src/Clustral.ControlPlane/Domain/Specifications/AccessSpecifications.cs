@@ -1,4 +1,4 @@
-using Clustral.ControlPlane.Infrastructure;
+using Clustral.ControlPlane.Domain.Repositories;
 using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Domain.Specifications;
@@ -8,7 +8,9 @@ namespace Clustral.ControlPlane.Domain.Specifications;
 /// Eliminates duplication across CreateAccessRequest, IssueKubeconfigCredential,
 /// and ListAccessRequests handlers.
 /// </summary>
-public sealed class AccessSpecifications(ClustralDb db)
+public sealed class AccessSpecifications(
+    IRoleAssignmentRepository assignments,
+    IAccessRequestRepository accessRequests)
 {
     /// <summary>
     /// Returns true if the user has a static role assignment for the given cluster.
@@ -16,9 +18,8 @@ public sealed class AccessSpecifications(ClustralDb db)
     public async Task<bool> HasStaticAssignmentAsync(
         Guid userId, Guid clusterId, CancellationToken ct = default)
     {
-        return await db.RoleAssignments
-            .Find(a => a.UserId == userId && a.ClusterId == clusterId)
-            .AnyAsync(ct);
+        var userAssignments = await assignments.GetByUserIdAsync(userId, ct);
+        return userAssignments.Any(a => a.ClusterId == clusterId);
     }
 
     /// <summary>
@@ -27,11 +28,13 @@ public sealed class AccessSpecifications(ClustralDb db)
     public async Task<AccessRequest?> GetPendingRequestAsync(
         Guid userId, Guid clusterId, CancellationToken ct = default)
     {
-        return await db.AccessRequests
-            .Find(r => r.RequesterId == userId
-                     && r.ClusterId == clusterId
-                     && r.Status == AccessRequestStatus.Pending)
-            .FirstOrDefaultAsync(ct);
+        var builder = Builders<AccessRequest>.Filter;
+        var filter = builder.Eq(r => r.RequesterId, userId)
+                   & builder.Eq(r => r.ClusterId, clusterId)
+                   & builder.Eq(r => r.Status, AccessRequestStatus.Pending);
+
+        var results = await accessRequests.FindAsync(filter, 1, ct);
+        return results.FirstOrDefault();
     }
 
     /// <summary>
@@ -42,13 +45,15 @@ public sealed class AccessSpecifications(ClustralDb db)
         Guid userId, Guid clusterId, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
-        return await db.AccessRequests
-            .Find(r => r.RequesterId == userId
-                     && r.ClusterId == clusterId
-                     && r.Status == AccessRequestStatus.Approved
-                     && r.GrantExpiresAt > now
-                     && r.RevokedAt == null)
-            .FirstOrDefaultAsync(ct);
+        var builder = Builders<AccessRequest>.Filter;
+        var filter = builder.Eq(r => r.RequesterId, userId)
+                   & builder.Eq(r => r.ClusterId, clusterId)
+                   & builder.Eq(r => r.Status, AccessRequestStatus.Approved)
+                   & builder.Gt(r => r.GrantExpiresAt, now)
+                   & builder.Eq(r => r.RevokedAt, null);
+
+        var results = await accessRequests.FindAsync(filter, 1, ct);
+        return results.FirstOrDefault();
     }
 
     /// <summary>

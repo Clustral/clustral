@@ -151,6 +151,20 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserProvider, HttpCurrentUserProvider>();
 builder.Services.AddScoped<Clustral.ControlPlane.Domain.Services.UserSyncService>();
 builder.Services.AddScoped<Clustral.ControlPlane.Domain.Specifications.AccessSpecifications>();
+
+// Repository interfaces — thin wrappers over ClustralDb collections.
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Repositories.IClusterRepository,
+    Clustral.ControlPlane.Infrastructure.Repositories.MongoClusterRepository>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Repositories.IRoleRepository,
+    Clustral.ControlPlane.Infrastructure.Repositories.MongoRoleRepository>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Repositories.IUserRepository,
+    Clustral.ControlPlane.Infrastructure.Repositories.MongoUserRepository>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Repositories.IAccessRequestRepository,
+    Clustral.ControlPlane.Infrastructure.Repositories.MongoAccessRequestRepository>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Repositories.IRoleAssignmentRepository,
+    Clustral.ControlPlane.Infrastructure.Repositories.MongoRoleAssignmentRepository>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Repositories.IAccessTokenRepository,
+    Clustral.ControlPlane.Infrastructure.Repositories.MongoAccessTokenRepository>();
 builder.Services.AddSingleton<TokenHashingService>();
 builder.Services.AddScoped<Clustral.ControlPlane.Features.AccessRequests.AccessRequestEnricher>();
 

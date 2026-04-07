@@ -1,8 +1,8 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
-using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
 using MediatR;
 using MongoDB.Driver;
@@ -13,7 +13,7 @@ public record ListAccessRequestsQuery(string? Status, bool Mine, bool Active)
     : IRequest<Result<AccessRequestListResponse>>;
 
 public sealed class ListAccessRequestsHandler(
-    ClustralDb db,
+    IAccessRequestRepository accessRequests,
     ICurrentUserProvider currentUser,
     AccessRequestEnricher enricher)
     : IRequestHandler<ListAccessRequestsQuery, Result<AccessRequestListResponse>>
@@ -41,11 +41,7 @@ public sealed class ListAccessRequestsHandler(
             filter &= builder.Eq(r => r.RequesterId, user.Id);
         }
 
-        var requests = await db.AccessRequests
-            .Find(filter)
-            .SortByDescending(r => r.CreatedAt)
-            .Limit(100)
-            .ToListAsync(ct);
+        var requests = await accessRequests.FindAsync(filter, 100, ct);
 
         var enriched = new List<AccessRequestResponse>();
         foreach (var r in requests)

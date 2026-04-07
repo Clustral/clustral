@@ -1,5 +1,4 @@
-using Clustral.ControlPlane.Domain;
-using MongoDB.Driver;
+using Clustral.ControlPlane.Domain.Repositories;
 
 namespace Clustral.ControlPlane.Infrastructure;
 
@@ -8,7 +7,7 @@ namespace Clustral.ControlPlane.Infrastructure;
 /// whose TTL has elapsed.
 /// </summary>
 public sealed class AccessRequestCleanupService(
-    ClustralDb db,
+    IServiceScopeFactory scopeFactory,
     ILogger<AccessRequestCleanupService> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
@@ -21,27 +20,22 @@ public sealed class AccessRequestCleanupService(
         {
             try
             {
+                using var scope = scopeFactory.CreateScope();
+                var accessRequests = scope.ServiceProvider.GetRequiredService<IAccessRequestRepository>();
+
                 var now = DateTimeOffset.UtcNow;
 
                 // Expire pending requests past their TTL.
-                var expireResult = await db.AccessRequests.UpdateManyAsync(
-                    r => r.Status == AccessRequestStatus.Pending && r.RequestExpiresAt <= now,
-                    Builders<AccessRequest>.Update.Set(r => r.Status, AccessRequestStatus.Expired),
-                    cancellationToken: stoppingToken);
+                var expiredCount = await accessRequests.ExpirePendingAsync(now, stoppingToken);
 
-                if (expireResult.ModifiedCount > 0)
-                    logger.LogInformation("Expired {Count} pending access request(s)", expireResult.ModifiedCount);
+                if (expiredCount > 0)
+                    logger.LogInformation("Expired {Count} pending access request(s)", expiredCount);
 
                 // Expire approved grants past their natural expiry (not revoked).
-                var grantExpireResult = await db.AccessRequests.UpdateManyAsync(
-                    r => r.Status == AccessRequestStatus.Approved
-                      && r.GrantExpiresAt <= now
-                      && r.RevokedAt == null,
-                    Builders<AccessRequest>.Update.Set(r => r.Status, AccessRequestStatus.Expired),
-                    cancellationToken: stoppingToken);
+                var grantExpiredCount = await accessRequests.ExpireGrantsAsync(now, stoppingToken);
 
-                if (grantExpireResult.ModifiedCount > 0)
-                    logger.LogInformation("Expired {Count} approved grant(s) past their TTL", grantExpireResult.ModifiedCount);
+                if (grantExpiredCount > 0)
+                    logger.LogInformation("Expired {Count} approved grant(s) past their TTL", grantExpiredCount);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

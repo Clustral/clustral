@@ -1,5 +1,4 @@
-using Clustral.ControlPlane.Infrastructure;
-using MongoDB.Driver;
+using Clustral.ControlPlane.Domain.Repositories;
 
 namespace Clustral.ControlPlane.Domain.Services;
 
@@ -7,7 +6,7 @@ namespace Clustral.ControlPlane.Domain.Services;
 /// Domain service that centralizes OIDC user upsert logic. Previously
 /// duplicated in <c>UserSyncFilter</c> and <c>IssueKubeconfigCredential</c>.
 /// </summary>
-public sealed class UserSyncService(ClustralDb db)
+public sealed class UserSyncService(IUserRepository users)
 {
     /// <summary>
     /// Creates or updates a user based on OIDC claims. Returns the
@@ -19,9 +18,7 @@ public sealed class UserSyncService(ClustralDb db)
     {
         ArgumentException.ThrowIfNullOrEmpty(subject);
 
-        var existing = await db.Users
-            .Find(u => u.KeycloakSubject == subject)
-            .FirstOrDefaultAsync(ct);
+        var existing = await users.GetBySubjectAsync(subject, ct);
 
         if (existing is null)
         {
@@ -32,12 +29,12 @@ public sealed class UserSyncService(ClustralDb db)
                 DisplayName = displayName,
                 Email = email,
             };
-            await db.Users.InsertOneAsync(user, cancellationToken: ct);
+            await users.InsertAsync(user, ct);
             return user;
         }
 
         existing.UpdateFromOidcClaims(email, displayName);
-        await db.Users.ReplaceOneAsync(u => u.Id == existing.Id, existing, cancellationToken: ct);
+        await users.ReplaceAsync(existing, ct);
         return existing;
     }
 }

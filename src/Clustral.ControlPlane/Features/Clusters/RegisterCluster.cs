@@ -1,10 +1,9 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
-using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Clusters;
 
@@ -19,7 +18,7 @@ public record RegisterClusterCommand(
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 public sealed class RegisterClusterHandler(
-    ClustralDb db,
+    IClusterRepository clusters,
     TokenHashingService tokens,
     ILogger<RegisterClusterHandler> logger)
     : IRequestHandler<RegisterClusterCommand, Result<RegisterClusterRestResponse>>
@@ -27,7 +26,7 @@ public sealed class RegisterClusterHandler(
     public async Task<Result<RegisterClusterRestResponse>> Handle(
         RegisterClusterCommand request, CancellationToken ct)
     {
-        var exists = await db.Clusters.Find(c => c.Name == request.Name).AnyAsync(ct);
+        var exists = await clusters.ExistsByNameAsync(request.Name, ct);
         if (exists)
             return ResultErrors.DuplicateClusterName(request.Name);
 
@@ -38,7 +37,7 @@ public sealed class RegisterClusterHandler(
             request.Name, request.Description, request.AgentPublicKeyPem,
             tokenHash, request.Labels);
 
-        await db.Clusters.InsertOneAsync(cluster, cancellationToken: ct);
+        await clusters.InsertAsync(cluster, ct);
         logger.LogInformation("Cluster {Name} registered with id {Id}", cluster.Name, cluster.Id);
 
         return new RegisterClusterRestResponse(cluster.Id, bootstrapToken);

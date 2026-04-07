@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.Sdk.Results;
@@ -13,6 +14,7 @@ public record RevokeCredentialCommand(Guid CredentialId, string? Reason)
 
 public sealed class RevokeCredentialHandler(
     ClustralDb db,
+    IUserRepository users,
     ICurrentUserProvider currentUser,
     ILogger<RevokeCredentialHandler> logger)
     : IRequestHandler<RevokeCredentialCommand, Result<RevokeCredentialResponse>>
@@ -30,9 +32,7 @@ public sealed class RevokeCredentialHandler(
         // Ownership check.
         if (credential.UserId.HasValue)
         {
-            var owner = await db.Users
-                .Find(u => u.Id == credential.UserId.Value)
-                .FirstOrDefaultAsync(ct);
+            var owner = await users.GetByIdAsync(credential.UserId.Value, ct);
             if (owner?.KeycloakSubject != currentUser.Subject)
                 return ResultErrors.CredentialOwnerMismatch();
         }

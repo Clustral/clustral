@@ -1,8 +1,7 @@
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Infrastructure;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Clusters;
 
@@ -12,14 +11,12 @@ public record GetClusterQuery(Guid Id) : IRequest<Result<ClusterResponse>>;
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-public sealed class GetClusterHandler(ClustralDb db)
+public sealed class GetClusterHandler(IClusterRepository clusters)
     : IRequestHandler<GetClusterQuery, Result<ClusterResponse>>
 {
     public async Task<Result<ClusterResponse>> Handle(GetClusterQuery request, CancellationToken ct)
     {
-        var cluster = await db.Clusters
-            .Find(c => c.Id == request.Id)
-            .FirstOrDefaultAsync(ct);
+        var cluster = await clusters.GetByIdAsync(request.Id, ct);
 
         if (cluster is null)
             return ResultErrors.ClusterNotFound(request.Id.ToString());

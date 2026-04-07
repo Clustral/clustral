@@ -1,14 +1,13 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Domain.Services;
 using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
-using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Clustral.Sdk.Results;
 using MediatR;
 using Microsoft.Extensions.Options;
-using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Auth;
 
@@ -16,7 +15,8 @@ public record IssueKubeconfigCredentialCommand(Guid ClusterId, string? Requested
     : IRequest<Result<IssueKubeconfigCredentialResponse>>;
 
 public sealed class IssueKubeconfigCredentialHandler(
-    ClustralDb db,
+    IClusterRepository clusters,
+    IAccessTokenRepository accessTokens,
     IOptions<OidcOptions> oidcOptions,
     ICurrentUserProvider currentUser,
     UserSyncService userSync,
@@ -29,9 +29,7 @@ public sealed class IssueKubeconfigCredentialHandler(
         IssueKubeconfigCredentialCommand request, CancellationToken ct)
     {
         // 1. Verify cluster exists.
-        var cluster = await db.Clusters
-            .Find(c => c.Id == request.ClusterId)
-            .FirstOrDefaultAsync(ct);
+        var cluster = await clusters.GetByIdAsync(request.ClusterId, ct);
 
         if (cluster is null)
             return ResultErrors.ClusterNotFound(request.ClusterId.ToString());
@@ -77,7 +75,7 @@ public sealed class IssueKubeconfigCredentialHandler(
             IssuedAt  = now,
             ExpiresAt = expiresAt,
         };
-        await db.AccessTokens.InsertOneAsync(credential, cancellationToken: ct);
+        await accessTokens.InsertAsync(credential, ct);
 
         logger.LogInformation(
             "Issued kubeconfig credential {CredentialId} for user {Subject} on cluster {ClusterName}",
