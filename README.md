@@ -177,6 +177,87 @@ sequenceDiagram
 | Per-user k8s access | Role assignments with k8s group impersonation (system:masters, etc.) |
 | Proxy rate limiting | Per-credential token bucket (100 QPS sustained, 200 burst) |
 
+### Network Map
+
+```mermaid
+graph LR
+    subgraph "Corporate Network / Cloud"
+        subgraph "DMZ / Public Zone"
+            LB["Load Balancer<br/>:443 TLS"]
+        end
+
+        subgraph "Application Zone"
+            CP_REST["ControlPlane<br/>REST :5000<br/>(HTTP/1.1)"]
+            CP_GRPC["ControlPlane<br/>gRPC :5001<br/>(HTTP/2)"]
+            WEB["Web UI<br/>:3000"]
+            DB["MongoDB<br/>:27017"]
+        end
+
+        OIDC["OIDC Provider<br/>:8080 / :443"]
+    end
+
+    subgraph "Developer Workstation"
+        CLI["clustral CLI"]
+        KUBECTL["kubectl"]
+        BROWSER["Browser"]
+    end
+
+    subgraph "Kubernetes Cluster A"
+        AGENT_A["Agent<br/>(outbound only)"]
+        K8S_A["k8s API<br/>:6443"]
+    end
+
+    subgraph "Kubernetes Cluster B"
+        AGENT_B["Agent<br/>(outbound only)"]
+        K8S_B["k8s API<br/>:6443"]
+    end
+
+    BROWSER -->|"HTTPS :443"| LB
+    CLI -->|"HTTPS :443"| LB
+    KUBECTL -->|"HTTPS :443"| LB
+    LB -->|":3000"| WEB
+    LB -->|":5000"| CP_REST
+    WEB -->|":5000"| CP_REST
+    CP_REST --- DB
+    CP_GRPC --- DB
+
+    CLI -.->|"OIDC PKCE"| OIDC
+    WEB -.->|"Server OIDC"| OIDC
+    CP_REST -.->|"JWKS fetch"| OIDC
+
+    AGENT_A ==>|"gRPC :5001<br/>outbound TLS"| CP_GRPC
+    AGENT_B ==>|"gRPC :5001<br/>outbound TLS"| CP_GRPC
+    AGENT_A -->|":6443<br/>in-cluster"| K8S_A
+    AGENT_B -->|":6443<br/>in-cluster"| K8S_B
+
+    KUBECTL -->|"proxied via<br/>gRPC tunnel"| CP_REST
+
+    style LB fill:#f9a825,stroke:#f57f17,color:#000
+    style OIDC fill:#e1bee7,stroke:#8e24aa
+    style DB fill:#c8e6c9,stroke:#2e7d32
+```
+
+#### Port Reference
+
+| Component | Port | Protocol | Direction | Description |
+|---|---|---|---|---|
+| **Load Balancer** | 443 | HTTPS | Inbound | TLS termination for all client traffic |
+| **ControlPlane REST** | 5000 | HTTP/1.1 | Internal | REST API (CLI, Web UI, kubectl proxy) |
+| **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | Agent tunnel, CLI auth (gRPC) |
+| **Web UI** | 3000 | HTTP | Internal | Next.js dashboard |
+| **MongoDB** | 27017 | TCP | Internal | Database (never exposed publicly) |
+| **OIDC Provider** | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta — browser + server flows |
+| **Agent → ControlPlane** | 5001 | gRPC/TLS | **Outbound only** | No inbound rules needed on cluster side |
+| **Agent → k8s API** | 6443 | HTTPS | In-cluster | ServiceAccount token + impersonation headers |
+
+#### Network Requirements
+
+- **Agents connect outbound** to the ControlPlane gRPC port — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
+- **MongoDB** must never be exposed outside the application zone
+- **TLS** is required in production for all external traffic (load balancer terminates TLS)
+- **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the ControlPlane (JWKS key fetch)
+- **kubectl traffic** flows: kubectl → ControlPlane REST → gRPC tunnel → Agent → k8s API (all over established outbound connections)
+
 ### Proxy Configuration
 
 The kubectl proxy is configurable via the `Proxy` section in `appsettings.json`:
