@@ -180,61 +180,64 @@ sequenceDiagram
 ### Network Map
 
 ```mermaid
-graph LR
-    subgraph "Corporate Network / Cloud"
-        subgraph "DMZ / Public Zone"
-            LB["Load Balancer<br/>:443 TLS"]
-        end
-
-        subgraph "Application Zone"
-            CP_REST["ControlPlane<br/>REST :5000<br/>(HTTP/1.1)"]
-            CP_GRPC["ControlPlane<br/>gRPC :5001<br/>(HTTP/2)"]
-            WEB["Web UI<br/>:3000"]
-            DB["MongoDB<br/>:27017"]
-        end
-
-        OIDC["OIDC Provider<br/>:8080 / :443"]
-    end
-
-    subgraph "Developer Workstation"
+flowchart TB
+    subgraph clients ["Developer Workstation"]
+        BROWSER["Browser"]
         CLI["clustral CLI"]
         KUBECTL["kubectl"]
-        BROWSER["Browser"]
     end
 
-    subgraph "Kubernetes Cluster A"
-        AGENT_A["Agent<br/>(outbound only)"]
-        K8S_A["k8s API<br/>:6443"]
+    OIDC["OIDC Provider\n(Keycloak / Auth0 / Okta)\n:443"]
+
+    subgraph platform ["Clustral Platform"]
+        LB["Load Balancer\n:443 TLS"]
+
+        subgraph app ["Application Zone"]
+            WEB["Web UI\n:3000"]
+            CP["ControlPlane\nREST :5000 | gRPC :5001"]
+            DB[("MongoDB\n:27017")]
+        end
     end
 
-    subgraph "Kubernetes Cluster B"
-        AGENT_B["Agent<br/>(outbound only)"]
-        K8S_B["k8s API<br/>:6443"]
+    subgraph cluster_a ["Kubernetes Cluster A"]
+        AGENT_A["Agent"]
+        K8S_A["k8s API :6443"]
     end
 
-    BROWSER -->|"HTTPS :443"| LB
-    CLI -->|"HTTPS :443"| LB
-    KUBECTL -->|"HTTPS :443"| LB
-    LB -->|":3000"| WEB
-    LB -->|":5000"| CP_REST
-    WEB -->|":5000"| CP_REST
-    CP_REST --- DB
-    CP_GRPC --- DB
+    subgraph cluster_b ["Kubernetes Cluster B"]
+        AGENT_B["Agent"]
+        K8S_B["k8s API :6443"]
+    end
 
-    CLI -.->|"OIDC PKCE"| OIDC
-    WEB -.->|"Server OIDC"| OIDC
-    CP_REST -.->|"JWKS fetch"| OIDC
+    BROWSER -- "HTTPS" --> LB
+    CLI -- "HTTPS" --> LB
+    KUBECTL -- "HTTPS" --> LB
+    LB --> WEB
+    LB --> CP
+    WEB -- "REST" --> CP
+    CP --- DB
 
-    AGENT_A ==>|"gRPC :5001<br/>outbound TLS"| CP_GRPC
-    AGENT_B ==>|"gRPC :5001<br/>outbound TLS"| CP_GRPC
-    AGENT_A -->|":6443<br/>in-cluster"| K8S_A
-    AGENT_B -->|":6443<br/>in-cluster"| K8S_B
+    CLI -. "OIDC PKCE" .-> OIDC
+    WEB -. "Server OIDC" .-> OIDC
+    CP -. "JWKS" .-> OIDC
 
-    KUBECTL -->|"proxied via<br/>gRPC tunnel"| CP_REST
+    AGENT_A == "gRPC tunnel\n(outbound TLS)" ==> CP
+    AGENT_B == "gRPC tunnel\n(outbound TLS)" ==> CP
+    AGENT_A --> K8S_A
+    AGENT_B --> K8S_B
 
-    style LB fill:#f9a825,stroke:#f57f17,color:#000
-    style OIDC fill:#e1bee7,stroke:#8e24aa
-    style DB fill:#c8e6c9,stroke:#2e7d32
+    style LB fill:#fdd835,stroke:#f9a825,color:#000
+    style OIDC fill:#ce93d8,stroke:#7b1fa2,color:#000
+    style DB fill:#a5d6a7,stroke:#388e3c,color:#000
+    style CP fill:#90caf9,stroke:#1565c0,color:#000
+    style WEB fill:#90caf9,stroke:#1565c0,color:#000
+    style AGENT_A fill:#ffcc80,stroke:#ef6c00,color:#000
+    style AGENT_B fill:#ffcc80,stroke:#ef6c00,color:#000
+    style K8S_A fill:#e0e0e0,stroke:#616161,color:#000
+    style K8S_B fill:#e0e0e0,stroke:#616161,color:#000
+    style BROWSER fill:#fff,stroke:#666,color:#000
+    style CLI fill:#fff,stroke:#666,color:#000
+    style KUBECTL fill:#fff,stroke:#666,color:#000
 ```
 
 #### Port Reference
