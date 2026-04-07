@@ -189,7 +189,7 @@ Services:
 
 ## Testing
 
-618 tests across 3 .NET projects + 35 Go tests. Run all with:
+687 tests across 3 .NET projects + 35 Go tests. Run all with:
 ```bash
 dotnet test Clustral.slnx
 cd src/clustral-agent && go test -race ./...
@@ -197,6 +197,8 @@ cd src/clustral-agent && go test -race ./...
 
 - **Unit tests**: `*.Tests` projects alongside each `src/` project.
 - **Integration tests**: `src/Clustral.ControlPlane.Tests/Integration/` — uses Testcontainers (MongoDB) + `WebApplicationFactory`; requires Docker running. Do not mock the database.
+- **gRPC integration tests**: `GrpcClusterServiceTests` and `GrpcAuthServiceTests` test all gRPC endpoints using `Grpc.Net.Client` against the test server. Cover register, list, get, update status, deregister, credential issuance/validation/rotation/revocation, and bootstrap token single-use.
+- **CLI integration tests**: `CliIntegrationTests` verify CLI wire types deserialize correctly against the real ControlPlane API.
 - **Web tests**: `src/Clustral.Web` uses Vitest (`bun test`) and Playwright for e2e (`bun e2e`).
 
 ---

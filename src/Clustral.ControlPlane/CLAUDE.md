@@ -264,9 +264,12 @@ To add a new feature:
 1. Add the RPC declaration to the relevant `.proto` in `packages/proto/`.
 2. Rebuild `Clustral.Sdk` to regenerate stubs.
 3. Implement the method in the corresponding `*Impl.cs` file here.
-4. If the method requires a new DB query, add it to `ClustralDbContext` or
-   use LINQ directly in the impl — no repository abstraction is needed yet.
-5. **Write tests** for the new method — at minimum unit tests for the logic, integration tests if it touches MongoDB.
+4. If the method requires a new DB query, use repository interfaces or
+   `ClustralDb` directly for complex cross-entity queries.
+5. **Write gRPC integration tests** in `Tests/Integration/Grpc*Tests.cs` using
+   `Grpc.Net.Client` against `WebApplicationFactory`. Use the `ResponseVersionHandler`
+   pattern (see `GrpcClusterServiceTests.cs`) to bridge HTTP/1.1 test server with
+   gRPC's HTTP/2 requirement.
 
 ## Security-sensitive paths
 

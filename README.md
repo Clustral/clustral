@@ -794,14 +794,14 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET (667 tests — unit + integration with Testcontainers + FluentAssertions)
+# .NET (687 tests — unit + integration + gRPC with Testcontainers + FluentAssertions)
 dotnet test Clustral.slnx
 
 # Go Agent (35 tests with race detector)
 cd src/clustral-agent && go test -race ./...
 ```
 
-> **653 total tests** across .NET and Go.
+> **722 total tests** across .NET and Go.
 > Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) to
 > spin up real MongoDB instances. Docker must be running to execute them.
 >
@@ -809,6 +809,11 @@ cd src/clustral-agent && go test -race ./...
 > Commands and queries live in separate `Commands/` and `Queries/` subfolders per
 > feature, with explicit `ICommand<T>` / `IQuery<T>` marker interfaces. Validation
 > only runs for commands. Domain events are dispatched after every mutation.
+>
+> **gRPC integration tests** verify the ClusterService and AuthService endpoints
+> (register, list, get, update status, deregister, credential issuance/validation/
+> rotation/revocation, bootstrap token single-use) using `Grpc.Net.Client` against
+> `WebApplicationFactory`.
 >
 > The CLI uses **FluentValidation** for input validation (GUID format, ISO 8601
 > durations, required fields) with styled error cards via Spectre.Console.
