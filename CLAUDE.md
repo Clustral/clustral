@@ -201,6 +201,16 @@ cd src/clustral-agent && go test -race ./...
 
 ---
 
+## Versioning
+
+- **Git tags are the sole version source** — no `VERSION` file. All components derive their version from `git describe --tags` at build time. Local dev defaults to `0.0.0-dev`.
+- **ControlPlane** exposes version via `GET /api/v1/config` (unauthenticated) and `/healthz/detail` (authenticated).
+- **Agent** reports version in `AgentHello` handshake — stored on `Cluster.AgentVersion`, shown in cluster listings.
+- **CLI** `clustral version` shows CLI + ControlPlane versions with graceful degradation.
+- **Version mismatch** — ControlPlane logs a WARNING when agent version differs. Visible in cluster list tables.
+
+---
+
 ## CI/CD Conventions
 
 - **Conventional commits** — use `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `ci:`, `chore:` prefixes. git-cliff generates changelogs from these.

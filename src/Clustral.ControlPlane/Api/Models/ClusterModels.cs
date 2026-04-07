@@ -29,6 +29,7 @@ public sealed record ClusterResponse(
     string                  Description,
     string                  Status,
     string?                 KubernetesVersion,
+    string?                 AgentVersion,
     DateTimeOffset          RegisteredAt,
     DateTimeOffset?         LastSeenAt,
     Dictionary<string,string> Labels)
@@ -39,6 +40,7 @@ public sealed record ClusterResponse(
         c.Description,
         c.Status.ToString(),
         c.KubernetesVersion,
+        c.AgentVersion,
         c.RegisteredAt,
         c.LastSeenAt,
         c.Labels);

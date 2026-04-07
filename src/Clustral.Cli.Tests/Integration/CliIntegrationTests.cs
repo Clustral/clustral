@@ -32,11 +32,13 @@ public sealed class CliIntegrationTests(
         var json = await response.Content.ReadAsStringAsync();
         var config = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
 
-        output.WriteLine($"Authority: {config!.OidcAuthority}");
+        output.WriteLine($"Version:   {config!.Version}");
+        output.WriteLine($"Authority: {config.OidcAuthority}");
         output.WriteLine($"ClientId:  {config.OidcClientId}");
 
         config.Should().NotBeNull();
-        config!.OidcAuthority.Should().NotBeNullOrEmpty();
+        config!.Version.Should().NotBeNullOrEmpty("config should include version");
+        config.OidcAuthority.Should().NotBeNullOrEmpty();
         config.OidcClientId.Should().NotBeNullOrEmpty();
     }
 

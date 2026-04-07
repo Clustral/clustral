@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.V1;
 using Google.Protobuf.WellKnownTypes;
@@ -65,14 +66,26 @@ public sealed class TunnelServiceImpl(
             },
         }, context.CancellationToken);
 
-        // ── 3. Mark cluster as Connected ─────────────────────────────────────
+        // ── 3. Mark cluster as Connected + store agent version ────────────────
         var connectedUpdate = Builders<Domain.Cluster>.Update
             .Set(c => c.Status, Domain.ClusterStatus.Connected)
             .Set(c => c.KubernetesVersion, hello.KubernetesVersion)
+            .Set(c => c.AgentVersion, hello.AgentVersion)
             .Set(c => c.LastSeenAt, DateTimeOffset.UtcNow);
         await db.Clusters.UpdateOneAsync(
             c => c.Id == clusterId, connectedUpdate,
             cancellationToken: context.CancellationToken);
+
+        // Version compatibility check.
+        var controlPlaneVersion = System.Reflection.Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? "0.0.0-dev";
+        if (!string.IsNullOrEmpty(hello.AgentVersion) && hello.AgentVersion != controlPlaneVersion)
+        {
+            logger.LogWarning(
+                "Agent version mismatch for cluster {ClusterId}: agent={AgentVersion}, controlPlane={ControlPlaneVersion}",
+                clusterId, hello.AgentVersion, controlPlaneVersion);
+        }
 
         // ── 4. Register session ───────────────────────────────────────────────
         using var session = sessions.Register(clusterId, responseStream, context);

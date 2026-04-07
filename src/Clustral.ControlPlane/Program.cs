@@ -279,8 +279,11 @@ app.MapHealthChecks("/healthz/detail", new HealthCheckOptions
 app.MapGet("/api/v1/config", (IOptions<OidcOptions> oidc) =>
 {
     var o = oidc.Value;
+    var version = Assembly.GetExecutingAssembly()
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-dev";
     return Results.Ok(new
     {
+        version,
         oidcAuthority = o.Authority,
         oidcClientId = "clustral-cli",
         oidcScopes = "openid email profile",

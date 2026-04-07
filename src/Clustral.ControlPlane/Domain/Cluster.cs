@@ -29,6 +29,10 @@ public sealed class Cluster : HasDomainEvents
     [BsonIgnoreIfNull]
     public string?       KubernetesVersion { get; set; }
 
+    /// <summary>Version reported by the agent in <c>AgentHello</c>.</summary>
+    [BsonIgnoreIfNull]
+    public string?       AgentVersion      { get; set; }
+
     [BsonRepresentation(BsonType.String)]
     public ClusterStatus Status            { get; set; } = ClusterStatus.Pending;
 
@@ -65,12 +69,14 @@ public sealed class Cluster : HasDomainEvents
     /// <summary>
     /// Marks the cluster as connected (agent tunnel established).
     /// </summary>
-    public void Connect(string? kubernetesVersion = null)
+    public void Connect(string? kubernetesVersion = null, string? agentVersion = null)
     {
         Status = ClusterStatus.Connected;
         LastSeenAt = DateTimeOffset.UtcNow;
         if (kubernetesVersion is not null)
             KubernetesVersion = kubernetesVersion;
+        if (agentVersion is not null)
+            AgentVersion = agentVersion;
         RaiseDomainEvent(new ClusterConnected(Id, kubernetesVersion));
     }
 

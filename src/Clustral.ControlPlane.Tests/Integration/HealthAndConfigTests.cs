@@ -151,4 +151,18 @@ public sealed class HealthAndConfigTests(
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("oidcAuthority");
     }
+
+    [Fact]
+    public async Task Config_IncludesVersion()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/config");
+        var body = await response.Content.ReadAsStringAsync();
+
+        var json = JsonDocument.Parse(body);
+        json.RootElement.TryGetProperty("version", out var version).Should().BeTrue("config should include 'version'");
+
+        output.WriteLine($"ControlPlane version: {version.GetString()}");
+        version.GetString().Should().NotBeNullOrEmpty();
+    }
 }

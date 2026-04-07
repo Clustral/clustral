@@ -34,12 +34,23 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     {
         var cluster = Cluster.Create("test", "Test", "pem", "hash");
 
-        cluster.Connect("v1.29.0");
+        cluster.Connect("v1.29.0", "0.2.0");
 
-        output.WriteLine($"Status: {cluster.Status}, K8s: {cluster.KubernetesVersion}");
+        output.WriteLine($"Status: {cluster.Status}, K8s: {cluster.KubernetesVersion}, Agent: {cluster.AgentVersion}");
         cluster.Status.Should().Be(ClusterStatus.Connected);
         cluster.LastSeenAt.Should().NotBeNull();
         cluster.KubernetesVersion.Should().Be("v1.29.0");
+        cluster.AgentVersion.Should().Be("0.2.0");
+    }
+
+    [Fact]
+    public void Connect_WithoutAgentVersion_PreservesNull()
+    {
+        var cluster = Cluster.Create("test", "Test", "pem", "hash");
+
+        cluster.Connect("v1.29.0");
+
+        cluster.AgentVersion.Should().BeNull();
     }
 
     [Fact]

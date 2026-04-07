@@ -106,6 +106,7 @@ internal static class KubeLsCommand
             .AddColumn("Cluster")
             .AddColumn("ID")
             .AddColumn("Status")
+            .AddColumn("Agent Version")
             .AddColumn("K8s Version")
             .AddColumn("Labels");
 
@@ -126,6 +127,10 @@ internal static class KubeLsCommand
                 ? $"[bold]{Truncate(c.Name, 24).EscapeMarkup()}[/]"
                 : Truncate(c.Name, 24).EscapeMarkup();
 
+            var agentVersion = c.AgentVersion is not null
+                ? $"[cyan]{c.AgentVersion.EscapeMarkup()}[/]"
+                : "[dim]—[/]";
+
             var labels = c.Labels.Count > 0
                 ? $"[dim]{string.Join(", ", c.Labels.Select(kv => $"{kv.Key}={kv.Value}")).EscapeMarkup()}[/]"
                 : "";
@@ -135,7 +140,8 @@ internal static class KubeLsCommand
                 clusterName,
                 $"[dim]{c.Id}[/]",
                 statusMarkup,
-                c.KubernetesVersion ?? "[dim]-[/]",
+                agentVersion,
+                c.KubernetesVersion ?? "[dim]—[/]",
                 labels);
         }
 

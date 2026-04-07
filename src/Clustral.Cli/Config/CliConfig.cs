@@ -114,6 +114,7 @@ internal partial class CliJsonContext : JsonSerializerContext { }
 /// <summary>Response from <c>GET /api/v1/config</c> on the ControlPlane.</summary>
 internal sealed class ControlPlaneConfig
 {
+    [JsonPropertyName("version")]       public string Version       { get; set; } = string.Empty;
     [JsonPropertyName("oidcAuthority")] public string OidcAuthority { get; set; } = string.Empty;
     [JsonPropertyName("oidcClientId")]  public string OidcClientId  { get; set; } = string.Empty;
     [JsonPropertyName("oidcScopes")]    public string OidcScopes    { get; set; } = string.Empty;
@@ -160,6 +161,7 @@ internal sealed class ClusterResponse
     [JsonPropertyName("description")]        public string              Description       { get; set; } = string.Empty;
     [JsonPropertyName("status")]             public string              Status            { get; set; } = string.Empty;
     [JsonPropertyName("kubernetesVersion")]  public string?             KubernetesVersion { get; set; }
+    [JsonPropertyName("agentVersion")]       public string?             AgentVersion      { get; set; }
     [JsonPropertyName("registeredAt")]       public DateTimeOffset      RegisteredAt      { get; set; }
     [JsonPropertyName("lastSeenAt")]         public DateTimeOffset?     LastSeenAt        { get; set; }
     [JsonPropertyName("labels")]             public Dictionary<string, string> Labels     { get; set; } = new();
