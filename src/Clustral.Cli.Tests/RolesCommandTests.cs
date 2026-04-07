@@ -1,4 +1,3 @@
-using System.CommandLine;
 using System.Text.Json;
 using Clustral.Cli.Commands;
 using Clustral.Cli.Config;

@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Clustral.Cli\Clustral.Cli.csproj" />
+    <ProjectReference Include="..\Clustral.ControlPlane.Tests\Clustral.ControlPlane.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>

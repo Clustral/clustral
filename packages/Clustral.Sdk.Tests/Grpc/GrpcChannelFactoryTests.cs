@@ -1,6 +1,5 @@
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Grpc;
-using Grpc.Net.Client;
 
 namespace Clustral.Sdk.Tests.Grpc;
 

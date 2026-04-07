@@ -1,6 +1,5 @@
 using Clustral.Cli.Commands;
 using Clustral.Cli.Config;
-using Spectre.Console;
 using Spectre.Console.Testing;
 using Xunit.Abstractions;
 

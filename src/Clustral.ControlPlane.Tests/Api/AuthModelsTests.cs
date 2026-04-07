@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Xunit.Abstractions;
 

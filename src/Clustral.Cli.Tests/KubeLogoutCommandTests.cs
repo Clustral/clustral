@@ -1,4 +1,3 @@
-using System.CommandLine;
 using Clustral.Cli.Commands;
 using Clustral.Sdk.Kubeconfig;
 using Xunit.Abstractions;
