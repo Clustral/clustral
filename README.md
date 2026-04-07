@@ -175,6 +175,35 @@ sequenceDiagram
 | Tunnel transport | gRPC over HTTP/2 (TLS in production) |
 | Agent connectivity | Outbound only — no inbound firewall rules needed |
 | Per-user k8s access | Role assignments with k8s group impersonation (system:masters, etc.) |
+| Proxy rate limiting | Per-credential token bucket (100 QPS sustained, 200 burst) |
+
+### Proxy Configuration
+
+The kubectl proxy is configurable via the `Proxy` section in `appsettings.json`:
+
+```json
+{
+  "Proxy": {
+    "TunnelTimeout": "00:02:00",
+    "RateLimiting": {
+      "Enabled": true,
+      "BurstSize": 200,
+      "RequestsPerSecond": 100,
+      "QueueSize": 50
+    }
+  }
+}
+```
+
+| Setting | Default | Description |
+|---|---|---|
+| `TunnelTimeout` | 2 min | Max wait for agent response (504 on timeout) |
+| `RateLimiting:Enabled` | `true` | Toggle per-credential rate limiting |
+| `RateLimiting:BurstSize` | `200` | Token bucket capacity (matches k8s client-go) |
+| `RateLimiting:RequestsPerSecond` | `100` | Sustained QPS per credential |
+| `RateLimiting:QueueSize` | `50` | Queued requests before 429 |
+
+Rate limiting protects the ControlPlane and tunnel from abuse. Request body size and API timeouts are left to the k8s API server.
 
 ### Token Lifecycle
 

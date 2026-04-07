@@ -18,8 +18,18 @@ public sealed class AccessSpecifications(
     public async Task<bool> HasStaticAssignmentAsync(
         Guid userId, Guid clusterId, CancellationToken ct = default)
     {
+        var assignment = await GetStaticAssignmentAsync(userId, clusterId, ct);
+        return assignment is not null;
+    }
+
+    /// <summary>
+    /// Returns the static role assignment for the user+cluster, or null.
+    /// </summary>
+    public async Task<RoleAssignment?> GetStaticAssignmentAsync(
+        Guid userId, Guid clusterId, CancellationToken ct = default)
+    {
         var userAssignments = await assignments.GetByUserIdAsync(userId, ct);
-        return userAssignments.Any(a => a.ClusterId == clusterId);
+        return userAssignments.FirstOrDefault(a => a.ClusterId == clusterId);
     }
 
     /// <summary>

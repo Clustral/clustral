@@ -34,6 +34,8 @@ builder.Services.AddOptionsWithValidation<OidcOptions, OidcOptionsValidator>(Oid
 
 builder.Services.AddOptionsWithValidation<MongoDbOptions, MongoDbOptionsValidator>(MongoDbOptions.SectionName);
 
+builder.Services.AddOptionsWithValidation<ProxyOptions, ProxyOptionsValidator>(ProxyOptions.SectionName);
+
 var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +144,42 @@ builder.Services.AddHealthChecks()
     .AddUrlGroup(new Uri(oidcDiscoveryUrl), "oidc", tags: ["ready"],
         timeout: TimeSpan.FromSeconds(5));
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Rate limiting (proxy traffic, per-credential token bucket)
+// ─────────────────────────────────────────────────────────────────────────────
+
+var proxyOpts = builder.Configuration.GetSection(ProxyOptions.SectionName).Get<ProxyOptions>() ?? new ProxyOptions();
+if (proxyOpts.RateLimiting.Enabled)
+{
+    var rl = proxyOpts.RateLimiting;
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = 429;
+        options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(
+            context =>
+            {
+                var path = context.Request.Path.Value ?? "";
+                if (!path.StartsWith("/proxy/", StringComparison.OrdinalIgnoreCase) &&
+                    !path.StartsWith("/api/proxy/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("non-proxy");
+                }
+
+                var auth = context.Request.Headers.Authorization.FirstOrDefault();
+                var key = auth is not null ? auth.GetHashCode().ToString() : "anonymous";
+                return System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(key, _ =>
+                    new System.Threading.RateLimiting.TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = rl.BurstSize,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                        TokensPerPeriod = rl.RequestsPerSecond,
+                        QueueLimit = rl.QueueSize,
+                        QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
+                    });
+            });
+    });
+}
+
 // MediatR + FluentValidation vertical slicing infrastructure.
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
@@ -150,6 +188,8 @@ builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(Valid
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserProvider, HttpCurrentUserProvider>();
 builder.Services.AddScoped<Clustral.ControlPlane.Domain.Services.UserSyncService>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Services.ProxyAuthService>();
+builder.Services.AddScoped<Clustral.ControlPlane.Domain.Services.ImpersonationResolver>();
 builder.Services.AddScoped<Clustral.ControlPlane.Domain.Specifications.AccessSpecifications>();
 
 // Repository interfaces — thin wrappers over ClustralDb collections.
@@ -192,6 +232,10 @@ if (app.Environment.IsDevelopment())
         opts.RoutePrefix = "swagger";
     });
 }
+
+// Rate limiting — before proxy so 429 responses are fast.
+if (proxyOpts.RateLimiting.Enabled)
+    app.UseRateLimiter();
 
 // kubectl proxy — must be before UseRouting so it catches /proxy/* before MVC.
 app.UseMiddleware<Clustral.ControlPlane.Api.KubectlProxyMiddleware>();

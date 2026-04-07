@@ -1,77 +1,50 @@
-using System.Security.Cryptography;
-using System.Text;
-using DomainCredentialKind = Clustral.ControlPlane.Domain.CredentialKind;
+using System.Diagnostics;
+using Clustral.ControlPlane.Domain.Events;
+using Clustral.ControlPlane.Domain.Services;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Protos;
 using Clustral.V1;
 using Google.Protobuf;
-using MongoDB.Driver;
+using MediatR;
+using Microsoft.Extensions.Options;
 
 namespace Clustral.ControlPlane.Api;
 
 /// <summary>
 /// ASP.NET Core middleware that proxies kubectl HTTP requests through the
-/// agent tunnel.
+/// agent tunnel. Delegates authentication and impersonation resolution
+/// to domain services for testability.
 ///
 /// Path format: <c>/proxy/{clusterId}/{k8s-api-path}</c>
-///
-/// Authentication: the <c>Authorization: Bearer {token}</c> header must
-/// contain a valid Clustral kubeconfig credential (issued by
-/// <c>POST /api/v1/auth/kubeconfig-credential</c>).
-///
-/// Flow:
-/// <list type="number">
-///   <item>Validate the bearer token against the access_tokens collection.</item>
-///   <item>Look up the <see cref="TunnelSession"/> for the cluster.</item>
-///   <item>Build an <see cref="HttpRequestFrame"/> from the incoming HTTP request.</item>
-///   <item>Send it through the tunnel and await the <see cref="HttpResponseFrame"/>.</item>
-///   <item>Write the response back to the HTTP caller (kubectl).</item>
-/// </list>
 /// </summary>
-public sealed class KubectlProxyMiddleware
+public sealed class KubectlProxyMiddleware(RequestDelegate next)
 {
-    private readonly RequestDelegate _next;
-
-    public KubectlProxyMiddleware(RequestDelegate next)
-    {
-        _next = next;
-    }
-
     public async Task InvokeAsync(HttpContext httpContext)
     {
         var path = httpContext.Request.Path.Value ?? "";
         var ct = httpContext.RequestAborted;
 
-        // Handle both /api/proxy/{clusterId}/... (via Next.js) and /proxy/{clusterId}/... (direct)
+        // Match /api/proxy/{clusterId}/... or /proxy/{clusterId}/...
         string afterProxy;
         if (path.StartsWith("/api/proxy/", StringComparison.OrdinalIgnoreCase))
-        {
             afterProxy = path["/api/proxy/".Length..];
-        }
         else if (path.StartsWith("/proxy/", StringComparison.OrdinalIgnoreCase))
-        {
             afterProxy = path["/proxy/".Length..];
-        }
         else
         {
-            await _next(httpContext);
+            await next(httpContext);
             return;
         }
+
+        var sw = Stopwatch.StartNew();
+        var services = httpContext.RequestServices;
+        var logger = services.GetRequiredService<ILogger<KubectlProxyMiddleware>>();
+        var proxyOptions = services.GetRequiredService<IOptions<ProxyOptions>>().Value;
+
+        // ── Parse path ──────────────────────────────────────────────────────
         var slashIdx = afterProxy.IndexOf('/');
-
-        string clusterIdStr;
-        string k8sPath;
-
-        if (slashIdx < 0)
-        {
-            clusterIdStr = afterProxy;
-            k8sPath = "/";
-        }
-        else
-        {
-            clusterIdStr = afterProxy[..slashIdx];
-            k8sPath = afterProxy[slashIdx..];
-        }
+        var clusterIdStr = slashIdx < 0 ? afterProxy : afterProxy[..slashIdx];
+        var k8sPath = slashIdx < 0 ? "/" : afterProxy[slashIdx..];
 
         if (!Guid.TryParse(clusterIdStr, out var clusterId))
         {
@@ -80,14 +53,11 @@ public sealed class KubectlProxyMiddleware
             return;
         }
 
-        // Append query string.
         if (httpContext.Request.QueryString.HasValue)
             k8sPath += httpContext.Request.QueryString.Value;
 
-        // ── 1. Authenticate ──────────────────────────────────────────────────
-        var db = httpContext.RequestServices.GetRequiredService<ClustralDb>();
+        // ── 1. Authenticate ─────────────────────────────────────────────────
         var bearerToken = ExtractBearerToken(httpContext.Request);
-
         if (bearerToken is null)
         {
             httpContext.Response.StatusCode = 401;
@@ -95,90 +65,36 @@ public sealed class KubectlProxyMiddleware
             return;
         }
 
-        var tokenHash = HashToken(bearerToken);
-        var credential = await db.AccessTokens
-            .Find(t => t.TokenHash == tokenHash && t.Kind == DomainCredentialKind.UserKubeconfig)
-            .FirstOrDefaultAsync(ct);
-
-        if (credential is null || !credential.IsValid)
+        var proxyAuth = services.GetRequiredService<ProxyAuthService>();
+        var authResult = await proxyAuth.AuthenticateAsync(bearerToken, clusterId, ct);
+        if (authResult.IsFailure)
         {
-            httpContext.Response.StatusCode = 401;
-            await httpContext.Response.WriteAsync("Invalid or expired credential.", cancellationToken: ct);
+            httpContext.Response.StatusCode = authResult.Error!.Kind switch
+            {
+                Clustral.Sdk.Results.ResultErrorKind.Forbidden => 403,
+                _ => 401,
+            };
+            await httpContext.Response.WriteAsync(authResult.Error.Message, cancellationToken: ct);
             return;
         }
 
-        if (credential.ClusterId != clusterId)
+        var identity = authResult.Value;
+
+        // ── 2. Resolve impersonation ────────────────────────────────────────
+        var impersonation = services.GetRequiredService<ImpersonationResolver>();
+        var impResult = await impersonation.ResolveAsync(identity.UserId, clusterId, ct);
+        if (impResult.IsFailure)
         {
             httpContext.Response.StatusCode = 403;
-            await httpContext.Response.WriteAsync("Credential is not valid for this cluster.", cancellationToken: ct);
+            await httpContext.Response.WriteAsync(impResult.Error!.Message, cancellationToken: ct);
             return;
         }
 
-        // ── 1b. Look up user + role assignment for impersonation ─────────
-        string? impersonateUser = null;
-        var impersonateGroups = new List<string> { "system:authenticated" };
+        var imp = impResult.Value;
 
-        if (credential.UserId.HasValue)
-        {
-            var user = await db.Users
-                .Find(u => u.Id == credential.UserId.Value)
-                .FirstOrDefaultAsync(ct);
-
-            if (user is not null)
-            {
-                impersonateUser = user.Email ?? user.KeycloakSubject;
-
-                // Look up the role assignment for this user + cluster.
-                var assignment = await db.RoleAssignments
-                    .Find(a => a.UserId == user.Id && a.ClusterId == clusterId)
-                    .FirstOrDefaultAsync(ct);
-
-                Guid roleId;
-                if (assignment is not null)
-                {
-                    roleId = assignment.RoleId;
-                }
-                else
-                {
-                    // Fallback: check for an active JIT grant.
-                    var now = DateTimeOffset.UtcNow;
-                    var grant = await db.AccessRequests
-                        .Find(r => r.RequesterId == user.Id
-                                && r.ClusterId == clusterId
-                                && r.Status == Domain.AccessRequestStatus.Approved
-                                && r.GrantExpiresAt > now
-                                && r.RevokedAt == null)
-                        .FirstOrDefaultAsync(ct);
-
-                    if (grant is null)
-                    {
-                        httpContext.Response.StatusCode = 403;
-                        await httpContext.Response.WriteAsync(
-                            "No role assigned for this cluster. Request access with 'clustral access request'.", cancellationToken: ct);
-                        return;
-                    }
-                    roleId = grant.RoleId;
-                }
-
-                var role = await db.Roles
-                    .Find(r => r.Id == roleId)
-                    .FirstOrDefaultAsync(ct);
-
-                if (role is not null)
-                {
-                    foreach (var group in role.KubernetesGroups)
-                    {
-                        if (!impersonateGroups.Contains(group))
-                            impersonateGroups.Add(group);
-                    }
-                }
-            }
-        }
-
-        // ── 2. Find tunnel session ───────────────────────────────────────────
-        var sessions = httpContext.RequestServices.GetRequiredService<TunnelSessionManager>();
+        // ── 3. Find tunnel session ──────────────────────────────────────────
+        var sessions = services.GetRequiredService<TunnelSessionManager>();
         var session = sessions.GetSession(clusterId);
-
         if (session is null)
         {
             httpContext.Response.StatusCode = 502;
@@ -186,50 +102,28 @@ public sealed class KubectlProxyMiddleware
             return;
         }
 
-        // ── 3. Build HttpRequestFrame ────────────────────────────────────────
+        // ── 4. Build HttpRequestFrame ───────────────────────────────────────
         var requestId = Guid.NewGuid().ToString("N");
-
         var head = new HttpRequestHead
         {
             Method = httpContext.Request.Method,
-            Path   = k8sPath,
+            Path = k8sPath,
         };
 
-        // Forward headers (skip hop-by-hop and Authorization).
         foreach (var (name, values) in httpContext.Request.Headers)
         {
             if (IsHopByHop(name) ||
                 name.Equals("Authorization", StringComparison.OrdinalIgnoreCase) ||
                 name.Equals("Host", StringComparison.OrdinalIgnoreCase))
                 continue;
-
-            head.Headers.Add(new HttpHeader
-            {
-                Name  = name,
-                Value = string.Join(", ", values!),
-            });
+            head.Headers.Add(new HttpHeader { Name = name, Value = string.Join(", ", values!) });
         }
 
-        // Inject impersonation headers so the agent can forward user identity
-        // to the k8s API server via the Impersonation API.
-        if (impersonateUser is not null)
-        {
-            head.Headers.Add(new HttpHeader
-            {
-                Name  = "X-Clustral-Impersonate-User",
-                Value = impersonateUser,
-            });
-            foreach (var group in impersonateGroups)
-            {
-                head.Headers.Add(new HttpHeader
-                {
-                    Name  = "X-Clustral-Impersonate-Group",
-                    Value = group,
-                });
-            }
-        }
+        // Inject impersonation headers.
+        head.Headers.Add(new HttpHeader { Name = "X-Clustral-Impersonate-User", Value = imp.User });
+        foreach (var group in imp.Groups)
+            head.Headers.Add(new HttpHeader { Name = "X-Clustral-Impersonate-Group", Value = group });
 
-        // Read request body.
         ByteString bodyBytes = ByteString.Empty;
         if (httpContext.Request.ContentLength > 0 ||
             httpContext.Request.Method is "POST" or "PUT" or "PATCH")
@@ -242,44 +136,56 @@ public sealed class KubectlProxyMiddleware
         var frame = new HttpRequestFrame
         {
             RequestId = requestId,
-            Head      = head,
+            Head = head,
             BodyChunk = bodyBytes,
             EndOfBody = true,
         };
 
-        // ── 4. Proxy through tunnel ──────────────────────────────────────────
+        // ── 5. Proxy through tunnel with timeout ────────────────────────────
         HttpResponseFrame responseFrame;
         try
         {
-            responseFrame = await session.ProxyAsync(frame, ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(proxyOptions.TunnelTimeout);
+            responseFrame = await session.ProxyAsync(frame, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Tunnel timeout (not client disconnect).
+            httpContext.Response.StatusCode = 504;
+            await httpContext.Response.WriteAsync("Gateway timeout — agent did not respond.", cancellationToken: ct);
+            LogProxyRequest(logger, httpContext.Request.Method, clusterId, k8sPath, 504, sw, identity);
+            return;
         }
         catch (OperationCanceledException)
         {
             // Client disconnected.
             return;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogError(ex, "Tunnel proxy error for cluster {ClusterId}", clusterId);
             httpContext.Response.StatusCode = 502;
             await httpContext.Response.WriteAsync("Tunnel proxy error.", cancellationToken: ct);
+            LogProxyRequest(logger, httpContext.Request.Method, clusterId, k8sPath, 502, sw, identity);
             return;
         }
 
-        // ── 5. Handle tunnel-level errors ────────────────────────────────────
+        // ── 6. Handle tunnel-level errors ───────────────────────────────────
         if (responseFrame.Error is { } tunnelError)
         {
             httpContext.Response.StatusCode = 502;
             await httpContext.Response.WriteAsync(
                 $"Agent error ({tunnelError.Code}): {tunnelError.Message}", cancellationToken: ct);
+            LogProxyRequest(logger, httpContext.Request.Method, clusterId, k8sPath, 502, sw, identity);
             return;
         }
 
-        // ── 6. Write HTTP response ───────────────────────────────────────────
+        // ── 7. Write HTTP response ──────────────────────────────────────────
         var responseHead = responseFrame.Head;
         if (responseHead is not null)
         {
             httpContext.Response.StatusCode = responseHead.StatusCode;
-
             foreach (var h in responseHead.Headers)
             {
                 if (IsHopByHop(h.Name)) continue;
@@ -288,13 +194,37 @@ public sealed class KubectlProxyMiddleware
         }
 
         if (responseFrame.BodyChunk.Length > 0)
+            await httpContext.Response.Body.WriteAsync(responseFrame.BodyChunk.Memory, ct);
+
+        // ── 8. Structured log + audit event ─────────────────────────────────
+        var statusCode = httpContext.Response.StatusCode;
+        LogProxyRequest(logger, httpContext.Request.Method, clusterId, k8sPath, statusCode, sw, identity);
+
+        try
         {
-            await httpContext.Response.Body.WriteAsync(
-                responseFrame.BodyChunk.Memory, ct);
+            var mediator = services.GetRequiredService<IMediator>();
+            await mediator.Publish(new ProxyRequestCompleted(
+                clusterId, identity.UserId, identity.CredentialId,
+                httpContext.Request.Method, k8sPath, statusCode, sw.Elapsed.TotalMilliseconds), ct);
+        }
+        catch
+        {
+            // Don't fail the proxy response if event dispatch fails.
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+
+    private static void LogProxyRequest(
+        ILogger logger, string method, Guid clusterId, string k8sPath,
+        int statusCode, Stopwatch sw, ProxyIdentity identity)
+    {
+        logger.LogInformation(
+            "Proxy {Method} {ClusterId} {K8sPath} → {StatusCode} in {Duration}ms " +
+            "[user={UserId} credential={CredentialId}]",
+            method, clusterId, k8sPath, statusCode, sw.Elapsed.TotalMilliseconds,
+            identity.UserId, identity.CredentialId);
+    }
 
     private static string? ExtractBearerToken(HttpRequest request)
     {
@@ -302,12 +232,6 @@ public sealed class KubectlProxyMiddleware
         if (auth is null || !auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             return null;
         return auth["Bearer ".Length..].Trim();
-    }
-
-    private static string HashToken(string raw)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)

@@ -119,6 +119,21 @@ The ControlPlane uses pragmatic DDD (Phase 1 of a multi-phase roadmap).
 - **UserSyncService** — centralizes OIDC user upsert logic previously
   duplicated in `UserSyncFilter` and `IssueKubeconfigCredential`.
 
+### Proxy Domain Services (`Domain/Services/`)
+- **ProxyAuthService** — validates bearer tokens against `IAccessTokenRepository`,
+  checks credential validity, cluster scope, and kind.
+- **ImpersonationResolver** — resolves user + groups for k8s impersonation.
+  Uses `AccessSpecifications` (static assignment → JIT grant fallback).
+
+### Proxy Configuration (`Infrastructure/ProxyOptions.cs`)
+- `TunnelTimeout` — max wait for agent response (default 2 min)
+- `RateLimiting.Enabled` — toggle per-credential rate limiting
+- `RateLimiting.BurstSize` — token bucket capacity (default 200)
+- `RateLimiting.RequestsPerSecond` — sustained refill rate (default 100 QPS)
+- `RateLimiting.QueueSize` — queued requests before 429 (default 50)
+
+Validated with `ProxyOptionsValidator` at startup. Defaults match k8s client-go.
+
 ### DDD Rules
 - **Business logic belongs in the domain** — aggregate methods enforce
   invariants. Handlers are thin orchestrators (fetch → call domain method →
