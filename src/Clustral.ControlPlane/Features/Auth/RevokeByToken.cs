@@ -1,4 +1,5 @@
 using Clustral.ControlPlane.Api.Models;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
@@ -10,6 +11,7 @@ public record RevokeByTokenCommand(string Token) : IRequest<Result<RevokeCredent
 
 public sealed class RevokeByTokenHandler(
     IAccessTokenRepository accessTokens,
+    IMediator mediator,
     TokenHashingService tokens,
     ILogger<RevokeByTokenHandler> logger)
     : IRequestHandler<RevokeByTokenCommand, Result<RevokeCredentialResponse>>
@@ -27,6 +29,7 @@ public sealed class RevokeByTokenHandler(
         credential.RevokedAt = now;
         credential.RevokedReason = "logout";
         await accessTokens.ReplaceAsync(credential, ct);
+        await mediator.Publish(new CredentialRevoked(credential.Id, "logout"), ct);
 
         logger.LogInformation("Credential {CredentialId} revoked via logout", credential.Id);
 

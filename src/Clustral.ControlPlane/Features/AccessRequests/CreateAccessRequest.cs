@@ -1,6 +1,7 @@
 using System.Xml;
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Domain.Specifications;
 using Clustral.ControlPlane.Features.Shared;
@@ -20,6 +21,7 @@ public sealed class CreateAccessRequestHandler(
     IUserRepository users,
     IAccessRequestRepository accessRequests,
     ICurrentUserProvider currentUser,
+    IMediator mediator,
     AccessSpecifications specs,
     AccessRequestEnricher enricher,
     ILogger<CreateAccessRequestHandler> logger)
@@ -73,6 +75,7 @@ public sealed class CreateAccessRequestHandler(
             suggestedReviewerIds);
 
         await accessRequests.InsertAsync(accessRequest, ct);
+        await mediator.DispatchDomainEventsAsync(accessRequest, ct);
 
         logger.LogInformation("Access request {RequestId} created by {Email} for role {Role} on cluster {Cluster}",
             accessRequest.Id, user.Email, role.Name, cluster.Name);

@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
@@ -19,6 +20,7 @@ public record RegisterClusterCommand(
 
 public sealed class RegisterClusterHandler(
     IClusterRepository clusters,
+    IMediator mediator,
     TokenHashingService tokens,
     ILogger<RegisterClusterHandler> logger)
     : IRequestHandler<RegisterClusterCommand, Result<RegisterClusterRestResponse>>
@@ -38,6 +40,7 @@ public sealed class RegisterClusterHandler(
             tokenHash, request.Labels);
 
         await clusters.InsertAsync(cluster, ct);
+        await mediator.DispatchDomainEventsAsync(cluster, ct);
         logger.LogInformation("Cluster {Name} registered with id {Id}", cluster.Name, cluster.Id);
 
         return new RegisterClusterRestResponse(cluster.Id, bootstrapToken);

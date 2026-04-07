@@ -40,6 +40,7 @@ public sealed class KubectlProxyMiddleware
     public async Task InvokeAsync(HttpContext httpContext)
     {
         var path = httpContext.Request.Path.Value ?? "";
+        var ct = httpContext.RequestAborted;
 
         // Handle both /api/proxy/{clusterId}/... (via Next.js) and /proxy/{clusterId}/... (direct)
         string afterProxy;
@@ -75,15 +76,13 @@ public sealed class KubectlProxyMiddleware
         if (!Guid.TryParse(clusterIdStr, out var clusterId))
         {
             httpContext.Response.StatusCode = 400;
-            await httpContext.Response.WriteAsync("Invalid cluster ID.");
+            await httpContext.Response.WriteAsync("Invalid cluster ID.", cancellationToken: ct);
             return;
         }
 
         // Append query string.
         if (httpContext.Request.QueryString.HasValue)
             k8sPath += httpContext.Request.QueryString.Value;
-
-        var ct = httpContext.RequestAborted;
 
         // ── 1. Authenticate ──────────────────────────────────────────────────
         var db = httpContext.RequestServices.GetRequiredService<ClustralDb>();
@@ -92,7 +91,7 @@ public sealed class KubectlProxyMiddleware
         if (bearerToken is null)
         {
             httpContext.Response.StatusCode = 401;
-            await httpContext.Response.WriteAsync("Authorization: Bearer token required.");
+            await httpContext.Response.WriteAsync("Authorization: Bearer token required.", cancellationToken: ct);
             return;
         }
 
@@ -104,14 +103,14 @@ public sealed class KubectlProxyMiddleware
         if (credential is null || !credential.IsValid)
         {
             httpContext.Response.StatusCode = 401;
-            await httpContext.Response.WriteAsync("Invalid or expired credential.");
+            await httpContext.Response.WriteAsync("Invalid or expired credential.", cancellationToken: ct);
             return;
         }
 
         if (credential.ClusterId != clusterId)
         {
             httpContext.Response.StatusCode = 403;
-            await httpContext.Response.WriteAsync("Credential is not valid for this cluster.");
+            await httpContext.Response.WriteAsync("Credential is not valid for this cluster.", cancellationToken: ct);
             return;
         }
 
@@ -155,7 +154,7 @@ public sealed class KubectlProxyMiddleware
                     {
                         httpContext.Response.StatusCode = 403;
                         await httpContext.Response.WriteAsync(
-                            "No role assigned for this cluster. Request access with 'clustral access request'.");
+                            "No role assigned for this cluster. Request access with 'clustral access request'.", cancellationToken: ct);
                         return;
                     }
                     roleId = grant.RoleId;
@@ -183,7 +182,7 @@ public sealed class KubectlProxyMiddleware
         if (session is null)
         {
             httpContext.Response.StatusCode = 502;
-            await httpContext.Response.WriteAsync("Cluster agent is not connected.");
+            await httpContext.Response.WriteAsync("Cluster agent is not connected.", cancellationToken: ct);
             return;
         }
 
@@ -262,7 +261,7 @@ public sealed class KubectlProxyMiddleware
         catch (Exception)
         {
             httpContext.Response.StatusCode = 502;
-            await httpContext.Response.WriteAsync("Tunnel proxy error.");
+            await httpContext.Response.WriteAsync("Tunnel proxy error.", cancellationToken: ct);
             return;
         }
 
@@ -271,7 +270,7 @@ public sealed class KubectlProxyMiddleware
         {
             httpContext.Response.StatusCode = 502;
             await httpContext.Response.WriteAsync(
-                $"Agent error ({tunnelError.Code}): {tunnelError.Message}");
+                $"Agent error ({tunnelError.Code}): {tunnelError.Message}", cancellationToken: ct);
             return;
         }
 

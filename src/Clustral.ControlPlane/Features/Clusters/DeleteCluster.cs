@@ -1,18 +1,16 @@
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.Sdk.Results;
 using MediatR;
 
 namespace Clustral.ControlPlane.Features.Clusters;
 
-// ── Command ──────────────────────────────────────────────────────────────────
-
 public record DeleteClusterCommand(Guid Id) : IRequest<Result>;
-
-// ── Handler ──────────────────────────────────────────────────────────────────
 
 public sealed class DeleteClusterHandler(
     IClusterRepository clusters,
     IAccessTokenRepository tokens,
+    IMediator mediator,
     ILogger<DeleteClusterHandler> logger)
     : IRequestHandler<DeleteClusterCommand, Result>
 {
@@ -24,6 +22,8 @@ public sealed class DeleteClusterHandler(
 
         // Cascade: delete all access tokens for this cluster.
         await tokens.DeleteByClusterIdAsync(request.Id, ct);
+        await mediator.Publish(new ClusterDeleted(request.Id), ct);
+
         logger.LogInformation("Cluster {ClusterId} deregistered", request.Id);
 
         return Result.Success();

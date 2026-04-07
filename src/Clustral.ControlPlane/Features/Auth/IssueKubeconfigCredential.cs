@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Domain.Services;
 using Clustral.ControlPlane.Domain.Specifications;
@@ -19,6 +20,7 @@ public sealed class IssueKubeconfigCredentialHandler(
     IAccessTokenRepository accessTokens,
     IOptions<OidcOptions> oidcOptions,
     ICurrentUserProvider currentUser,
+    IMediator mediator,
     UserSyncService userSync,
     AccessSpecifications specs,
     TokenHashingService tokens,
@@ -76,6 +78,7 @@ public sealed class IssueKubeconfigCredentialHandler(
             ExpiresAt = expiresAt,
         };
         await accessTokens.InsertAsync(credential, ct);
+        await mediator.Publish(new CredentialIssued(credential.Id, user.Id, cluster.Id, expiresAt), ct);
 
         logger.LogInformation(
             "Issued kubeconfig credential {CredentialId} for user {Subject} on cluster {ClusterName}",

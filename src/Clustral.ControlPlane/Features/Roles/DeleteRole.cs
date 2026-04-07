@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.Sdk.Results;
 using MediatR;
@@ -9,6 +10,7 @@ public record DeleteRoleCommand(Guid Id) : IRequest<Result>;
 public sealed class DeleteRoleHandler(
     IRoleRepository roles,
     IRoleAssignmentRepository assignments,
+    IMediator mediator,
     ILogger<DeleteRoleHandler> logger)
     : IRequestHandler<DeleteRoleCommand, Result>
 {
@@ -20,6 +22,8 @@ public sealed class DeleteRoleHandler(
 
         // Cascade: remove all assignments for this role.
         await assignments.DeleteByRoleIdAsync(request.Id, ct);
+        await mediator.Publish(new RoleDeleted(request.Id), ct);
+
         logger.LogInformation("Role {RoleId} deleted", request.Id);
 
         return Result.Success();

@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Domain.Events;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -6,7 +7,7 @@ namespace Clustral.ControlPlane.Domain;
 /// <summary>
 /// Aggregate root for a Kubernetes cluster registered with the Clustral control plane.
 /// </summary>
-public sealed class Cluster
+public sealed class Cluster : HasDomainEvents
 {
     [BsonId]
     [BsonRepresentation(BsonType.String)]
@@ -47,7 +48,7 @@ public sealed class Cluster
         string name, string description, string agentPublicKeyPem,
         string bootstrapTokenHash, Dictionary<string, string>? labels = null)
     {
-        return new Cluster
+        var cluster = new Cluster
         {
             Id = Guid.NewGuid(),
             Name = name,
@@ -57,6 +58,8 @@ public sealed class Cluster
             Status = ClusterStatus.Pending,
             Labels = labels ?? new Dictionary<string, string>(),
         };
+        cluster.RaiseDomainEvent(new ClusterRegistered(cluster.Id, name));
+        return cluster;
     }
 
     /// <summary>
@@ -68,6 +71,7 @@ public sealed class Cluster
         LastSeenAt = DateTimeOffset.UtcNow;
         if (kubernetesVersion is not null)
             KubernetesVersion = kubernetesVersion;
+        RaiseDomainEvent(new ClusterConnected(Id, kubernetesVersion));
     }
 
     /// <summary>
@@ -76,6 +80,7 @@ public sealed class Cluster
     public void Disconnect()
     {
         Status = ClusterStatus.Disconnected;
+        RaiseDomainEvent(new ClusterDisconnected(Id));
     }
 
     /// <summary>

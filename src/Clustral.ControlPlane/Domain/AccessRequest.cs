@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.Sdk.Results;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
@@ -9,7 +10,7 @@ namespace Clustral.ControlPlane.Domain;
 /// elevated access to a cluster with a specific role. An admin approves or denies.
 /// The request carries the full grant lifecycle so the audit trail lives in one document.
 /// </summary>
-public sealed class AccessRequest
+public sealed class AccessRequest : HasDomainEvents
 {
     [BsonId]
     [BsonRepresentation(BsonType.String)]
@@ -112,7 +113,7 @@ public sealed class AccessRequest
         string? reason, TimeSpan requestedDuration, TimeSpan requestTtl,
         List<Guid>? suggestedReviewers = null)
     {
-        return new AccessRequest
+        var ar = new AccessRequest
         {
             Id = Guid.NewGuid(),
             RequesterId = requesterId,
@@ -124,6 +125,9 @@ public sealed class AccessRequest
             RequestExpiresAt = DateTimeOffset.UtcNow + requestTtl,
             SuggestedReviewers = suggestedReviewers ?? [],
         };
+        ar.RaiseDomainEvent(new AccessRequestCreated(
+            ar.Id, requesterId, roleId, clusterId, reason, requestedDuration));
+        return ar;
     }
 
     /// <summary>
@@ -141,6 +145,7 @@ public sealed class AccessRequest
         ReviewerId = reviewerId;
         ReviewedAt = now;
         GrantExpiresAt = now + grantDuration;
+        RaiseDomainEvent(new AccessRequestApproved(Id, reviewerId, grantDuration, GrantExpiresAt.Value));
         return Result.Success();
     }
 
@@ -156,6 +161,7 @@ public sealed class AccessRequest
         ReviewerId = reviewerId;
         ReviewedAt = DateTimeOffset.UtcNow;
         DenialReason = reason;
+        RaiseDomainEvent(new AccessRequestDenied(Id, reviewerId, reason));
         return Result.Success();
     }
 
@@ -175,6 +181,7 @@ public sealed class AccessRequest
         RevokedAt = DateTimeOffset.UtcNow;
         RevokedBy = revokedById;
         RevokedReason = reason;
+        RaiseDomainEvent(new AccessRequestRevoked(Id, revokedById, reason));
         return Result.Success();
     }
 

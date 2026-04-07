@@ -1,5 +1,6 @@
 using System.Xml;
 using Clustral.ControlPlane.Api.Models;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
@@ -13,6 +14,7 @@ public record ApproveAccessRequestCommand(Guid RequestId, string? DurationOverri
 public sealed class ApproveAccessRequestHandler(
     IAccessRequestRepository accessRequests,
     ICurrentUserProvider currentUser,
+    IMediator mediator,
     AccessRequestEnricher enricher,
     ILogger<ApproveAccessRequestHandler> logger)
     : IRequestHandler<ApproveAccessRequestCommand, Result<AccessRequestResponse>>
@@ -37,6 +39,7 @@ public sealed class ApproveAccessRequestHandler(
         if (result.IsFailure) return result.Error!;
 
         await accessRequests.ReplaceAsync(ar, ct);
+        await mediator.DispatchDomainEventsAsync(ar, ct);
 
         logger.LogInformation("Access request {RequestId} approved by {Reviewer}",
             request.RequestId, reviewer.Email);

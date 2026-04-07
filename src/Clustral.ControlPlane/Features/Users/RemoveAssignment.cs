@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.Sdk.Results;
 using MediatR;
@@ -8,6 +9,7 @@ public record RemoveAssignmentCommand(Guid UserId, Guid AssignmentId) : IRequest
 
 public sealed class RemoveAssignmentHandler(
     IRoleAssignmentRepository assignments,
+    IMediator mediator,
     ILogger<RemoveAssignmentHandler> logger)
     : IRequestHandler<RemoveAssignmentCommand, Result>
 {
@@ -17,6 +19,8 @@ public sealed class RemoveAssignmentHandler(
 
         if (!deleted)
             return ResultError.NotFound("ASSIGNMENT_NOT_FOUND", "Role assignment not found.");
+
+        await mediator.Publish(new RoleUnassigned(request.AssignmentId), ct);
 
         logger.LogInformation("Removed role assignment {Id} for user {UserId}",
             request.AssignmentId, request.UserId);

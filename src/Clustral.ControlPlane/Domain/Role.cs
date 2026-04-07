@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Domain.Events;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -7,7 +8,7 @@ namespace Clustral.ControlPlane.Domain;
 /// A Clustral role that maps to a set of Kubernetes groups for impersonation.
 /// Admins assign roles to users per cluster.
 /// </summary>
-public sealed class Role
+public sealed class Role : HasDomainEvents
 {
     [BsonId]
     [BsonRepresentation(BsonType.String)]
@@ -33,13 +34,16 @@ public sealed class Role
     /// </summary>
     public static Role Create(string name, string description, List<string>? kubernetesGroups = null)
     {
-        return new Role
+        var groups = kubernetesGroups ?? [];
+        var role = new Role
         {
             Id = Guid.NewGuid(),
             Name = name,
             Description = description,
-            KubernetesGroups = kubernetesGroups ?? [],
+            KubernetesGroups = groups,
         };
+        role.RaiseDomainEvent(new RoleCreated(role.Id, name, groups));
+        return role;
     }
 
     /// <summary>
@@ -50,5 +54,6 @@ public sealed class Role
         if (name is not null) Name = name;
         if (description is not null) Description = description;
         if (kubernetesGroups is not null) KubernetesGroups = kubernetesGroups;
+        RaiseDomainEvent(new RoleUpdated(Id, name, description, kubernetesGroups));
     }
 }

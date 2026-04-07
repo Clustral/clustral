@@ -1,4 +1,5 @@
 using Clustral.ControlPlane.Api.Models;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
@@ -12,6 +13,7 @@ public record DenyAccessRequestCommand(Guid RequestId, string Reason)
 public sealed class DenyAccessRequestHandler(
     IAccessRequestRepository accessRequests,
     ICurrentUserProvider currentUser,
+    IMediator mediator,
     AccessRequestEnricher enricher,
     ILogger<DenyAccessRequestHandler> logger)
     : IRequestHandler<DenyAccessRequestCommand, Result<AccessRequestResponse>>
@@ -29,6 +31,7 @@ public sealed class DenyAccessRequestHandler(
         if (result.IsFailure) return result.Error!;
 
         await accessRequests.ReplaceAsync(ar, ct);
+        await mediator.DispatchDomainEventsAsync(ar, ct);
 
         logger.LogInformation("Access request {RequestId} denied by {Reviewer}: {Reason}",
             request.RequestId, reviewer.Email, request.Reason);

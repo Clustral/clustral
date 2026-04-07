@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
@@ -16,6 +17,7 @@ public sealed class AssignRoleHandler(
     IClusterRepository clusters,
     IRoleAssignmentRepository assignments,
     ICurrentUserProvider currentUser,
+    IMediator mediator,
     ILogger<AssignRoleHandler> logger)
     : IRequestHandler<AssignRoleCommand, Result<RoleAssignmentResponse>>
 {
@@ -38,6 +40,7 @@ public sealed class AssignRoleHandler(
         // Upsert: delete existing assignment for this user+cluster, then insert.
         await assignments.DeleteByUserAndClusterAsync(request.UserId, request.ClusterId, ct);
         await assignments.InsertAsync(assignment, ct);
+        await mediator.Publish(new RoleAssigned(request.UserId, request.RoleId, request.ClusterId, callerEmail), ct);
 
         logger.LogInformation(
             "Assigned role {RoleName} to user {Email} on cluster {ClusterName}",
