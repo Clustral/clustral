@@ -102,7 +102,7 @@ public class ClusterModelsTests(ITestOutputHelper output)
     [Fact]
     public void ListClustersQuery_Defaults()
     {
-        var query = new Clustral.ControlPlane.Features.Clusters.ListClustersQuery(null, 50, null);
+        var query = new Clustral.ControlPlane.Features.Clusters.Queries.ListClustersQuery(null, 50, null);
 
         output.WriteLine($"StatusFilter:  {query.StatusFilter ?? "null"}");
         output.WriteLine($"PageSize:      {query.PageSize}");

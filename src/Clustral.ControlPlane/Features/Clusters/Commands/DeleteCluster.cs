@@ -1,11 +1,12 @@
 using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Clusters;
+namespace Clustral.ControlPlane.Features.Clusters.Commands;
 
-public record DeleteClusterCommand(Guid Id) : IRequest<Result>;
+public record DeleteClusterCommand(Guid Id) : ICommand;
 
 public sealed class DeleteClusterHandler(
     IClusterRepository clusters,

@@ -7,10 +7,10 @@ using Clustral.Sdk.Results;
 using MediatR;
 using MongoDB.Driver;
 
-namespace Clustral.ControlPlane.Features.AccessRequests;
+namespace Clustral.ControlPlane.Features.AccessRequests.Queries;
 
 public record ListAccessRequestsQuery(string? Status, bool Mine, bool Active)
-    : IRequest<Result<AccessRequestListResponse>>;
+    : IQuery<Result<AccessRequestListResponse>>;
 
 public sealed class ListAccessRequestsHandler(
     IAccessRequestRepository accessRequests,

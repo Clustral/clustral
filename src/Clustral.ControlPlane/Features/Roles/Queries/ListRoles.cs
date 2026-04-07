@@ -1,15 +1,17 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
+using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Roles;
+namespace Clustral.ControlPlane.Features.Roles.Queries;
 
-public record ListRolesQuery : IRequest<RoleListResponse>;
+public record ListRolesQuery : IQuery<Result<RoleListResponse>>;
 
 public sealed class ListRolesHandler(IRoleRepository roles)
-    : IRequestHandler<ListRolesQuery, RoleListResponse>
+    : IRequestHandler<ListRolesQuery, Result<RoleListResponse>>
 {
-    public async Task<RoleListResponse> Handle(ListRolesQuery request, CancellationToken ct)
+    public async Task<Result<RoleListResponse>> Handle(ListRolesQuery request, CancellationToken ct)
     {
         var allRoles = await roles.ListAsync(ct);
 

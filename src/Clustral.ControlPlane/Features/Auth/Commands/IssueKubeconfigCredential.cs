@@ -10,10 +10,10 @@ using Clustral.Sdk.Results;
 using MediatR;
 using Microsoft.Extensions.Options;
 
-namespace Clustral.ControlPlane.Features.Auth;
+namespace Clustral.ControlPlane.Features.Auth.Commands;
 
 public record IssueKubeconfigCredentialCommand(Guid ClusterId, string? RequestedTtl)
-    : IRequest<Result<IssueKubeconfigCredentialResponse>>;
+    : ICommand<Result<IssueKubeconfigCredentialResponse>>;
 
 public sealed class IssueKubeconfigCredentialHandler(
     IClusterRepository clusters,

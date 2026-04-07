@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Features.Users;
+using Clustral.ControlPlane.Features.Users.Commands;
+using Clustral.ControlPlane.Features.Users.Queries;
 using Clustral.Sdk.Results;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -23,14 +24,14 @@ public sealed class UsersController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await mediator.Send(new ListUsersQuery(), ct);
-        return Ok(result);
+        return result.ToActionResult();
     }
 
     [HttpGet("{id:guid}/assignments")]
     public async Task<IActionResult> GetAssignments(Guid id, CancellationToken ct)
     {
         var result = await mediator.Send(new GetUserAssignmentsQuery(id), ct);
-        return Ok(result);
+        return result.ToActionResult();
     }
 
     [HttpPost("{id:guid}/assignments")]

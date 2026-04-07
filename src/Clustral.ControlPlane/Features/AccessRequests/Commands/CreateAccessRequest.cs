@@ -8,12 +8,12 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.AccessRequests;
+namespace Clustral.ControlPlane.Features.AccessRequests.Commands;
 
 public record CreateAccessRequestCommand(
     Guid RoleId, Guid ClusterId, string? Reason,
     string? RequestedDuration, List<string>? SuggestedReviewerEmails)
-    : IRequest<Result<AccessRequestResponse>>;
+    : ICommand<Result<AccessRequestResponse>>;
 
 public sealed class CreateAccessRequestHandler(
     IRoleRepository roles,

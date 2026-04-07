@@ -1,13 +1,14 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Clusters;
+namespace Clustral.ControlPlane.Features.Clusters.Queries;
 
 // ── Query ────────────────────────────────────────────────────────────────────
 
-public record GetClusterQuery(Guid Id) : IRequest<Result<ClusterResponse>>;
+public record GetClusterQuery(Guid Id) : IQuery<Result<ClusterResponse>>;
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 

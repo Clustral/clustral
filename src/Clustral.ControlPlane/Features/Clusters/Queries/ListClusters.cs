@@ -1,23 +1,25 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
+using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Clusters;
+namespace Clustral.ControlPlane.Features.Clusters.Queries;
 
 // ── Query ────────────────────────────────────────────────────────────────────
 
 public record ListClustersQuery(
     string? StatusFilter,
     int PageSize,
-    string? PageToken) : IRequest<ClusterListResponse>;
+    string? PageToken) : IQuery<Result<ClusterListResponse>>;
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 public sealed class ListClustersHandler(IClusterRepository clusters)
-    : IRequestHandler<ListClustersQuery, ClusterListResponse>
+    : IRequestHandler<ListClustersQuery, Result<ClusterListResponse>>
 {
-    public async Task<ClusterListResponse> Handle(ListClustersQuery request, CancellationToken ct)
+    public async Task<Result<ClusterListResponse>> Handle(ListClustersQuery request, CancellationToken ct)
     {
         var allClusters = await clusters.ListAsync(ct);
 

@@ -1,11 +1,12 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.AccessRequests;
+namespace Clustral.ControlPlane.Features.AccessRequests.Queries;
 
-public record GetAccessRequestQuery(Guid Id) : IRequest<Result<AccessRequestResponse>>;
+public record GetAccessRequestQuery(Guid Id) : IQuery<Result<AccessRequestResponse>>;
 
 public sealed class GetAccessRequestHandler(
     IAccessRequestRepository accessRequests,

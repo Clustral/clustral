@@ -6,9 +6,9 @@ using Clustral.Sdk.Results;
 using MediatR;
 using MongoDB.Driver;
 
-namespace Clustral.ControlPlane.Features.Users;
+namespace Clustral.ControlPlane.Features.Users.Queries;
 
-public record GetCurrentUserQuery : IRequest<Result<UserProfileResponse>>;
+public record GetCurrentUserQuery : IQuery<Result<UserProfileResponse>>;
 
 public sealed class GetCurrentUserHandler(
     ICurrentUserProvider currentUser,

@@ -1,11 +1,12 @@
 using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Users;
+namespace Clustral.ControlPlane.Features.Users.Commands;
 
-public record RemoveAssignmentCommand(Guid UserId, Guid AssignmentId) : IRequest<Result>;
+public record RemoveAssignmentCommand(Guid UserId, Guid AssignmentId) : ICommand;
 
 public sealed class RemoveAssignmentHandler(
     IRoleAssignmentRepository assignments,

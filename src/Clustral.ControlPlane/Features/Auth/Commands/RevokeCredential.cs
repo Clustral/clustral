@@ -7,10 +7,10 @@ using Clustral.Sdk.Results;
 using MediatR;
 using MongoDB.Driver;
 
-namespace Clustral.ControlPlane.Features.Auth;
+namespace Clustral.ControlPlane.Features.Auth.Commands;
 
 public record RevokeCredentialCommand(Guid CredentialId, string? Reason)
-    : IRequest<Result<RevokeCredentialResponse>>;
+    : ICommand<Result<RevokeCredentialResponse>>;
 
 public sealed class RevokeCredentialHandler(
     ClustralDb db,

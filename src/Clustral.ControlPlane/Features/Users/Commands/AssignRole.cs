@@ -6,10 +6,10 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Users;
+namespace Clustral.ControlPlane.Features.Users.Commands;
 
 public record AssignRoleCommand(Guid UserId, Guid RoleId, Guid ClusterId)
-    : IRequest<Result<RoleAssignmentResponse>>;
+    : ICommand<Result<RoleAssignmentResponse>>;
 
 public sealed class AssignRoleHandler(
     IUserRepository users,

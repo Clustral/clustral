@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Features.Roles;
+using Clustral.ControlPlane.Features.Roles.Commands;
+using Clustral.ControlPlane.Features.Roles.Queries;
 using Clustral.Sdk.Results;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -16,7 +17,7 @@ public sealed class RolesController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await mediator.Send(new ListRolesQuery(), ct);
-        return Ok(result);
+        return result.ToActionResult();
     }
 
     [HttpPost]

@@ -1,4 +1,5 @@
 using Clustral.ControlPlane.Features.Roles;
+using Clustral.ControlPlane.Features.Roles.Commands;
 using FluentAssertions;
 using Xunit.Abstractions;
 

@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Features.Clusters;
+using Clustral.ControlPlane.Features.Clusters.Commands;
+using Clustral.ControlPlane.Features.Clusters.Queries;
 using Clustral.Sdk.Results;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -38,7 +39,7 @@ public sealed class ClustersController(IMediator mediator) : ControllerBase
         CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListClustersQuery(status, pageSize, pageToken), ct);
-        return Ok(result);
+        return result.ToActionResult();
     }
 
     [HttpGet("{id:guid}")]

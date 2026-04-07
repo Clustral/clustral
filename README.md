@@ -710,7 +710,7 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET (618 tests — unit + integration with Testcontainers + FluentAssertions)
+# .NET (667 tests — unit + integration with Testcontainers + FluentAssertions)
 dotnet test Clustral.slnx
 
 # Go Agent (35 tests with race detector)
@@ -721,9 +721,10 @@ cd src/clustral-agent && go test -race ./...
 > Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) to
 > spin up real MongoDB instances. Docker must be running to execute them.
 >
-> The ControlPlane uses **vertical slicing** with MediatR + FluentValidation.
-> Each feature (Clusters, Roles, Users, Auth, AccessRequests) lives in its own
-> `Features/` folder with command/query handlers and validators.
+> The ControlPlane uses **vertical slicing** with **CQS** (Command-Query Separation).
+> Commands and queries live in separate `Commands/` and `Queries/` subfolders per
+> feature, with explicit `ICommand<T>` / `IQuery<T>` marker interfaces. Validation
+> only runs for commands. Domain events are dispatched after every mutation.
 >
 > The CLI uses **FluentValidation** for input validation (GUID format, ISO 8601
 > durations, required fields) with styled error cards via Spectre.Console.

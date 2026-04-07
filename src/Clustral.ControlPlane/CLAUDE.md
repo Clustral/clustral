@@ -215,27 +215,43 @@ dotnet run --project src/Clustral.ControlPlane
 
 ---
 
-## Adding a new feature (vertical slicing)
+## Adding a new feature (vertical slicing + CQS)
 
-The ControlPlane uses vertical slicing with MediatR + FluentValidation.
-Each feature lives in its own folder under `Features/`:
+The ControlPlane uses vertical slicing with CQS (Command-Query Separation).
+Commands (writes) and queries (reads) live in separate sub-folders under each feature:
 
 ```
 Features/
-├── Shared/              ← ValidationBehavior, ICurrentUserProvider, TokenHashingService
-├── Clusters/            ← RegisterCluster.cs, ListClusters.cs, GetCluster.cs, DeleteCluster.cs
-├── Roles/               ← CreateRole.cs, ListRoles.cs, UpdateRole.cs, DeleteRole.cs
-├── Users/               ← GetCurrentUser.cs, ListUsers.cs, AssignRole.cs, etc.
-├── Auth/                ← IssueKubeconfigCredential.cs, RevokeCredential.cs, RevokeByToken.cs
-└── AccessRequests/      ← CreateAccessRequest.cs, ApproveAccessRequest.cs, etc.
+├── Shared/              ← ICommand/IQuery markers, ValidationBehavior, TokenHashingService
+├── Clusters/
+│   ├── Commands/        ← RegisterCluster.cs, DeleteCluster.cs
+│   ├── Queries/         ← ListClusters.cs, GetCluster.cs
+│   └── ClusterEventHandlers.cs
+├── Roles/
+│   ├── Commands/        ← CreateRole.cs, UpdateRole.cs, DeleteRole.cs
+│   ├── Queries/         ← ListRoles.cs
+│   └── RoleEventHandlers.cs
+├── Users/
+│   ├── Commands/        ← AssignRole.cs, RemoveAssignment.cs
+│   ├── Queries/         ← GetCurrentUser.cs, ListUsers.cs, GetUserAssignments.cs
+│   └── UserEventHandlers.cs
+├── Auth/
+│   ├── Commands/        ← IssueKubeconfigCredential.cs, RevokeCredential.cs, RevokeByToken.cs
+│   └── CredentialEventHandlers.cs
+└── AccessRequests/
+    ├── Commands/        ← CreateAccessRequest.cs, Approve, Deny, Revoke
+    ├── Queries/         ← ListAccessRequests.cs, GetAccessRequest.cs
+    ├── AccessRequestEnricher.cs
+    └── AccessRequestEventHandlers.cs
 ```
 
 To add a new feature:
 
-1. Create a folder under `Features/<FeatureName>/`.
-2. Define a command or query record implementing `IRequest<Result<T>>`.
+1. Create `Features/<FeatureName>/Commands/` and/or `Queries/` folders.
+2. Define a command record implementing `ICommand<Result<T>>` or `ICommand`,
+   or a query record implementing `IQuery<Result<T>>`.
 3. Implement a handler class implementing `IRequestHandler<TCommand, Result<T>>`.
-4. Add a `FluentValidation` validator (e.g., `CreateFooValidator : AbstractValidator<CreateFooCommand>`).
+4. Add a `FluentValidation` validator for commands (e.g., `CreateFooValidator : AbstractValidator<CreateFooCommand>`). Queries skip validation.
 5. Add a thin controller action in `Api/Controllers/` that calls `mediator.Send(...)` and maps via `ToActionResult()`. No business logic in the controller.
 6. Add request/response DTOs to `Api/Models/` if not already present.
 7. **Write unit tests** for the validator and handler in `Tests/Features/<FeatureName>/`.

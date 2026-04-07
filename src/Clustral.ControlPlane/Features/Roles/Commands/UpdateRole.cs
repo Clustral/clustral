@@ -1,13 +1,14 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Roles;
+namespace Clustral.ControlPlane.Features.Roles.Commands;
 
 public record UpdateRoleCommand(Guid Id, string? Name, string? Description, List<string>? KubernetesGroups)
-    : IRequest<Result<RoleResponse>>;
+    : ICommand<Result<RoleResponse>>;
 
 public sealed class UpdateRoleHandler(IRoleRepository roles, IMediator mediator)
     : IRequestHandler<UpdateRoleCommand, Result<RoleResponse>>

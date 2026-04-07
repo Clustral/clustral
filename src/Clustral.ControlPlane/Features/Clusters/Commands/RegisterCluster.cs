@@ -6,7 +6,7 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Clusters;
+namespace Clustral.ControlPlane.Features.Clusters.Commands;
 
 // ── Command ──────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ public record RegisterClusterCommand(
     string Name,
     string Description,
     string AgentPublicKeyPem,
-    Dictionary<string, string>? Labels) : IRequest<Result<RegisterClusterRestResponse>>;
+    Dictionary<string, string>? Labels) : ICommand<Result<RegisterClusterRestResponse>>;
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 using Clustral.ControlPlane.Features.Clusters;
+using Clustral.ControlPlane.Features.Clusters.Commands;
 using FluentAssertions;
 using Xunit.Abstractions;
 

@@ -1,16 +1,18 @@
 using Clustral.ControlPlane.Api.Models;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
+using Clustral.Sdk.Results;
 using MediatR;
 using MongoDB.Driver;
 
-namespace Clustral.ControlPlane.Features.Users;
+namespace Clustral.ControlPlane.Features.Users.Queries;
 
-public record GetUserAssignmentsQuery(Guid UserId) : IRequest<RoleAssignmentListResponse>;
+public record GetUserAssignmentsQuery(Guid UserId) : IQuery<Result<RoleAssignmentListResponse>>;
 
 public sealed class GetUserAssignmentsHandler(ClustralDb db)
-    : IRequestHandler<GetUserAssignmentsQuery, RoleAssignmentListResponse>
+    : IRequestHandler<GetUserAssignmentsQuery, Result<RoleAssignmentListResponse>>
 {
-    public async Task<RoleAssignmentListResponse> Handle(GetUserAssignmentsQuery request, CancellationToken ct)
+    public async Task<Result<RoleAssignmentListResponse>> Handle(GetUserAssignmentsQuery request, CancellationToken ct)
     {
         var assignments = await db.RoleAssignments
             .Find(a => a.UserId == request.UserId)

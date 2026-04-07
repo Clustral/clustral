@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
-using Clustral.ControlPlane.Features.AccessRequests;
+using Clustral.ControlPlane.Features.AccessRequests.Commands;
+using Clustral.ControlPlane.Features.AccessRequests.Queries;
 using Clustral.Sdk.Results;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;

@@ -5,9 +5,9 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Auth;
+namespace Clustral.ControlPlane.Features.Auth.Commands;
 
-public record RevokeByTokenCommand(string Token) : IRequest<Result<RevokeCredentialResponse>>;
+public record RevokeByTokenCommand(string Token) : ICommand<Result<RevokeCredentialResponse>>;
 
 public sealed class RevokeByTokenHandler(
     IAccessTokenRepository accessTokens,

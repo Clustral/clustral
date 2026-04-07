@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Features.Roles.Commands;
 using FluentValidation;
 
 namespace Clustral.ControlPlane.Features.Roles;

@@ -5,10 +5,10 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.AccessRequests;
+namespace Clustral.ControlPlane.Features.AccessRequests.Commands;
 
 public record RevokeAccessRequestCommand(Guid RequestId, string? Reason)
-    : IRequest<Result<AccessRequestResponse>>;
+    : ICommand<Result<AccessRequestResponse>>;
 
 public sealed class RevokeAccessRequestHandler(
     IAccessRequestRepository accessRequests,

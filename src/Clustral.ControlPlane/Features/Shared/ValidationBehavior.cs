@@ -19,6 +19,11 @@ public sealed class ValidationBehavior<TRequest, TResponse>(
         RequestHandlerDelegate<TResponse> next,
         CancellationToken cancellationToken)
     {
+        // Skip validation for queries — they have no side effects.
+        var isCommand = typeof(ICommand).IsAssignableFrom(typeof(TRequest)) ||
+            typeof(TRequest).GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICommand<>));
+        if (!isCommand) return await next();
+
         if (!validators.Any())
             return await next();
 

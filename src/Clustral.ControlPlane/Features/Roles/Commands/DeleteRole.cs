@@ -1,11 +1,12 @@
 using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
+using Clustral.ControlPlane.Features.Shared;
 using Clustral.Sdk.Results;
 using MediatR;
 
-namespace Clustral.ControlPlane.Features.Roles;
+namespace Clustral.ControlPlane.Features.Roles.Commands;
 
-public record DeleteRoleCommand(Guid Id) : IRequest<Result>;
+public record DeleteRoleCommand(Guid Id) : ICommand;
 
 public sealed class DeleteRoleHandler(
     IRoleRepository roles,
