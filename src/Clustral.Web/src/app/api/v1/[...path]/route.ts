@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Runtime proxy for ControlPlane REST API.
  * Forwards /api/v1/* to CONTROLPLANE_URL/api/v1/* at request time.

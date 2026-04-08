@@ -20,14 +20,14 @@ export function AgentSetupSteps({
   const helmInstallCmd = [
     "helm install clustral-agent ./infra/helm/clustral-agent \\",
     `  --set agent.clusterId="${clusterId}" \\`,
-    `  --set agent.controlPlaneUrl="<YOUR_CONTROLPLANE_GRPC_URL>" \\`,
+    `  --set agent.controlPlaneUrl="https://<YOUR_HOST>:5443" \\`,
     `  --set agent.bootstrapToken="${bootstrapToken}"`,
   ].join("\n");
 
   const goRunCmd = [
     "cd src/clustral-agent",
     `export AGENT_CLUSTER_ID="${clusterId}"`,
-    "export AGENT_CONTROL_PLANE_URL=http://localhost:5101",
+    "export AGENT_CONTROL_PLANE_URL=http://localhost:5001",
     `export AGENT_BOOTSTRAP_TOKEN="${bootstrapToken}"`,
     "go run .",
   ].join("\n");

@@ -20,7 +20,7 @@ spec:
       serviceAccountName: clustral-agent
       containers:
         - name: agent
-          image: ghcr.io/clustral/clustral-agent:latest
+          image: ghcr.io/clustral/clustral-agent:main
           imagePullPolicy: Always
           env:
             - name: AGENT_CLUSTER_ID

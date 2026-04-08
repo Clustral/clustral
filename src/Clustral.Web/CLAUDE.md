@@ -39,9 +39,8 @@ Clustral.Web/
 │   │   ├── roles/page.tsx             ← Role management (CRUD)
 │   │   ├── access-requests/page.tsx  ← Access request management (My Requests, Pending Reviews, Active Grants tabs)
 │   │   ├── api/auth/[...nextauth]/    ← NextAuth route handler
-│   │   ├── api/v1/[...path]/          ← ControlPlane REST proxy
-│   │   ├── api/proxy/[...path]/       ← kubectl tunnel proxy
-│   │   └── .well-known/clustral-*/    ← CLI discovery endpoint
+│   │   ├── api/v1/[...path]/          ← ControlPlane REST proxy (Web UI only)
+│   │   └── .well-known/clustral-*/    ← CLI service discovery endpoint
 │   │
 │   ├── components/
 │   │   ├── ui/                        ← shadcn/ui components (DO NOT import from packages)
@@ -150,10 +149,13 @@ All API calls go through Next.js API routes at request time (not build-time rewr
 
 | Route | Destination | Purpose |
 |---|---|---|
-| `/api/v1/*` | `CONTROLPLANE_URL/api/v1/*` | REST API proxy |
-| `/api/proxy/*` | `CONTROLPLANE_URL/api/proxy/*` | kubectl tunnel proxy |
+| `/api/v1/*` | `CONTROLPLANE_URL/api/v1/*` | REST API proxy (Web UI only) |
 | `/api/auth/*` | NextAuth handler | OIDC auth |
-| `/.well-known/clustral-configuration` | `CONTROLPLANE_URL/api/v1/config` | CLI discovery |
+| `/.well-known/clustral-configuration` | Served directly from env vars | CLI service discovery |
+
+The `/.well-known` endpoint returns `controlPlaneUrl`, `oidcAuthority`, `oidcClientId`, and
+`oidcScopes` so the CLI can discover where to connect. After discovery, the CLI talks directly
+to the ControlPlane — it does not use the `/api/v1/*` proxy route.
 
 ---
 
@@ -178,7 +180,8 @@ All runtime (not build-time):
 | Variable | Required | Description |
 |---|---|---|
 | `NEXTAUTH_URL` | Yes | Browser-facing URL |
-| `CONTROLPLANE_URL` | Yes | ControlPlane REST API |
+| `CONTROLPLANE_URL` | Yes | ControlPlane REST API (internal, for Web UI server-side proxying) |
+| `CONTROLPLANE_PUBLIC_URL` | No | Public ControlPlane URL returned to CLI via `.well-known` discovery. Falls back to `CONTROLPLANE_URL`. |
 | `OIDC_ISSUER` | Yes | OIDC provider URL |
 | `OIDC_CLIENT_ID` | No | Default: `clustral-web` |
 | `OIDC_CLIENT_SECRET` | Yes | OIDC client secret |

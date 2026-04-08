@@ -155,7 +155,7 @@ into `tls.Config.RootCAs` for TLS verification against the k8s API server.
 ```bash
 # Set required env vars
 export AGENT_CLUSTER_ID="<from-registration>"
-export AGENT_CONTROL_PLANE_URL="http://localhost:5101"
+export AGENT_CONTROL_PLANE_URL="http://localhost:5001"
 export AGENT_BOOTSTRAP_TOKEN="<from-registration>"
 export AGENT_KUBERNETES_SKIP_TLS_VERIFY=true  # for Docker Desktop k8s
 

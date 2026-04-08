@@ -22,14 +22,16 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       MongoDB__ConnectionString: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Oidc__Authority: "http://192.168.88.17:8080/realms/clustral"
-      Oidc__MetadataAddress: "http://192.168.88.17:8080/realms/clustral/.well-known/openid-configuration"
+      Oidc__Authority: "http://192.168.88.6:8080/realms/clustral"
+      Oidc__MetadataAddress: "http://192.168.88.6:8080/realms/clustral/.well-known/openid-configuration"
       Oidc__ClientId: "clustral-control-plane"
       Oidc__Audience: "clustral-control-plane"
       Oidc__RequireHttpsMetadata: "false"
-    ports:
-      - "5100:5000"
-      - "5101:5001"
+    # No ports exposed — nginx handles all external traffic.
+    # Uncomment for direct access during local dev without nginx:
+    # ports:
+    #   - "5100:5000"
+    #   - "5101:5001"
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:5000/healthz/ready || exit 1" ]
       interval: 10s
@@ -48,15 +50,18 @@ services:
     networks:
       - clustral
     environment:
-      NEXTAUTH_URL: "http://192.168.88.17:3000"
-      CONTROLPLANE_URL: "http://192.168.88.17:5100"
-      OIDC_ISSUER: "http://192.168.88.17:8080/realms/clustral"
+      NEXTAUTH_URL: "https://192.168.88.6"
+      CONTROLPLANE_URL: "http://controlplane:5000"
+      CONTROLPLANE_PUBLIC_URL: "https://192.168.88.6"
+      OIDC_ISSUER: "http://192.168.88.6:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
       AUTH_SECRET: "lXBA6UgneVKkAZSlKqDqLTuXigHVoScA"
       NODE_ENV: "production"
-    ports:
-      - "3000:3000"
+    # No ports exposed — nginx handles all external traffic.
+    # Uncomment for direct access during local dev without nginx:
+    # ports:
+    #   - "3000:3000"
 
 networks:
   clustral:

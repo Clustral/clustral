@@ -18,6 +18,7 @@ clustral/
 │   └── proto/                   # .proto contracts: ClusterService, TunnelService, AuthService
 ├── infra/
 │   ├── helm/                    # Agent Helm chart
+│   ├── nginx/                   # nginx gateway config (TLS termination, routing)
 │   └── k8s/                     # Local kind cluster manifests for dev
 ├── Directory.Packages.props     # Central package version management
 ├── docker-compose.yml
@@ -30,18 +31,27 @@ clustral/
 
 ```
   clustral CLI
-      │  OIDC device flow → OIDC Provider
+      │  GET /.well-known/clustral-configuration → nginx :443 → Web UI (discovery)
+      │  Receives: controlPlaneUrl (nginx URL), OIDC settings
+      │  All subsequent calls go through nginx :443 → ControlPlane
+      │  OIDC PKCE flow → OIDC Provider
       │  JWT stored in TokenCache
       │  kubeconfig written via KubeconfigWriter
       ▼
+  nginx  (unified gateway)
+      │  :443 HTTPS  — REST API + kubectl proxy → ControlPlane :5000
+      │                Web UI pages → Web UI :3000
+      │  :5443 gRPC/TLS — L4 TCP passthrough → ControlPlane :5001
+      │  :5444 gRPC     — L4 TCP passthrough (local dev only)
+      ▼
   ControlPlane  (ASP.NET Core)
-      │  REST  — Web UI + CLI management calls
-      │  gRPC  — TunnelService (bidirectional streaming to agents)
+      │  REST :5000  — CLI + Web UI management calls (via nginx)
+      │  gRPC :5001  — TunnelService (bidirectional streaming to agents)
       │  MongoDB (clusters, users, audit log)
       │  OIDC — token introspection / JWKS validation
       ▼
   Agent  (Go service, runs in-cluster via Helm)
-      │  gRPC client → TunnelService on ControlPlane
+      │  gRPC client → nginx :5443 (TLS) → ControlPlane :5001
       │  Receives proxied kubectl HTTP traffic over the tunnel
       │  Forwards locally to the Kubernetes API server
       ▼
@@ -49,9 +59,9 @@ clustral/
 ```
 
 Key flows:
-- **clustral login** — OIDC device-code flow against the configured OIDC provider, writes token to `~/.clustral/token`.
+- **clustral login** — discovers ControlPlane URL and OIDC settings via Web UI's `/.well-known/clustral-configuration` (through nginx), then runs OIDC PKCE flow, writes token to `~/.clustral/token`. All subsequent CLI calls go through nginx to the ControlPlane.
 - **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
-- **Tunnel** — agent opens a persistent gRPC stream to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
+- **Tunnel** — agent opens a persistent gRPC stream through nginx :5443 (TLS, L4 TCP passthrough) to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
 
 ---
@@ -92,7 +102,8 @@ dotnet run
 kind create cluster --config infra/k8s/kind-config.yaml
 
 cd src/clustral-agent
-go run . --control-plane-url=http://localhost:5001
+export AGENT_CONTROL_PLANE_URL=http://localhost:5001
+go run .
 ```
 
 ### CLI
