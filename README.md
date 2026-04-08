@@ -43,7 +43,7 @@ graph TB
     NGX -->|"/*"| WEB
     CLI -->|OIDC PKCE| OIDC
     WEB -->|Server-side OIDC| OIDC
-    WEB -->|REST (SSR)| CP
+    WEB -->|"REST (SSR)"| CP
     CP --> DB
     AGENT ==>|"gRPC tunnel<br/>(outbound TLS :5443)"| NGX
     NGX -->|"TCP passthrough"| CP
