@@ -149,7 +149,9 @@ builder.WebHost.ConfigureKestrel((ctx, kestrel) =>
         .GetSection(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName)
         .Get<Clustral.Sdk.Crypto.CertificateAuthorityOptions>();
 
-    if (caOpts is not null && !string.IsNullOrEmpty(caOpts.CaCertPath) && !string.IsNullOrEmpty(caOpts.CaKeyPath))
+    var env = ctx.HostingEnvironment;
+    if (caOpts is not null && !string.IsNullOrEmpty(caOpts.CaCertPath) && !string.IsNullOrEmpty(caOpts.CaKeyPath)
+        && !env.IsEnvironment("Testing"))
     {
         kestrel.ListenAnyIP(5443, listenOptions =>
         {

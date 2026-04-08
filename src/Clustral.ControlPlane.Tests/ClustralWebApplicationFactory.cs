@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using Clustral.Sdk.Crypto;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,11 +23,22 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
         .WithImage("mongo:8")
         .Build();
 
+    private string? _caCertPath;
+    private string? _caKeyPath;
+    private string? _tempCaDir;
+
     public string MongoConnectionString => _mongo.GetConnectionString();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        // Generate a test CA for mTLS tests.
+        _tempCaDir = Path.Combine(Path.GetTempPath(), $"clustral-test-ca-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_tempCaDir);
+        _caCertPath = Path.Combine(_tempCaDir, "ca.crt");
+        _caKeyPath = Path.Combine(_tempCaDir, "ca.key");
+        GenerateTestCA(_caCertPath, _caKeyPath);
 
         // Provide required config values so StartupConfigValidator doesn't abort.
         builder.ConfigureAppConfiguration((_, config) =>
@@ -37,6 +51,8 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
                 ["Oidc:ClientId"] = "clustral-control-plane",
                 ["Oidc:Audience"] = "clustral-control-plane",
                 ["Oidc:RequireHttpsMetadata"] = "false",
+                ["CertificateAuthority:CaCertPath"] = _caCertPath,
+                ["CertificateAuthority:CaKeyPath"] = _caKeyPath,
             });
         });
 
@@ -87,5 +103,42 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
     async Task IAsyncLifetime.DisposeAsync()
     {
         await _mongo.DisposeAsync();
+
+        if (_tempCaDir is not null)
+        {
+            try { Directory.Delete(_tempCaDir, recursive: true); }
+            catch { /* cleanup best-effort */ }
+        }
+    }
+
+    private static void GenerateTestCA(string certPath, string keyPath)
+    {
+        using var caKey = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=Clustral Test CA",
+            caKey,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        request.CertificateExtensions.Add(
+            new X509BasicConstraintsExtension(
+                certificateAuthority: true,
+                hasPathLengthConstraint: false,
+                pathLengthConstraint: 0,
+                critical: true));
+
+        request.CertificateExtensions.Add(
+            new X509KeyUsageExtension(
+                X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign,
+                critical: true));
+
+        request.CertificateExtensions.Add(
+            new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
+
+        using var caCert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(10));
+
+        File.WriteAllText(certPath, caCert.ExportCertificatePem());
+        File.WriteAllText(keyPath, caKey.ExportPkcs8PrivateKeyPem());
     }
 }
