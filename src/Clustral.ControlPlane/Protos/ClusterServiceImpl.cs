@@ -118,9 +118,10 @@ public sealed class ClusterServiceImpl(
         if (!Guid.TryParse(request.ClusterId, out var id))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "cluster_id must be a valid UUID"));
 
+        // KubernetesVersion is set once in AgentHello (TunnelServiceImpl),
+        // not on every heartbeat. Heartbeat only updates status + last seen.
         var update = Builders<DomainCluster>.Update
             .Set(c => c.Status, MapStatus(request.Status))
-            .Set(c => c.KubernetesVersion, request.KubernetesVersion)
             .Set(c => c.LastSeenAt, DateTimeOffset.UtcNow);
 
         var result = await db.Clusters.UpdateOneAsync(

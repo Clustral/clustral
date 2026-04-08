@@ -155,18 +155,17 @@ public sealed class GrpcClusterServiceTests(
             AgentPublicKeyPem = "key",
         });
 
+        // Heartbeat only updates status + last seen (k8s version comes from AgentHello).
         await svc.UpdateStatusAsync(new UpdateClusterStatusRequest
         {
             ClusterId = reg.ClusterId,
             Status = ClusterStatus.Connected,
-            KubernetesVersion = "v1.29.0",
         });
 
         var cluster = await svc.GetAsync(new GetClusterRequest { ClusterId = reg.ClusterId });
 
-        output.WriteLine($"Status: {cluster.Status}, K8s: {cluster.KubernetesVersion}");
+        output.WriteLine($"Status: {cluster.Status}");
         cluster.Status.Should().Be(ClusterStatus.Connected);
-        cluster.KubernetesVersion.Should().Be("v1.29.0");
     }
 
     // ── Deregister ───────────────────────────────────────────────────────────

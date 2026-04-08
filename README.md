@@ -797,11 +797,11 @@ cd src/clustral-agent && go run .
 # .NET (687 tests — unit + integration + gRPC with Testcontainers + FluentAssertions)
 dotnet test Clustral.slnx
 
-# Go Agent (35 tests with race detector)
+# Go Agent (42 tests with race detector)
 cd src/clustral-agent && go test -race ./...
 ```
 
-> **722 total tests** across .NET and Go.
+> **729 total tests** across .NET and Go.
 > Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) to
 > spin up real MongoDB instances. Docker must be running to execute them.
 >

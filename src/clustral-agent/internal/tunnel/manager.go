@@ -24,14 +24,15 @@ import (
 )
 
 type Manager struct {
-	cfg    *config.Config
-	creds  *credential.Store
-	proxy  *proxy.Proxy
-	logger *slog.Logger
+	cfg               *config.Config
+	creds             *credential.Store
+	proxy             *proxy.Proxy
+	logger            *slog.Logger
+	kubernetesVersion string
 }
 
-func NewManager(cfg *config.Config, creds *credential.Store, p *proxy.Proxy, logger *slog.Logger) *Manager {
-	return &Manager{cfg: cfg, creds: creds, proxy: p, logger: logger}
+func NewManager(cfg *config.Config, creds *credential.Store, p *proxy.Proxy, logger *slog.Logger, kubernetesVersion string) *Manager {
+	return &Manager{cfg: cfg, creds: creds, proxy: p, logger: logger, kubernetesVersion: kubernetesVersion}
 }
 
 func (m *Manager) Run(ctx context.Context) {
@@ -116,7 +117,7 @@ func (m *Manager) connectAndRun(ctx context.Context) error {
 			Hello: &pb.AgentHello{
 				ClusterId:         m.cfg.ClusterID,
 				AgentVersion:      m.cfg.AgentVersion,
-				KubernetesVersion: "",
+				KubernetesVersion: m.kubernetesVersion,
 				SentAt:            timestamppb.Now(),
 			},
 		},
@@ -206,9 +207,8 @@ func (m *Manager) heartbeat(ctx context.Context, client pb.ClusterServiceClient)
 			return nil
 		case <-ticker.C:
 			_, err := client.UpdateStatus(ctx, &pb.UpdateClusterStatusRequest{
-				ClusterId:         m.cfg.ClusterID,
-				Status:            pb.ClusterStatus_CLUSTER_STATUS_CONNECTED,
-				KubernetesVersion: "",
+				ClusterId: m.cfg.ClusterID,
+				Status:    pb.ClusterStatus_CLUSTER_STATUS_CONNECTED,
 			})
 			if err != nil {
 				m.logger.Warn("Heartbeat failed", "error", err)

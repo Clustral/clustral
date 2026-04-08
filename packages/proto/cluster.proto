@@ -112,9 +112,8 @@ message GetClusterRequest {
 }
 
 message UpdateClusterStatusRequest {
-  string cluster_id          = 1;
-  ClusterStatus status       = 2;
-  string kubernetes_version  = 3;
+  string cluster_id    = 1;
+  ClusterStatus status = 2;
 }
 
 message DeregisterClusterRequest {

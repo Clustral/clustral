@@ -41,6 +41,12 @@ func New(apiURL string, skipTLSVerify bool, logger *slog.Logger) *Proxy {
 	}
 }
 
+// HTTPClient returns the underlying HTTP client configured with SA token
+// and CA cert. Used by k8s version discovery.
+func (p *Proxy) HTTPClient() *http.Client {
+	return p.httpClient
+}
+
 func (p *Proxy) Handle(ctx context.Context, frame *pb.HttpRequestFrame) *pb.HttpResponseFrame {
 	if frame.Head == nil {
 		return errorFrame(frame.RequestId, pb.TunnelErrorCode_TUNNEL_ERROR_UNSPECIFIED, "no head in request frame")

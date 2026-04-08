@@ -207,7 +207,7 @@ cd src/clustral-agent && go test -race ./...
 
 - **Git tags are the sole version source** — no `VERSION` file. All components derive their version from `git describe --tags` at build time. Local dev defaults to `0.0.0-dev`.
 - **ControlPlane** exposes version via `GET /api/v1/config` (unauthenticated) and `/healthz/detail` (authenticated).
-- **Agent** reports version in `AgentHello` handshake — stored on `Cluster.AgentVersion`, shown in cluster listings.
+- **Agent** reports both agent version and k8s API version in `AgentHello` handshake — stored on `Cluster.AgentVersion` and `Cluster.KubernetesVersion`, shown in cluster listings. Version is discovered once at startup via `GET /version` on the k8s API server, not sent on every heartbeat.
 - **CLI** `clustral version` shows CLI + ControlPlane versions with graceful degradation.
 - **Version mismatch** — ControlPlane logs a WARNING when agent version differs. Visible in cluster list tables.
 

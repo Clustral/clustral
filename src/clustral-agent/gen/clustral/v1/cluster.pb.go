@@ -475,12 +475,11 @@ func (x *GetClusterRequest) GetClusterId() string {
 }
 
 type UpdateClusterStatusRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	ClusterId         string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
-	Status            ClusterStatus          `protobuf:"varint,2,opt,name=status,proto3,enum=clustral.v1.ClusterStatus" json:"status,omitempty"`
-	KubernetesVersion string                 `protobuf:"bytes,3,opt,name=kubernetes_version,json=kubernetesVersion,proto3" json:"kubernetes_version,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	Status        ClusterStatus          `protobuf:"varint,2,opt,name=status,proto3,enum=clustral.v1.ClusterStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateClusterStatusRequest) Reset() {
@@ -525,13 +524,6 @@ func (x *UpdateClusterStatusRequest) GetStatus() ClusterStatus {
 		return x.Status
 	}
 	return ClusterStatus_CLUSTER_STATUS_UNSPECIFIED
-}
-
-func (x *UpdateClusterStatusRequest) GetKubernetesVersion() string {
-	if x != nil {
-		return x.KubernetesVersion
-	}
-	return ""
 }
 
 type DeregisterClusterRequest struct {
@@ -622,12 +614,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"2\n" +
 	"\x11GetClusterRequest\x12\x1d\n" +
 	"\n" +
-	"cluster_id\x18\x01 \x01(\tR\tclusterId\"\x9e\x01\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\"o\n" +
 	"\x1aUpdateClusterStatusRequest\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x122\n" +
-	"\x06status\x18\x02 \x01(\x0e2\x1a.clustral.v1.ClusterStatusR\x06status\x12-\n" +
-	"\x12kubernetes_version\x18\x03 \x01(\tR\x11kubernetesVersion\"9\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x1a.clustral.v1.ClusterStatusR\x06status\"9\n" +
 	"\x18DeregisterClusterRequest\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId*\x8a\x01\n" +

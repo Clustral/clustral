@@ -13,6 +13,7 @@ import (
 	pb "clustral-agent/gen/clustral/v1"
 	"clustral-agent/internal/config"
 	"clustral-agent/internal/credential"
+	"clustral-agent/internal/k8s"
 	"clustral-agent/internal/proxy"
 	"clustral-agent/internal/tunnel"
 	"google.golang.org/grpc"
@@ -44,11 +45,19 @@ func main() {
 	// Create k8s proxy.
 	p := proxy.New(cfg.KubernetesAPIURL, cfg.KubernetesSkipTLSVerify, logger)
 
+	// Discover Kubernetes version (non-fatal).
+	k8sVersion, err := k8s.DiscoverVersionWithError(cfg.KubernetesAPIURL, p.HTTPClient())
+	if err != nil {
+		logger.Warn("Could not discover Kubernetes version", "error", err)
+	} else {
+		logger.Info("Discovered Kubernetes version", "version", k8sVersion)
+	}
+
 	// Run tunnel.
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	mgr := tunnel.NewManager(cfg, creds, p, logger)
+	mgr := tunnel.NewManager(cfg, creds, p, logger, k8sVersion)
 	mgr.Run(ctx)
 
 	logger.Info("Clustral Agent stopped")

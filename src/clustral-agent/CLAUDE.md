@@ -222,7 +222,7 @@ kubectl apply -f src/clustral-agent/k8s/
 |---|---|---|
 | 1 | Chunked response streaming (multiple `HttpResponseFrame` per request) | `proxy.Handle` |
 | 2 | `CancelFrame` handling — cancel in-flight goroutine via context | `tunnel.dispatchFrames` |
-| 3 | k8s version discovery (`GET /version`) | `main.go` or `tunnel.manager` |
+| ~~3~~ | ~~k8s version discovery~~ | **Done** — `internal/k8s/version.go` |
 | 4 | mTLS between Agent and ControlPlane | `tunnel.connectAndRun` gRPC dial options |
 | 5 | Graceful shutdown — drain in-flight requests before closing stream | `tunnel.Run` |
 | 6 | Prometheus metrics endpoint | new `internal/metrics/` package |
