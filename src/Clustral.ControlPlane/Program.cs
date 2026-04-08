@@ -90,6 +90,20 @@ builder.Services
             ValidateIssuerSigningKey = true, // JWKS key check proves authenticity
             ClockSkew = TimeSpan.FromSeconds(30),
         };
+
+        // Skip OIDC JWT validation for requests on the mTLS port (:5443).
+        // Agent auth on that port is handled by AgentAuthInterceptor, not OIDC.
+        opts.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.HttpContext.Connection.LocalPort == 5443)
+                {
+                    context.NoResult(); // skip OIDC validation
+                }
+                return Task.CompletedTask;
+            },
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -150,27 +164,39 @@ builder.WebHost.ConfigureKestrel((ctx, kestrel) =>
         .Get<Clustral.Sdk.Crypto.CertificateAuthorityOptions>();
 
     var env = ctx.HostingEnvironment;
-    if (caOpts is not null && !string.IsNullOrEmpty(caOpts.CaCertPath) && !string.IsNullOrEmpty(caOpts.CaKeyPath)
+    if (caOpts is not null
+        && !string.IsNullOrEmpty(caOpts.CaCertPath) && File.Exists(caOpts.CaCertPath)
+        && !string.IsNullOrEmpty(caOpts.CaKeyPath) && File.Exists(caOpts.CaKeyPath)
         && !env.IsEnvironment("Testing"))
     {
+        // Pre-load the CA cert + key for server TLS and client cert validation.
+        var certPem = File.ReadAllText(caOpts.CaCertPath);
+        var keyPem = File.ReadAllText(caOpts.CaKeyPath);
+        var serverCert = System.Security.Cryptography.X509Certificates.X509Certificate2
+            .CreateFromPem(certPem, keyPem);
+        var caCertForValidation = new System.Security.Cryptography.X509Certificates.X509Certificate2(
+            System.Security.Cryptography.X509Certificates.X509Certificate2
+                .CreateFromPem(certPem));
+
         kestrel.ListenAnyIP(5443, listenOptions =>
         {
             listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
             listenOptions.UseHttps(httpsOptions =>
             {
-                // Server cert: use the CA cert itself as the server TLS cert
-                httpsOptions.ServerCertificate = System.Security.Cryptography.X509Certificates.X509Certificate2
-                    .CreateFromPemFile(caOpts.CaCertPath, caOpts.CaKeyPath);
-                httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
+                httpsOptions.ServerCertificate = serverCert;
+                // AllowCertificate (not Require) so bootstrap RPCs like RegisterAgent
+                // can connect without a client cert. The AgentAuthInterceptor enforces
+                // cert requirement at the RPC level for all non-bootstrap calls.
+                httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
                 httpsOptions.ClientCertificateValidation = (cert, chain, errors) =>
                 {
-                    // Custom validation: cert must chain to our CA
+                    if (cert is null) return true; // No client cert — allowed for bootstrap RPCs
+
                     using var customChain = new System.Security.Cryptography.X509Certificates.X509Chain();
                     customChain.ChainPolicy.RevocationMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
                     customChain.ChainPolicy.TrustMode = System.Security.Cryptography.X509Certificates.X509ChainTrustMode.CustomRootTrust;
-                    var caCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPemFile(caOpts.CaCertPath);
-                    customChain.ChainPolicy.CustomTrustStore.Add(caCert);
-                    return customChain.Build(cert);
+                    customChain.ChainPolicy.CustomTrustStore.Add(caCertForValidation);
+                    return customChain.Build(new System.Security.Cryptography.X509Certificates.X509Certificate2(cert));
                 };
             });
         });
@@ -181,10 +207,11 @@ builder.WebHost.ConfigureKestrel((ctx, kestrel) =>
 // gRPC
 // ─────────────────────────────────────────────────────────────────────────────
 
+builder.Services.AddSingleton<AgentAuthInterceptor>();
 builder.Services.AddGrpc(opts =>
 {
     opts.Interceptors.Add<AgentAuthInterceptor>();
-    opts.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    opts.EnableDetailedErrors = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
 });
 
 // Singleton session registry shared between TunnelServiceImpl instances.

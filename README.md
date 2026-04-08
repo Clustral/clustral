@@ -100,7 +100,7 @@ sequenceDiagram
     participant Agent as Agent (Go)
     participant K8S as k8s API
 
-    Note over Agent,NGX: Persistent gRPC tunnel via nginx :5443 (TLS)
+    Note over Agent,CP: Persistent gRPC tunnel direct to Kestrel :5443 (mTLS)
 
     kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
     NGX->>CP: proxy /api/proxy/*
@@ -251,7 +251,7 @@ flowchart TB
 
         subgraph app ["Application Zone"]
             WEB["Web UI\n:3000"]
-            CP["ControlPlane\nREST :5000 | gRPC mTLS :5443"]
+            CP["ControlPlane\nREST :5100 | gRPC mTLS :5443"]
             DB[("MongoDB\n:27017")]
         end
     end
@@ -303,8 +303,7 @@ flowchart TB
 |---|---|---|---|---|
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
 | **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Direct** | Agent tunnel — mTLS + JWT, no nginx |
-| **ControlPlane REST** | 5000 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
-| **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | Legacy gRPC (local dev, migration) |
+| **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **MongoDB** | 27017 | TCP | Internal | Database (never exposed publicly) |
 | **OIDC Provider** | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta — browser + server flows |
@@ -315,9 +314,9 @@ flowchart TB
 
 | Port | Path | Destination | Purpose |
 |---|---|---|---|
-| `:443` | `/api/v1/*` | ControlPlane `:5000` | REST API (CLI, browser) |
-| `:443` | `/api/proxy/*` | ControlPlane `:5000` | kubectl tunnel proxy |
-| `:443` | `/healthz*` | ControlPlane `:5000` | Health checks |
+| `:443` | `/api/v1/*` | ControlPlane `:5100` | REST API (CLI, browser) |
+| `:443` | `/api/proxy/*` | ControlPlane `:5100` | kubectl tunnel proxy |
+| `:443` | `/healthz*` | ControlPlane `:5100` | Health checks |
 | `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
 
 > gRPC traffic (`:5443`) is **not** routed through nginx. Agents connect directly to Kestrel to avoid tunnel drops caused by nginx restarts.
@@ -360,17 +359,156 @@ The kubectl proxy is configurable via the `Proxy` section in `appsettings.json`:
 
 Rate limiting protects the ControlPlane and tunnel from abuse. Request body size and API timeouts are left to the k8s API server.
 
-### Token Lifecycle
+### Credential Lifecycle
 
 ```
-Bootstrap token (one-time, from registration)
-  → exchanged for agent credential (1 year, rotatable)
-    → agent uses it to open gRPC tunnel
+Agent credentials (mTLS + JWT):
+  Bootstrap token (one-time, from cluster registration in Web UI)
+    → exchanged for mTLS client cert (RSA 2048, 395 days) + RS256 JWT (30 days)
+    → auto-renewed by RenewalManager (every 6h check):
+        cert expiry < 30 days → RenewCertificate RPC → new cert + key
+        JWT expiry < 7 days  → RenewToken RPC → new JWT (hot-swapped, no reconnect)
+    → revocation: admin increments tokenVersion → all JWTs invalidated instantly
 
-OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
-  → exchanged for kubeconfig credential (8 hours default, configurable)
-    → used by kubectl to authenticate proxy requests
-    → revoked on logout
+User credentials (OIDC + kubeconfig):
+  OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
+    → exchanged for kubeconfig credential (8 hours default, configurable)
+    → used by kubectl to authenticate proxy requests via nginx :443
+    → revoked on logout or access grant expiry
+```
+
+### Agent Credential Renewal
+
+```mermaid
+sequenceDiagram
+    participant RM as RenewalManager
+    participant Store as Credential Store
+    participant CP as ControlPlane :5443
+    participant JWT as JWTCredentials
+
+    loop Every 6 hours
+        RM->>Store: Read client certificate
+        RM->>RM: Check cert.NotAfter
+
+        alt Cert expires within 30 days
+            RM->>CP: ClusterService.RenewCertificate (mTLS + JWT)
+            CP->>CP: Issue new cert (RSA 2048, 395d)
+            CP-->>RM: new cert PEM + key PEM
+            RM->>Store: Save new cert + key to disk
+            Note over RM: Next tunnel reconnect uses new cert
+        end
+
+        RM->>JWT: Read current JWT
+        RM->>RM: Decode JWT exp claim
+
+        alt JWT expires within 7 days
+            RM->>CP: ClusterService.RenewToken (mTLS + JWT)
+            CP->>CP: Issue new JWT (same tokenVersion)
+            CP-->>RM: new JWT
+            RM->>Store: Save JWT to disk
+            RM->>JWT: Update (hot-swap via RWMutex)
+            Note over JWT: No reconnect needed — next RPC uses new JWT
+        end
+    end
+```
+
+### Agent Error Recovery
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant CP as ControlPlane :5443
+
+    Agent->>CP: TunnelService.OpenTunnel (mTLS + JWT)
+
+    alt Unauthenticated (expired JWT)
+        CP-->>Agent: StatusCode.Unauthenticated
+        Agent->>Agent: Trigger immediate JWT renewal
+        Agent->>CP: ClusterService.RenewToken
+        CP-->>Agent: new JWT
+        Agent->>Agent: Hot-swap JWT + reconnect
+        Agent->>CP: TunnelService.OpenTunnel (retry)
+    end
+
+    alt PermissionDenied (revoked credentials)
+        CP-->>Agent: StatusCode.PermissionDenied
+        Agent->>Agent: Log ERROR — credentials revoked
+        Note over Agent: Agent STOPS — no retry<br/>Admin must re-register with new bootstrap token
+    end
+```
+
+### Agent Credential Revocation
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant NGX as nginx :443
+    participant CP as ControlPlane
+    participant DB as MongoDB
+    participant Agent
+
+    Admin->>NGX: Revoke agent credentials
+    NGX->>CP: POST /api/v1/clusters/{id}/revoke
+    CP->>CP: cluster.RevokeAgentCredentials()
+    CP->>DB: Increment TokenVersion (1 → 2)
+    CP-->>Admin: Credentials revoked
+
+    Note over Agent: Next RPC call...
+    Agent->>CP: ClusterService.UpdateStatus (mTLS + JWT)
+    CP->>CP: AgentAuthInterceptor:<br/>JWT tokenVersion=1 < stored=2
+    CP-->>Agent: StatusCode.Unauthenticated
+    Agent->>Agent: Attempt JWT renewal
+    Agent->>CP: ClusterService.RenewToken
+    CP->>CP: Issue new JWT with tokenVersion=2
+    CP-->>Agent: New JWT
+    Agent->>Agent: Hot-swap JWT + reconnect
+    Agent->>CP: TunnelService.OpenTunnel (new JWT)
+    CP-->>Agent: TunnelHello ✓
+```
+
+### JIT Access Request Flow
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant CLI as clustral CLI
+    participant NGX as nginx :443
+    participant CP as ControlPlane
+    participant DB as MongoDB
+    participant Admin
+
+    Dev->>CLI: clustral access request --cluster prod --role k8s-admin
+    CLI->>NGX: POST /api/v1/access-requests
+    NGX->>CP: proxy
+    CP->>DB: Create AccessRequest (status=Pending)
+    CP-->>CLI: Request ID + status
+
+    Note over Admin: Admin reviews...
+
+    Admin->>NGX: Approve access request
+    NGX->>CP: POST /api/v1/access-requests/{id}/approve
+    CP->>CP: request.Approve(duration: 4h)
+    CP->>DB: Status=Approved, grant expires in 4h
+    CP-->>Admin: Approved
+
+    Dev->>CLI: clustral kube login prod
+    CLI->>NGX: POST /api/v1/auth/kubeconfig-credential
+    NGX->>CP: proxy
+    CP->>DB: Check active JIT grant for user + cluster
+    CP->>CP: Issue kubeconfig credential (TTL capped to grant expiry)
+    CP-->>CLI: Short-lived bearer token
+    CLI->>CLI: Write kubeconfig entry
+
+    Dev->>CLI: kubectl get pods
+    CLI->>NGX: GET /api/proxy/{clusterId}/api/v1/pods
+    NGX->>CP: proxy
+    CP->>CP: Validate token + resolve impersonation via JIT grant
+    CP->>DB: Load role → groups
+    CP-->>CLI: Pod list
+
+    Note over CP: After 4 hours...
+    CP->>DB: AccessRequestCleanupService expires grant
+    Note over Dev: Next kubectl call returns 403
 ```
 
 ## Quick Start (On-Prem)
@@ -436,7 +574,7 @@ services:
     volumes:
       - ./ca:/etc/clustral/ca:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5000/healthz/ready || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:5100/healthz/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -450,7 +588,7 @@ services:
         condition: service_healthy
     environment:
       NEXTAUTH_URL: "https://<YOUR_HOST_IP>"
-      CONTROLPLANE_URL: "http://controlplane:5000"
+      CONTROLPLANE_URL: "http://controlplane:5100"
       CONTROLPLANE_PUBLIC_URL: "https://<YOUR_HOST_IP>"
       OIDC_ISSUER: "http://<YOUR_HOST_IP>:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
@@ -508,8 +646,13 @@ openssl genrsa -out ca/ca.key 2048
 openssl req -x509 -new -nodes \
   -key ca/ca.key -sha256 -days 3650 \
   -subj "/CN=Clustral CA" \
+  -addext "subjectAltName=DNS:clustral,DNS:localhost,DNS:controlplane,IP:127.0.0.1,IP:<YOUR_HOST_IP>" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
   -out ca/ca.crt
 ```
+
+> The SAN must include the IP/hostname agents use in `AGENT_CONTROL_PLANE_URL`. Replace `<YOUR_HOST_IP>` with the same IP used for Keycloak.
 
 ### 4. Start
 
@@ -939,7 +1082,7 @@ cd src/clustral-agent && go test -race ./...
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `NEXTAUTH_URL` | Yes | — | Browser-facing URL of the Web UI |
-| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL (internal, for Web UI server-side proxying) |
+| `CONTROLPLANE_URL` | Yes | `http://localhost:5100` | ControlPlane REST API URL (internal, for Web UI server-side proxying) |
 | `CONTROLPLANE_PUBLIC_URL` | No | `CONTROLPLANE_URL` | Public ControlPlane URL returned to CLI via `.well-known` discovery |
 | `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL |
 | `OIDC_CLIENT_ID` | No | `clustral-web` | OIDC client ID |
@@ -951,7 +1094,7 @@ cd src/clustral-agent && go test -race ./...
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `AGENT_CLUSTER_ID` | Yes | — | Cluster ID from registration |
-| `AGENT_CONTROL_PLANE_URL` | Yes | — | gRPC endpoint (Kestrel `:5443` for mTLS, `:5001` for local dev) |
+| `AGENT_CONTROL_PLANE_URL` | Yes | — | gRPC mTLS endpoint (Kestrel `:5443`) |
 | `AGENT_BOOTSTRAP_TOKEN` | First boot | — | One-time bootstrap token (exchanged for cert + JWT) |
 | `AGENT_CREDENTIAL_PATH` | No | `~/.clustral/agent.token` | Base path for credential files |
 | `AGENT_KUBERNETES_API_URL` | No | `https://kubernetes.default.svc` | k8s API server URL |
@@ -963,11 +1106,13 @@ cd src/clustral-agent && go test -race ./...
 
 ## Certificate Authority Setup
 
-The ControlPlane acts as an internal Certificate Authority (CA) that signs agent client certificates for mTLS and agent JWTs for authorization.
+The ControlPlane acts as an internal Certificate Authority (CA) that signs agent client certificates for mTLS and agent JWTs (RS256) for authorization. The CA cert is also used as the Kestrel TLS server certificate on port `:5443`.
+
+**Important**: The CA certificate must include **Subject Alternative Names (SANs)** for every hostname and IP address that agents will use to connect to the ControlPlane. Without matching SANs, the Go agent's TLS client will reject the server certificate.
 
 ### Development
 
-Generate a dev CA for local development:
+Generate a dev CA with SANs for local development:
 
 ```bash
 mkdir -p infra/ca
@@ -976,8 +1121,16 @@ openssl req -x509 -new -nodes \
   -key infra/ca/ca.key \
   -sha256 -days 3650 \
   -subj "/CN=Clustral Dev CA" \
+  -addext "subjectAltName=DNS:clustral,DNS:localhost,DNS:controlplane,IP:127.0.0.1,IP:<YOUR_LAN_IP>" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
   -out infra/ca/ca.crt
+
+# Verify SANs
+openssl x509 -in infra/ca/ca.crt -noout -ext subjectAltName
 ```
+
+Replace `<YOUR_LAN_IP>` with your machine's LAN IP (e.g., `192.168.1.100`). Include every IP/hostname agents will use in `AGENT_CONTROL_PLANE_URL`.
 
 Configure in `appsettings.Development.json`:
 
@@ -992,19 +1145,37 @@ Configure in `appsettings.Development.json`:
 
 ### Production
 
-Generate a production CA (RSA 4096, 10-year validity):
+For production (e.g., `controlplane.example.clustral`), the CA cert needs **DNS SANs** matching the hostname agents connect to — not IP SANs (production uses DNS, not raw IPs).
 
 ```bash
+# Generate CA private key (RSA 4096 for production)
 openssl genrsa -out clustral-ca.key 4096
+
+# Generate CA certificate with production SANs
 openssl req -x509 -new -nodes \
   -key clustral-ca.key \
   -sha256 -days 3650 \
   -subj "/CN=Clustral Certificate Authority/O=YourOrg/OU=Platform" \
+  -addext "subjectAltName=DNS:controlplane.example.clustral,DNS:controlplane.clustral.svc.cluster.local" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
   -out clustral-ca.crt
 
 # Verify
-openssl x509 -in clustral-ca.crt -text -noout
+openssl x509 -in clustral-ca.crt -noout -text | grep -A2 "Subject Alternative"
 ```
+
+**SAN guidelines:**
+
+| Scenario | SANs to include |
+|---|---|
+| Agents on same k8s cluster | `DNS:controlplane.clustral.svc.cluster.local` |
+| Agents on remote clusters (DNS) | `DNS:controlplane.example.com` (or your public/internal DNS) |
+| Agents on remote clusters (IP) | `IP:<controlplane-public-ip>` |
+| Load balancer in front | `DNS:<lb-hostname>` — must match what agents use in `AGENT_CONTROL_PLANE_URL` |
+| Multiple hostnames | Include all: `DNS:host1,DNS:host2,IP:10.0.0.1` |
+
+**Rule**: The SAN must match the hostname/IP in `AGENT_CONTROL_PLANE_URL` exactly. If the agent connects to `https://controlplane.example.clustral:5443`, the cert must have `DNS:controlplane.example.clustral`.
 
 Deploy as a Kubernetes Secret:
 
@@ -1029,7 +1200,7 @@ Mount in the ControlPlane deployment and configure:
 
 ### CA Rotation
 
-1. Generate a new CA cert + key
+1. Generate a new CA cert + key (with the same SANs)
 2. Deploy the new CA to the ControlPlane
 3. New agent certificates will be signed by the new CA
 4. Existing agents continue working until their certificates expire (max 395 days)

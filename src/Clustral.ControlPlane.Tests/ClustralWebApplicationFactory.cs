@@ -29,6 +29,12 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
 
     public string MongoConnectionString => _mongo.GetConnectionString();
 
+    /// <summary>Path to the test CA certificate PEM file.</summary>
+    public string CaCertPath => _caCertPath ?? throw new InvalidOperationException("Factory not initialized");
+
+    /// <summary>Path to the test CA private key PEM file.</summary>
+    public string CaKeyPath => _caKeyPath ?? throw new InvalidOperationException("Factory not initialized");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");

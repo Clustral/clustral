@@ -61,26 +61,34 @@ clustral-agent/
 ```
 main()
   ├── config.Load()                   ← reads AGENT_* env vars
-  ├── ensureCredential()
-  │     ├── bootstrap token set?      → issueCredential()
-  │     │     gRPC AuthService.IssueAgentCredential
-  │     │     writes token + expiry to disk
-  │     ├── credential file missing?  → error (needs bootstrap token)
-  │     └── credential expires soon?  → rotateCredential()
-  │           gRPC AuthService.RotateAgentCredential
+  ├── [Bootstrap] if AGENT_BOOTSTRAP_TOKEN set:
+  │     registerAgent()
+  │       gRPC ClusterService.RegisterAgent (TLS, no mTLS yet)
+  │       receives: client cert + key + CA cert + JWT
+  │       saves all to /etc/clustral/tls/ + agent.jwt
+  │
+  ├── HasMTLSCredentials()?           ← checks client.crt, client.key, ca.crt, agent.jwt
+  │     false → error (needs bootstrap token)
   │
   ├── proxy.New()                     ← creates http.Client with SA token + CA cert
+  ├── k8s.DiscoverVersion()           ← GET /version on k8s API (non-fatal)
+  │
+  ├── auth.NewJWTCredentials(jwt)     ← PerRPCCredentials with sync.RWMutex
+  ├── auth.NewRenewalManager()        ← goroutine: checks cert/JWT expiry every 6h
   │
   └── tunnel.NewManager().Run(ctx)    ← reconnect loop (blocks until SIGTERM)
         └── connectAndRun()           ← one session
-              ├── grpc.NewClient (insecure for HTTP, TLS for HTTPS)
-              ├── TunnelService.OpenTunnel (bidirectional stream)
+              ├── grpc.NewClient (mTLS: client cert + CA pool + PerRPCCredentials)
+              ├── TunnelService.OpenTunnel (mTLS + JWT)
               ├── send AgentHello → recv TunnelHello
               └── errgroup.Group:
                     ├── dispatchFrames()  ← recv HttpRequestFrame → goroutine per request
                     │     proxy.Handle() → send HttpResponseFrame
                     │     PingFrame → send PongFrame
                     └── heartbeat()       ← time.Ticker → ClusterService.UpdateStatus
+              Error handling:
+                    Unauthenticated → immediate JWT renewal, reconnect
+                    PermissionDenied → STOP (credentials revoked, no retry)
 ```
 
 ---
@@ -92,10 +100,9 @@ All settings via environment variables. No config files.
 | Env var | Default | Notes |
 |---|---|---|
 | `AGENT_CLUSTER_ID` | *(required)* | From cluster registration |
-| `AGENT_CONTROL_PLANE_URL` | *(required)* | gRPC endpoint, e.g. `http://host:5001` |
+| `AGENT_CONTROL_PLANE_URL` | *(required)* | gRPC mTLS endpoint, e.g. `https://host:5443` |
 | `AGENT_CREDENTIAL_PATH` | `~/.clustral/agent.token` | In-cluster: `/etc/clustral/agent.token` |
-| `AGENT_BOOTSTRAP_TOKEN` | *(required first boot)* | One-time, consumed on first use |
-| `AGENT_PUBLIC_KEY_PEM` | *(optional)* | For mutual key verification |
+| `AGENT_BOOTSTRAP_TOKEN` | *(required first boot)* | One-time, exchanged for mTLS cert + JWT |
 | `AGENT_KUBERNETES_API_URL` | `https://kubernetes.default.svc` | In-cluster default |
 | `AGENT_KUBERNETES_SKIP_TLS_VERIFY` | `false` | `true` only for local dev |
 | `AGENT_HEARTBEAT_INTERVAL` | `30s` | Go duration format |
@@ -105,6 +112,9 @@ All settings via environment variables. No config files.
 | `AGENT_RECONNECT_BACKOFF_MULTIPLIER` | `2.0` | |
 | `AGENT_RECONNECT_MAX_JITTER` | `5s` | |
 | `AGENT_VERSION` | `0.1.0` | Sent in AgentHello |
+| `AGENT_CERT_RENEW_THRESHOLD` | `720h` | Renew cert if expiry within this |
+| `AGENT_JWT_RENEW_THRESHOLD` | `168h` | Renew JWT if expiry within this |
+| `AGENT_RENEWAL_CHECK_INTERVAL` | `6h` | How often to check cert/JWT expiry |
 
 ---
 
@@ -155,7 +165,7 @@ into `tls.Config.RootCAs` for TLS verification against the k8s API server.
 ```bash
 # Set required env vars
 export AGENT_CLUSTER_ID="<from-registration>"
-export AGENT_CONTROL_PLANE_URL="http://localhost:5001"
+export AGENT_CONTROL_PLANE_URL="https://localhost:5443"
 export AGENT_BOOTSTRAP_TOKEN="<from-registration>"
 export AGENT_KUBERNETES_SKIP_TLS_VERIFY=true  # for Docker Desktop k8s
 

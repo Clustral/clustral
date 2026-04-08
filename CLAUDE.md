@@ -39,14 +39,13 @@ clustral/
       │  kubeconfig written via KubeconfigWriter
       ▼
   nginx  (unified gateway — HTTPS only)
-      │  :443 HTTPS  — REST API + kubectl proxy → ControlPlane :5000
+      │  :443 HTTPS  — REST API + kubectl proxy → ControlPlane :5100
       │                Web UI pages → Web UI :3000
       │  (gRPC NOT proxied — agents connect directly to Kestrel :5443)
       ▼
   ControlPlane  (ASP.NET Core)
-      │  REST :5000   — CLI + Web UI management calls (via nginx)
+      │  REST :5100   — CLI + Web UI management calls (via nginx)
       │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no nginx)
-      │  gRPC :5001   — legacy plaintext (local dev / migration)
       │  MongoDB (clusters, users, audit log)
       │  OIDC — token introspection / JWKS validation
       ▼
@@ -92,7 +91,7 @@ This starts:
 ```bash
 cd src/Clustral.ControlPlane
 dotnet run
-# Listens: HTTP :5000, gRPC :5001
+# Listens: HTTP :5100, gRPC mTLS :5443
 ```
 
 ### Agent (local, targeting kind)
@@ -102,7 +101,7 @@ dotnet run
 kind create cluster --config infra/k8s/kind-config.yaml
 
 cd src/clustral-agent
-export AGENT_CONTROL_PLANE_URL=http://localhost:5001
+export AGENT_CONTROL_PLANE_URL=https://localhost:5443
 go run .
 ```
 

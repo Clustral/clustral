@@ -34,13 +34,9 @@ services:
       - "5443:5443"
     volumes:
       - ./infra/ca:/etc/clustral/ca:ro
-    # REST :5000 and legacy gRPC :5001 are internal — nginx handles REST via :443.
-    # Uncomment for direct access during local dev without nginx:
-    # ports:
-    #   - "5100:5000"
-    #   - "5101:5001"
+    # REST :5100 and legacy gRPC :5101 are internal — nginx handles REST via :443.
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:5000/healthz/ready || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:5100/healthz/ready || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -58,7 +54,7 @@ services:
       - clustral
     environment:
       NEXTAUTH_URL: "https://192.168.88.6"
-      CONTROLPLANE_URL: "http://controlplane:5000"
+      CONTROLPLANE_URL: "http://controlplane:5100"
       CONTROLPLANE_PUBLIC_URL: "https://192.168.88.6"
       OIDC_ISSUER: "http://192.168.88.6:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"

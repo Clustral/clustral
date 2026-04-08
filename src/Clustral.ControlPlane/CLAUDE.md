@@ -2,9 +2,9 @@
 
 ASP.NET Core web host that is the heart of the Clustral platform. It exposes:
 
-- **REST API** on `:5000` — consumed by the Web UI and CLI.
-- **gRPC server** on `:5001` — consumed by Agents (tunnel) and the CLI (auth).
-- **Swagger UI** at `http://localhost:5000/swagger` (dev only).
+- **REST API** on `:5100` — consumed by the Web UI and CLI (proxied by nginx :443).
+- **gRPC mTLS server** on `:5443` — consumed by Agents (tunnel, mTLS + JWT auth). Direct connection, no nginx.
+- **Swagger UI** at `http://localhost:5100/swagger` (dev only).
 - **Health endpoints**: `GET /healthz` (liveness), `GET /healthz/ready` (readiness — MongoDB + OIDC), `GET /healthz/detail` (detailed, auth required).
 
 ---
@@ -58,10 +58,11 @@ Clustral.ControlPlane/
 ## Key design decisions
 
 ### Two ports, one process
-REST traffic goes to `:5000` (HTTP/1.1); gRPC traffic goes to `:5001` (HTTP/2).
-This is configured via `Kestrel:Endpoints` in `appsettings.json`.  The split
-prevents the grpc-gateway Content-Type mismatch that occurs when mixing
-protocols on a single port without a reverse proxy.
+REST traffic goes to `:5100` (HTTP/1.1, proxied by nginx :443); gRPC mTLS
+traffic goes to `:5443` (HTTP/2, direct — no nginx). The split prevents the
+grpc-gateway Content-Type mismatch and ensures persistent agent tunnels are
+not interrupted by nginx restarts. Agents connect directly to Kestrel :5443
+with mTLS client certificates + RS256 JWT authorization.
 
 ### Token storage
 Raw bearer tokens are **never stored**.  Only the SHA-256 hex digest

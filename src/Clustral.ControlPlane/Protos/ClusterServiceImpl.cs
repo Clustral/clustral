@@ -224,7 +224,7 @@ public sealed class ClusterServiceImpl(
             ClientPrivateKeyPem = keyPem,
             CaCertificatePem = ca.GetCaCertificatePem(),
             Jwt = jwt,
-            CertExpiresAt = Timestamp.FromDateTimeOffset(new DateTimeOffset(clientCert.NotAfter, TimeSpan.Zero)),
+            CertExpiresAt = Timestamp.FromDateTimeOffset(new DateTimeOffset(clientCert.NotAfter.ToUniversalTime(), TimeSpan.Zero)),
             JwtExpiresAt = Timestamp.FromDateTimeOffset(jwtExpiry),
         };
     }
@@ -259,7 +259,7 @@ public sealed class ClusterServiceImpl(
         {
             ClientCertificatePem = certPem,
             ClientPrivateKeyPem = keyPem,
-            ExpiresAt = Timestamp.FromDateTimeOffset(new DateTimeOffset(clientCert.NotAfter, TimeSpan.Zero)),
+            ExpiresAt = Timestamp.FromDateTimeOffset(new DateTimeOffset(clientCert.NotAfter.ToUniversalTime(), TimeSpan.Zero)),
         };
     }
 

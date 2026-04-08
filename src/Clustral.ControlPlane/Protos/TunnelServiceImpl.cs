@@ -17,6 +17,7 @@ namespace Clustral.ControlPlane.Protos;
 public sealed class TunnelServiceImpl(
     ClustralDb db,
     TunnelSessionManager sessions,
+    Infrastructure.Auth.AgentAuthInterceptor agentAuth,
     ILogger<TunnelServiceImpl> logger)
     : TunnelService.TunnelServiceBase
 {
@@ -25,23 +26,18 @@ public sealed class TunnelServiceImpl(
         IServerStreamWriter<TunnelServerMessage> responseStream,
         ServerCallContext context)
     {
-        // ── 1. Authenticate ──────────────────────────────────────────────────
-        var agentToken = ExtractBearerToken(context);
-        if (agentToken is null)
-            throw new RpcException(new Status(StatusCode.Unauthenticated,
-                "Authorization header with Bearer token is required."));
+        // mTLS + JWT validation for duplex streams (interceptor only handles unary).
+        await agentAuth.ValidateIfRequired(context);
 
-        var tokenHash  = HashToken(agentToken);
-        var credential = await db.AccessTokens
-            .Find(t => t.TokenHash == tokenHash && t.Kind == Domain.CredentialKind.Agent)
-            .FirstOrDefaultAsync(context.CancellationToken);
-
-        if (credential is null || !credential.IsValid)
+        // ── 1. Extract cluster ID from validated JWT claims ──────────────────
+        var httpContext = context.GetHttpContext();
+        if (!httpContext.Items.TryGetValue("ClusterId", out var clusterIdObj) || clusterIdObj is not Guid clusterId)
+        {
             throw new RpcException(new Status(StatusCode.Unauthenticated,
-                "Invalid or expired agent credential."));
+                "Agent authentication required (mTLS + JWT on port 5443)."));
+        }
 
         // ── 2. Handshake ─────────────────────────────────────────────────────
-        // Expect the first frame to be AgentHello.
         if (!await requestStream.MoveNext(context.CancellationToken))
             throw new RpcException(new Status(StatusCode.Cancelled, "Stream closed before handshake."));
 
@@ -50,8 +46,7 @@ public sealed class TunnelServiceImpl(
             throw new RpcException(new Status(StatusCode.InvalidArgument,
                 "Expected AgentHello as the first message."));
 
-        var hello      = firstMsg.Hello;
-        var clusterId  = credential.ClusterId;
+        var hello = firstMsg.Hello;
 
         logger.LogInformation(
             "Agent tunnel opened for cluster {ClusterId} (agent v{AgentVersion}, k8s {K8sVersion})",
@@ -141,26 +136,6 @@ public sealed class TunnelServiceImpl(
         }
     }
 
-    // -------------------------------------------------------------------------
-
-    private static string? ExtractBearerToken(ServerCallContext ctx)
-    {
-        var authHeader = ctx.RequestHeaders
-            .FirstOrDefault(h => h.Key.Equals("authorization", StringComparison.OrdinalIgnoreCase))
-            ?.Value;
-
-        if (authHeader is null || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        return authHeader["Bearer ".Length..].Trim();
-    }
-
-    private static string HashToken(string raw)
-    {
-        var hash = System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(raw));
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
 }
 
 // =============================================================================

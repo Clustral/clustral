@@ -1,6 +1,13 @@
 package credential
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
@@ -185,4 +192,187 @@ func TestSave_ConcurrentAccess(t *testing.T) {
 	if token == "" {
 		t.Error("Token should not be empty after concurrent writes")
 	}
+}
+
+// ── mTLS credential tests ───────────────────────────────────────────────────
+
+func TestSaveCertAndKey_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	certPEM, keyPEM := generateTestCert(t)
+
+	if err := s.SaveCertAndKey(certPEM, keyPEM); err != nil {
+		t.Fatalf("SaveCertAndKey error: %v", err)
+	}
+
+	cert, err := s.ReadCert()
+	if err != nil {
+		t.Fatalf("ReadCert error: %v", err)
+	}
+
+	if len(cert.Certificate) == 0 {
+		t.Error("ReadCert should return at least one certificate")
+	}
+}
+
+func TestReadCert_FileMissing_Error(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	_, err := s.ReadCert()
+	if err == nil {
+		t.Error("ReadCert should error when cert file missing")
+	}
+}
+
+func TestSaveCACert_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	caPEM := generateTestCACertPEM(t)
+
+	if err := s.SaveCACert(caPEM); err != nil {
+		t.Fatalf("SaveCACert error: %v", err)
+	}
+
+	pool, err := s.ReadCACert()
+	if err != nil {
+		t.Fatalf("ReadCACert error: %v", err)
+	}
+
+	if pool == nil {
+		t.Error("ReadCACert should return a non-nil pool")
+	}
+}
+
+func TestReadCACert_InvalidPEM_Error(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	// Write invalid PEM.
+	caPath := filepath.Join(dir, "ca.crt")
+	if err := os.WriteFile(caPath, []byte("not-a-cert"), 0600); err != nil {
+		t.Fatalf("write error: %v", err)
+	}
+
+	_, err := s.ReadCACert()
+	if err == nil {
+		t.Error("ReadCACert should error on invalid PEM")
+	}
+}
+
+func TestSaveJWT_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	jwt := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature"
+
+	if err := s.SaveJWT(jwt); err != nil {
+		t.Fatalf("SaveJWT error: %v", err)
+	}
+
+	got, err := s.ReadJWT()
+	if err != nil {
+		t.Fatalf("ReadJWT error: %v", err)
+	}
+	if got != jwt {
+		t.Errorf("ReadJWT = %q, want %q", got, jwt)
+	}
+}
+
+func TestReadJWT_FileMissing_Empty(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	got, err := s.ReadJWT()
+	if err != nil {
+		t.Fatalf("ReadJWT error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("ReadJWT = %q, want empty", got)
+	}
+}
+
+func TestHasMTLSCredentials_AllPresent_True(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	certPEM, keyPEM := generateTestCert(t)
+	caPEM := generateTestCACertPEM(t)
+
+	_ = s.SaveCertAndKey(certPEM, keyPEM)
+	_ = s.SaveCACert(caPEM)
+	_ = s.SaveJWT("test-jwt")
+
+	if !s.HasMTLSCredentials() {
+		t.Error("HasMTLSCredentials should be true when all files present")
+	}
+}
+
+func TestHasMTLSCredentials_Missing_False(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(filepath.Join(dir, "agent.token"))
+
+	if s.HasMTLSCredentials() {
+		t.Error("HasMTLSCredentials should be false when no files exist")
+	}
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+func generateTestCert(t *testing.T) (certPEM, keyPEM []byte) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-agent"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	return certPEM, keyPEM
+}
+
+func generateTestCACertPEM(t *testing.T) []byte {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-ca"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		IsCA:         true,
+		KeyUsage:     x509.KeyUsageCertSign,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 }
