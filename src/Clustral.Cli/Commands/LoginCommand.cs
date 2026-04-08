@@ -122,10 +122,16 @@ internal static class LoginCommand
             return;
         }
 
-        // ── Save ControlPlane URL for future commands ─────────────────────
-        if (config.ControlPlaneUrl != cpUrl)
+        // ── Resolve effective ControlPlane URL ──────────────────────────
+        // If the discovery response includes a direct ControlPlane URL,
+        // use that so all subsequent CLI calls bypass the Web UI proxy.
+        var effectiveCpUrl = !string.IsNullOrWhiteSpace(discovered.ControlPlaneUrl)
+            ? discovered.ControlPlaneUrl.TrimEnd('/')
+            : cpUrl;
+
+        if (config.ControlPlaneUrl != effectiveCpUrl)
         {
-            config.ControlPlaneUrl = cpUrl;
+            config.ControlPlaneUrl = effectiveCpUrl;
             config.Save();
         }
 
@@ -145,7 +151,7 @@ internal static class LoginCommand
             await cache.StoreAsync(token, ct);
 
             // Fetch and display user profile.
-            await DisplayProfileAsync(http, cpUrl, token, ct);
+            await DisplayProfileAsync(http, effectiveCpUrl, token, ct);
         }
         catch (OperationCanceledException)
         {

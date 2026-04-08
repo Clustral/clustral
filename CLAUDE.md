@@ -30,12 +30,15 @@ clustral/
 
 ```
   clustral CLI
-      │  OIDC device flow → OIDC Provider
+      │  GET /.well-known/clustral-configuration → Web UI (discovery only)
+      │  Receives: controlPlaneUrl, OIDC settings
+      │  All subsequent calls go directly to ControlPlane
+      │  OIDC PKCE flow → OIDC Provider
       │  JWT stored in TokenCache
       │  kubeconfig written via KubeconfigWriter
       ▼
   ControlPlane  (ASP.NET Core)
-      │  REST  — Web UI + CLI management calls
+      │  REST  — Web UI (proxied) + CLI (direct) management calls
       │  gRPC  — TunnelService (bidirectional streaming to agents)
       │  MongoDB (clusters, users, audit log)
       │  OIDC — token introspection / JWKS validation
@@ -49,7 +52,7 @@ clustral/
 ```
 
 Key flows:
-- **clustral login** — OIDC device-code flow against the configured OIDC provider, writes token to `~/.clustral/token`.
+- **clustral login** — discovers ControlPlane URL and OIDC settings via Web UI's `/.well-known/clustral-configuration`, then runs OIDC PKCE flow, writes token to `~/.clustral/token`. All subsequent CLI calls go directly to the ControlPlane.
 - **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
 - **Tunnel** — agent opens a persistent gRPC stream to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
@@ -92,7 +95,8 @@ dotnet run
 kind create cluster --config infra/k8s/kind-config.yaml
 
 cd src/clustral-agent
-go run . --control-plane-url=http://localhost:5001
+export AGENT_CONTROL_PLANE_URL=http://localhost:5001
+go run .
 ```
 
 ### CLI

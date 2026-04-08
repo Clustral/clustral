@@ -35,6 +35,7 @@ graph TB
         K8S[k8s API Server]
     end
 
+    CLI -.->|".well-known discovery"| WEB
     CLI -->|OIDC PKCE| OIDC
     WEB -->|Server-side OIDC| OIDC
     CLI -->|REST API| CP
@@ -62,12 +63,14 @@ Clustral provides secure, tunneled `kubectl` access to Kubernetes clusters witho
 sequenceDiagram
     participant User
     participant CLI as clustral CLI
+    participant WEB as Web UI
     participant CP as ControlPlane
     participant OIDC as OIDC Provider
 
     User->>CLI: clustral login app.example.com
-    CLI->>CP: GET /.well-known/clustral-configuration
-    CP-->>CLI: {oidcAuthority, oidcClientId}
+    CLI->>WEB: GET /.well-known/clustral-configuration
+    WEB-->>CLI: {controlPlaneUrl, oidcAuthority, oidcClientId}
+    Note over CLI: Saves direct ControlPlane URL<br/>All subsequent calls bypass Web UI
     CLI->>OIDC: Authorization Code + PKCE
     OIDC-->>User: Browser login page
     User->>OIDC: Enter credentials
@@ -75,7 +78,9 @@ sequenceDiagram
     CLI->>OIDC: Exchange code for tokens
     OIDC-->>CLI: JWT access token
     CLI->>CLI: Store JWT in ~/.clustral/token
-    CLI-->>User: "Logged in to app.example.com"
+    CLI->>CP: GET /api/v1/users/me (direct)
+    CP-->>CLI: User profile
+    CLI-->>User: "Logged in successfully"
 ```
 
 ### kubectl Proxy Flow
@@ -210,11 +215,11 @@ flowchart TB
     end
 
     BROWSER -- "HTTPS" --> LB
-    CLI -- "HTTPS" --> LB
-    KUBECTL -- "HTTPS" --> LB
+    CLI -. "discovery only" .-> LB
+    CLI -- "REST + kubectl" --> CP
+    KUBECTL -- "kubectl proxy" --> CP
     LB --> WEB
-    LB --> CP
-    WEB -- "REST" --> CP
+    WEB -- "REST (SSR)" --> CP
     CP --- DB
 
     CLI -. "OIDC PKCE" .-> OIDC
@@ -244,22 +249,36 @@ flowchart TB
 
 | Component | Port | Protocol | Direction | Description |
 |---|---|---|---|---|
-| **Load Balancer** | 443 | HTTPS | Inbound | TLS termination for all client traffic |
-| **ControlPlane REST** | 5000 | HTTP/1.1 | Internal | REST API (CLI, Web UI, kubectl proxy) |
-| **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | Agent tunnel, CLI auth (gRPC) |
-| **Web UI** | 3000 | HTTP | Internal | Next.js dashboard |
+| **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
+| **nginx gRPC** | 5443 | gRPC/TLS | Inbound | TLS termination — agent tunnel, CLI auth |
+| **ControlPlane REST** | 5000 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
+| **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | gRPC services (proxied by nginx) |
+| **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **MongoDB** | 27017 | TCP | Internal | Database (never exposed publicly) |
 | **OIDC Provider** | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta — browser + server flows |
-| **Agent → ControlPlane** | 5001 | gRPC/TLS | **Outbound only** | No inbound rules needed on cluster side |
+| **Agent → nginx** | 5443 | gRPC/TLS | **Outbound only** | No inbound rules needed on cluster side |
 | **Agent → k8s API** | 6443 | HTTPS | In-cluster | ServiceAccount token + impersonation headers |
+
+#### nginx Routing
+
+| Port | Path | Destination | Purpose |
+|---|---|---|---|
+| `:443` | `/api/v1/*` | ControlPlane `:5000` | REST API (CLI, browser) |
+| `:443` | `/api/proxy/*` | ControlPlane `:5000` | kubectl tunnel proxy |
+| `:443` | `/healthz*` | ControlPlane `:5000` | Health checks |
+| `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
+| `:5443` | `clustral.v1.TunnelService` | ControlPlane `:5001` | Agent bidirectional tunnel |
+| `:5443` | `clustral.v1.ClusterService` | ControlPlane `:5001` | Agent heartbeat |
+| `:5443` | `clustral.v1.AuthService` | ControlPlane `:5001` | Credential issuance/rotation |
 
 #### Network Requirements
 
-- **Agents connect outbound** to the ControlPlane gRPC port — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
+- **Agents connect outbound** to the nginx gRPC port (`:5443`) — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
+- **ControlPlane and Web UI are internal only** — not exposed publicly; nginx handles all external traffic
 - **MongoDB** must never be exposed outside the application zone
-- **TLS** is required in production for all external traffic (load balancer terminates TLS)
+- **TLS** is required in production for all external traffic (nginx terminates TLS on both `:443` and `:5443`)
 - **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the ControlPlane (JWKS key fetch)
-- **kubectl traffic** flows: kubectl → ControlPlane REST → gRPC tunnel → Agent → k8s API (all over established outbound connections)
+- **kubectl traffic** flows: kubectl → nginx `:443` → ControlPlane → gRPC tunnel → Agent → k8s API
 
 ### Proxy Configuration
 
@@ -358,9 +377,6 @@ services:
       Oidc__ClientId: "clustral-control-plane"
       Oidc__Audience: "clustral-control-plane"
       Oidc__RequireHttpsMetadata: "false"
-    ports:
-      - "5100:5000"
-      - "5101:5001"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5000/healthz/ready || exit 1"]
       interval: 10s
@@ -375,17 +391,45 @@ services:
       controlplane:
         condition: service_healthy
     environment:
-      NEXTAUTH_URL: "http://<YOUR_HOST_IP>:3000"
-      CONTROLPLANE_URL: "http://<YOUR_HOST_IP>:5100"
+      NEXTAUTH_URL: "https://<YOUR_HOST_IP>"
+      CONTROLPLANE_URL: "http://controlplane:5000"
+      CONTROLPLANE_PUBLIC_URL: "https://<YOUR_HOST_IP>"
       OIDC_ISSUER: "http://<YOUR_HOST_IP>:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
       AUTH_SECRET: "change-me-to-a-random-32-char-string!!"
+
+  ssl-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      controlplane:
+        condition: service_healthy
     ports:
-      - "3000:3000"
+      - "443:443"
+      - "5443:5443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certs:/etc/nginx/certs
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        if [ ! -f /etc/nginx/certs/tls.crt ]; then
+          apk add --no-cache openssl > /dev/null 2>&1
+          openssl req -x509 -nodes -days 365 \
+            -newkey rsa:2048 \
+            -keyout /etc/nginx/certs/tls.key \
+            -out /etc/nginx/certs/tls.crt \
+            -subj "/CN=clustral" \
+            -addext "subjectAltName=DNS:clustral,DNS:localhost,IP:0.0.0.0" \
+            2>/dev/null
+        fi
+        exec nginx -g "daemon off;"
 
 volumes:
   mongo_data:
+  certs:
 ```
 
 > Replace `<YOUR_HOST_IP>` with your machine's IP address. All services must use the same IP so the browser, Next.js server, and ControlPlane can all reach Keycloak at the same issuer URL.
@@ -537,7 +581,7 @@ kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/cl
 # Create the secret (values from the UI registration step)
 kubectl -n clustral create secret generic clustral-agent-config \
   --from-literal=cluster-id="<CLUSTER_ID>" \
-  --from-literal=control-plane-url="http://<CONTROLPLANE_HOST>:5001" \
+  --from-literal=control-plane-url="https://<YOUR_HOST>:5443" \
   --from-literal=bootstrap-token="<BOOTSTRAP_TOKEN>"
 
 # Deploy the agent
@@ -547,12 +591,12 @@ kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/cl
 kubectl -n clustral logs -f deploy/clustral-agent
 ```
 
-The agent connects outbound to the ControlPlane gRPC port — no inbound firewall rules needed.
+The agent connects outbound to the nginx gRPC port (`:5443`) — no inbound firewall rules needed.
 
 For Docker Desktop Kubernetes, use `host.docker.internal`:
 
 ```bash
---from-literal=control-plane-url="http://host.docker.internal:5001"
+--from-literal=control-plane-url="https://host.docker.internal:5443"
 ```
 
 ## Access Management
@@ -826,7 +870,8 @@ cd src/clustral-agent && go test -race ./...
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `NEXTAUTH_URL` | Yes | — | Browser-facing URL of the Web UI |
-| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL |
+| `CONTROLPLANE_URL` | Yes | `http://localhost:5000` | ControlPlane REST API URL (internal, for Web UI server-side proxying) |
+| `CONTROLPLANE_PUBLIC_URL` | No | `CONTROLPLANE_URL` | Public ControlPlane URL returned to CLI via `.well-known` discovery |
 | `OIDC_ISSUER` | Yes | — | OIDC provider discovery URL |
 | `OIDC_CLIENT_ID` | No | `clustral-web` | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | Yes | — | OIDC client secret |
@@ -837,7 +882,7 @@ cd src/clustral-agent && go test -race ./...
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `AGENT_CLUSTER_ID` | Yes | — | Cluster ID from registration |
-| `AGENT_CONTROL_PLANE_URL` | Yes | — | ControlPlane gRPC endpoint |
+| `AGENT_CONTROL_PLANE_URL` | Yes | — | gRPC endpoint (nginx `:5443` in production, ControlPlane `:5001` for local dev) |
 | `AGENT_BOOTSTRAP_TOKEN` | First boot | — | One-time bootstrap token |
 | `AGENT_CREDENTIAL_PATH` | No | `~/.clustral/agent.token` | Token file path |
 | `AGENT_KUBERNETES_API_URL` | No | `https://kubernetes.default.svc` | k8s API server URL |

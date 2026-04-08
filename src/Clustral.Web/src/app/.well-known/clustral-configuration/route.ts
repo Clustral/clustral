@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 /**
- * CLI discovery endpoint. Proxies to ControlPlane /api/v1/config at runtime.
+ * CLI discovery endpoint. Returns service URLs and OIDC configuration
+ * so the CLI only needs to know the Web UI domain to bootstrap.
+ * After discovery, the CLI talks directly to the ControlPlane.
  */
 export async function GET() {
-  const controlPlaneUrl =
-    process.env.CONTROLPLANE_URL || "http://localhost:5000";
-
-  try {
-    const res = await fetch(`${controlPlaneUrl}/api/v1/config`);
-    const data = await res.json();
-    return NextResponse.json(data);
-  } catch {
-    return NextResponse.json(
-      { error: "ControlPlane unreachable" },
-      { status: 502 },
-    );
-  }
+  return NextResponse.json({
+    controlPlaneUrl:
+      process.env.CONTROLPLANE_PUBLIC_URL || process.env.CONTROLPLANE_URL,
+    oidcAuthority: process.env.OIDC_ISSUER,
+    oidcClientId: "clustral-cli",
+    oidcScopes: "openid email profile",
+  });
 }

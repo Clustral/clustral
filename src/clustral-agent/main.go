@@ -16,8 +16,10 @@ import (
 	"clustral-agent/internal/k8s"
 	"clustral-agent/internal/proxy"
 	"clustral-agent/internal/tunnel"
+	"crypto/tls"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
+	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -96,7 +98,7 @@ func ensureCredential(cfg *config.Config, creds *credential.Store, logger *slog.
 
 func issueCredential(cfg *config.Config, creds *credential.Store, logger *slog.Logger) error {
 	conn, err := grpc.NewClient(stripScheme(cfg.ControlPlaneURL),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpcTransportCreds(cfg.ControlPlaneURL))
 	if err != nil {
 		return err
 	}
@@ -126,7 +128,7 @@ func issueCredential(cfg *config.Config, creds *credential.Store, logger *slog.L
 
 func rotateCredential(cfg *config.Config, creds *credential.Store, currentToken string, logger *slog.Logger) error {
 	conn, err := grpc.NewClient(stripScheme(cfg.ControlPlaneURL),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpcTransportCreds(cfg.ControlPlaneURL))
 	if err != nil {
 		return err
 	}
@@ -153,8 +155,19 @@ func rotateCredential(cfg *config.Config, creds *credential.Store, currentToken 
 	return nil
 }
 
-// Compatibility: handle ControlPlane URL with http:// prefix
-// for gRPC which needs host:port without scheme.
+// grpcTransportCreds returns TLS credentials for https:// URLs,
+// or insecure credentials for http:// (local dev).
+func grpcTransportCreds(rawURL string) grpc.DialOption {
+	if strings.HasPrefix(rawURL, "https://") {
+		return grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true, // self-signed certs in dev; use proper CA in production
+		}))
+	}
+	return grpc.WithTransportCredentials(grpcinsecure.NewCredentials())
+}
+
+// stripScheme removes http:// or https:// prefix so grpc.NewClient
+// receives a host:port target.
 func stripScheme(url string) string {
 	url = strings.TrimPrefix(url, "http://")
 	url = strings.TrimPrefix(url, "https://")

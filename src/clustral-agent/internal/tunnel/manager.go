@@ -15,9 +15,11 @@ import (
 	"clustral-agent/internal/credential"
 	"clustral-agent/internal/proxy"
 	"golang.org/x/sync/errgroup"
+	"crypto/tls"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
+	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -87,10 +89,16 @@ func (m *Manager) connectAndRun(ctx context.Context) error {
 		return fmt.Errorf("no agent credential found")
 	}
 
-	// Create gRPC connection.
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	// Create gRPC connection — TLS for https://, plaintext for http://.
+	var transportCreds grpc.DialOption
+	if strings.HasPrefix(m.cfg.ControlPlaneURL, "https://") {
+		transportCreds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true, // self-signed certs in dev; use proper CA in production
+		}))
+	} else {
+		transportCreds = grpc.WithTransportCredentials(grpcinsecure.NewCredentials())
 	}
+	opts := []grpc.DialOption{transportCreds}
 
 	addr := strings.TrimPrefix(strings.TrimPrefix(m.cfg.ControlPlaneURL, "http://"), "https://")
 	conn, err := grpc.NewClient(addr, opts...)
