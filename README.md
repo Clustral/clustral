@@ -44,7 +44,7 @@ graph TB
     CLI -->|OIDC PKCE| OIDC
     WEB -->|Server-side OIDC| OIDC
     WEB -->|REST (SSR)| CP
-    CP --- DB
+    CP --> DB
     AGENT ==>|"gRPC tunnel<br/>(outbound TLS :5443)"| NGX
     NGX -->|"TCP passthrough"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
@@ -240,7 +240,7 @@ flowchart TB
     NGX -- "/api/*, /healthz" --> CP
     NGX -- "/* (pages)" --> WEB
     WEB -- "REST (SSR)" --> CP
-    CP --- DB
+    CP --> DB
 
     CLI -. "OIDC PKCE" .-> OIDC
     WEB -. "Server OIDC" .-> OIDC
