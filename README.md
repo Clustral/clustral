@@ -23,6 +23,7 @@ graph TB
     end
 
     subgraph "Clustral Platform"
+        NGX[nginx gateway<br/>:443 HTTPS / :5443 gRPC-TLS]
         WEB[Web UI<br/>Next.js 14]
         CP[ControlPlane<br/>ASP.NET Core]
         DB[(MongoDB)]
@@ -35,19 +36,23 @@ graph TB
         K8S[k8s API Server]
     end
 
-    CLI -.->|".well-known discovery"| WEB
+    CLI -.->|".well-known discovery"| NGX
+    CLI -->|REST + kubectl proxy| NGX
+    KB -->|kubectl proxy| NGX
+    NGX -->|"/api/*, /healthz"| CP
+    NGX -->|"/*"| WEB
     CLI -->|OIDC PKCE| OIDC
     WEB -->|Server-side OIDC| OIDC
-    CLI -->|REST API| CP
-    KB -->|kubectl proxy| CP
-    WEB -->|REST API| CP
+    WEB -->|REST (SSR)| CP
     CP --- DB
-    CP <-->|gRPC tunnel| AGENT
+    AGENT ==>|"gRPC tunnel<br/>(outbound TLS :5443)"| NGX
+    NGX -->|"TCP passthrough"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
 | Component        | Stack                                       | Description                                     |
 |------------------|---------------------------------------------|-------------------------------------------------|
+| **nginx**        | nginx 1.27                                  | Unified gateway — TLS termination, routing      |
 | **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | Dashboard, server-side OIDC via NextAuth        |
 | **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
 | **Agent**        | Go 1.23, gRPC, 16MB static binary           | Deployed per cluster, tunnels kubectl traffic   |
@@ -63,14 +68,16 @@ Clustral provides secure, tunneled `kubectl` access to Kubernetes clusters witho
 sequenceDiagram
     participant User
     participant CLI as clustral CLI
+    participant NGX as nginx :443
     participant WEB as Web UI
     participant CP as ControlPlane
     participant OIDC as OIDC Provider
 
     User->>CLI: clustral login app.example.com
-    CLI->>WEB: GET /.well-known/clustral-configuration
+    CLI->>NGX: GET /.well-known/clustral-configuration
+    NGX->>WEB: proxy (catch-all)
     WEB-->>CLI: {controlPlaneUrl, oidcAuthority, oidcClientId}
-    Note over CLI: Saves direct ControlPlane URL<br/>All subsequent calls bypass Web UI
+    Note over CLI: Saves ControlPlane URL (nginx :443)<br/>All subsequent calls go through nginx
     CLI->>OIDC: Authorization Code + PKCE
     OIDC-->>User: Browser login page
     User->>OIDC: Enter credentials
@@ -78,7 +85,8 @@ sequenceDiagram
     CLI->>OIDC: Exchange code for tokens
     OIDC-->>CLI: JWT access token
     CLI->>CLI: Store JWT in ~/.clustral/token
-    CLI->>CP: GET /api/v1/users/me (direct)
+    CLI->>NGX: GET /api/v1/users/me
+    NGX->>CP: proxy /api/v1/*
     CP-->>CLI: User profile
     CLI-->>User: "Logged in successfully"
 ```
@@ -88,20 +96,23 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant kubectl
+    participant NGX as nginx :443
     participant CP as ControlPlane
     participant Agent as Agent (Go)
     participant K8S as k8s API
 
-    Note over Agent,CP: Persistent gRPC tunnel (outbound from Agent)
+    Note over Agent,NGX: Persistent gRPC tunnel via nginx :5443 (TLS)
 
-    kubectl->>CP: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
+    kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
+    NGX->>CP: proxy /api/proxy/*
     CP->>CP: Validate credential<br/>Look up user + role assignment
     CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
     Agent->>Agent: Translate to k8s Impersonate-* headers
     Agent->>K8S: GET /api/v1/pods<br/>Impersonate-User: admin@clustral.local<br/>Impersonate-Group: system:masters<br/>Authorization: Bearer {SA token}
     K8S-->>Agent: Pod list (JSON)
     Agent-->>CP: HttpResponseFrame via gRPC tunnel
-    CP-->>kubectl: Pod list (JSON)
+    CP-->>NGX: Pod list (JSON)
+    NGX-->>kubectl: Pod list (JSON)
 ```
 
 ### Agent Tunnel Lifecycle
@@ -109,17 +120,22 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Agent as Agent (Go)
+    participant NGX as nginx :5443
     participant CP as ControlPlane
     participant DB as MongoDB
 
-    Agent->>CP: AuthService.IssueAgentCredential<br/>(bootstrap token, cluster ID)
+    Note over Agent,NGX: All gRPC traffic flows through nginx<br/>TLS terminated at :5443, TCP passthrough to CP :5001
+
+    Agent->>NGX: AuthService.IssueAgentCredential (gRPC/TLS)
+    NGX->>CP: TCP passthrough :5001
     CP->>DB: Store credential hash
     CP-->>Agent: Agent credential + expiry
     Agent->>Agent: Save to /etc/clustral/agent.token
 
     loop Reconnect with backoff
-        Agent->>CP: TunnelService.OpenTunnel (gRPC stream)
-        Agent->>CP: AgentHello (cluster ID, version)
+        Agent->>NGX: TunnelService.OpenTunnel (gRPC/TLS stream)
+        NGX->>CP: TCP passthrough (persistent)
+        Agent->>CP: AgentHello (cluster ID, agent version, k8s version)
         CP-->>Agent: TunnelHello (ack)
         CP->>DB: Set cluster status = Connected
 
@@ -145,21 +161,24 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Admin
+    participant NGX as nginx :443
     participant WebUI as Web UI
     participant CP as ControlPlane
     participant DB as MongoDB
     participant Agent
     participant K8S as k8s API
 
-    Admin->>WebUI: Create role "k8s-admin"<br/>groups: [system:masters]
+    Admin->>NGX: Create role "k8s-admin"
+    NGX->>WebUI: proxy (pages)
     WebUI->>CP: POST /api/v1/roles
     CP->>DB: Store role
 
-    Admin->>WebUI: Assign "k8s-admin" to user<br/>for cluster "production"
+    Admin->>NGX: Assign "k8s-admin" to user
+    NGX->>WebUI: proxy (pages)
     WebUI->>CP: POST /api/v1/users/{id}/assignments
     CP->>DB: Store assignment
 
-    Note over CP: Later, user runs kubectl...
+    Note over CP: Later, user runs kubectl via nginx...
 
     CP->>DB: Look up assignment for user + cluster
     CP->>DB: Load role → groups: [system:masters]
@@ -173,11 +192,12 @@ sequenceDiagram
 
 | Layer | Mechanism |
 |---|---|
-| User → ControlPlane | OIDC JWT (from any provider) |
-| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw) |
-| Agent → ControlPlane | Long-lived agent credential (issued via bootstrap token, rotatable) |
+| External → nginx | TLS termination on :443 (HTTPS) and :5443 (gRPC/TLS) |
+| User → ControlPlane | OIDC JWT (from any provider), routed through nginx |
+| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw), via nginx :443 |
+| Agent → ControlPlane | Long-lived agent credential (issued via bootstrap token, rotatable), via nginx :5443 |
 | Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
-| Tunnel transport | gRPC over HTTP/2 (TLS in production) |
+| Tunnel transport | gRPC over TLS via nginx L4 TCP passthrough (no HTTP/2 parsing) |
 | Agent connectivity | Outbound only — no inbound firewall rules needed |
 | Per-user k8s access | Role assignments with k8s group impersonation (system:masters, etc.) |
 | Proxy rate limiting | Per-credential token bucket (100 QPS sustained, 200 burst) |
@@ -195,9 +215,9 @@ flowchart TB
     OIDC["OIDC Provider\n(Keycloak / Auth0 / Okta)\n:443"]
 
     subgraph platform ["Clustral Platform"]
-        LB["Load Balancer\n:443 TLS"]
+        NGX["nginx gateway\n:443 HTTPS | :5443 gRPC/TLS"]
 
-        subgraph app ["Application Zone"]
+        subgraph app ["Application Zone (internal only)"]
             WEB["Web UI\n:3000"]
             CP["ControlPlane\nREST :5000 | gRPC :5001"]
             DB[("MongoDB\n:27017")]
@@ -214,11 +234,11 @@ flowchart TB
         K8S_B["k8s API :6443"]
     end
 
-    BROWSER -- "HTTPS" --> LB
-    CLI -. "discovery only" .-> LB
-    CLI -- "REST + kubectl" --> CP
-    KUBECTL -- "kubectl proxy" --> CP
-    LB --> WEB
+    BROWSER -- "HTTPS :443" --> NGX
+    CLI -- "HTTPS :443" --> NGX
+    KUBECTL -- "HTTPS :443" --> NGX
+    NGX -- "/api/*, /healthz" --> CP
+    NGX -- "/* (pages)" --> WEB
     WEB -- "REST (SSR)" --> CP
     CP --- DB
 
@@ -226,12 +246,13 @@ flowchart TB
     WEB -. "Server OIDC" .-> OIDC
     CP -. "JWKS" .-> OIDC
 
-    AGENT_A == "gRPC tunnel\n(outbound TLS)" ==> CP
-    AGENT_B == "gRPC tunnel\n(outbound TLS)" ==> CP
+    AGENT_A == "gRPC/TLS :5443\n(outbound only)" ==> NGX
+    AGENT_B == "gRPC/TLS :5443\n(outbound only)" ==> NGX
+    NGX == "TCP passthrough\n:5001" ==> CP
     AGENT_A --> K8S_A
     AGENT_B --> K8S_B
 
-    style LB fill:#fdd835,stroke:#f9a825,color:#000
+    style NGX fill:#fdd835,stroke:#f9a825,color:#000
     style OIDC fill:#ce93d8,stroke:#7b1fa2,color:#000
     style DB fill:#a5d6a7,stroke:#388e3c,color:#000
     style CP fill:#90caf9,stroke:#1565c0,color:#000
@@ -250,7 +271,8 @@ flowchart TB
 | Component | Port | Protocol | Direction | Description |
 |---|---|---|---|---|
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
-| **nginx gRPC** | 5443 | gRPC/TLS | Inbound | TLS termination — agent tunnel, CLI auth |
+| **nginx gRPC (TLS)** | 5443 | gRPC/TLS | Inbound | L4 TCP passthrough — agent tunnel, credential auth |
+| **nginx gRPC (dev)** | 5444 | gRPC | Inbound | L4 TCP passthrough — plaintext for local dev |
 | **ControlPlane REST** | 5000 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
 | **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | gRPC services (proxied by nginx) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
@@ -267,9 +289,8 @@ flowchart TB
 | `:443` | `/api/proxy/*` | ControlPlane `:5000` | kubectl tunnel proxy |
 | `:443` | `/healthz*` | ControlPlane `:5000` | Health checks |
 | `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
-| `:5443` | `clustral.v1.TunnelService` | ControlPlane `:5001` | Agent bidirectional tunnel |
-| `:5443` | `clustral.v1.ClusterService` | ControlPlane `:5001` | Agent heartbeat |
-| `:5443` | `clustral.v1.AuthService` | ControlPlane `:5001` | Credential issuance/rotation |
+| `:5443` | *(L4 TCP passthrough)* | ControlPlane `:5001` | All gRPC over TLS: tunnel, heartbeat, auth |
+| `:5444` | *(L4 TCP passthrough)* | ControlPlane `:5001` | All gRPC plaintext (local dev only) |
 
 #### Network Requirements
 
