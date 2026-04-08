@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using Clustral.ControlPlane.Infrastructure;
+using Clustral.Sdk.Crypto;
 using Clustral.V1;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
@@ -15,9 +17,19 @@ namespace Clustral.ControlPlane.Protos;
 /// </summary>
 public sealed class ClusterServiceImpl(
     ClustralDb db,
+    CertificateAuthority ca,
+    JwtIssuer jwtIssuer,
     ILogger<ClusterServiceImpl> logger)
     : ClusterService.ClusterServiceBase
 {
+    private static readonly IReadOnlyList<string> DefaultAllowedRpcs =
+    [
+        "ClusterService/RegisterAgent",
+        "ClusterService/UpdateStatus",
+        "ClusterService/RenewCertificate",
+        "ClusterService/RenewToken",
+        "TunnelService/OpenTunnel",
+    ];
     public override async Task<RegisterClusterResponse> Register(
         RegisterClusterRequest request,
         ServerCallContext context)
@@ -152,6 +164,132 @@ public sealed class ClusterServiceImpl(
 
         logger.LogInformation("Cluster {ClusterId} deregistered via gRPC", id);
         return new Empty();
+    }
+
+    // ── RegisterAgent ─────────────────────────────────────────────────────────
+
+    public override async Task<RegisterAgentResponse> RegisterAgent(
+        RegisterAgentRequest request,
+        ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.ClusterId, out var clusterId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "cluster_id must be a valid UUID"));
+
+        if (string.IsNullOrWhiteSpace(request.BootstrapToken))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "bootstrap_token is required"));
+
+        var cluster = await db.Clusters
+            .Find(c => c.Id == clusterId)
+            .FirstOrDefaultAsync(context.CancellationToken)
+            ?? throw new RpcException(new Status(StatusCode.NotFound, $"Cluster {request.ClusterId} not found"));
+
+        // Verify bootstrap token
+        if (string.IsNullOrEmpty(cluster.BootstrapTokenHash))
+            throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                "Bootstrap token has already been consumed. Re-register the cluster to generate a new one."));
+
+        var incomingHash = HashToken(request.BootstrapToken);
+        if (!CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(incomingHash),
+                System.Text.Encoding.UTF8.GetBytes(cluster.BootstrapTokenHash)))
+        {
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid bootstrap token"));
+        }
+
+        // Consume the bootstrap token
+        cluster.ConsumeBootstrapToken();
+
+        // Issue client certificate
+        var agentId = clusterId.ToString();
+        var orgId = "clustral"; // default org for single-tenant deployments
+        var (certPem, keyPem) = ca.IssueCertificate(agentId, agentId, orgId);
+
+        // Issue JWT
+        var jwt = jwtIssuer.IssueToken(agentId, orgId, agentId, DefaultAllowedRpcs, cluster.TokenVersion);
+        var jwtExpiry = jwtIssuer.GetTokenExpiry();
+
+        // Parse cert to get fingerprint and expiry
+        var clientCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(certPem);
+        cluster.RecordCertificateFingerprint(CertificateAuthority.Fingerprint(clientCert));
+
+        await db.Clusters.ReplaceOneAsync(
+            c => c.Id == clusterId, cluster, cancellationToken: context.CancellationToken);
+
+        logger.LogInformation("Agent registered for cluster {ClusterId} with mTLS + JWT", clusterId);
+
+        return new RegisterAgentResponse
+        {
+            ClusterId = clusterId.ToString(),
+            ClientCertificatePem = certPem,
+            ClientPrivateKeyPem = keyPem,
+            CaCertificatePem = ca.GetCaCertificatePem(),
+            Jwt = jwt,
+            CertExpiresAt = Timestamp.FromDateTimeOffset(new DateTimeOffset(clientCert.NotAfter, TimeSpan.Zero)),
+            JwtExpiresAt = Timestamp.FromDateTimeOffset(jwtExpiry),
+        };
+    }
+
+    // ── RenewCertificate ─────────────────────────────────────────────────────
+
+    public override async Task<RenewCertificateResponse> RenewCertificate(
+        RenewCertificateRequest request,
+        ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.ClusterId, out var clusterId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "cluster_id must be a valid UUID"));
+
+        var cluster = await db.Clusters
+            .Find(c => c.Id == clusterId)
+            .FirstOrDefaultAsync(context.CancellationToken)
+            ?? throw new RpcException(new Status(StatusCode.NotFound, $"Cluster {request.ClusterId} not found"));
+
+        var agentId = clusterId.ToString();
+        var orgId = "clustral";
+        var (certPem, keyPem) = ca.IssueCertificate(agentId, agentId, orgId);
+
+        var clientCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(certPem);
+        cluster.RecordCertificateFingerprint(CertificateAuthority.Fingerprint(clientCert));
+
+        await db.Clusters.ReplaceOneAsync(
+            c => c.Id == clusterId, cluster, cancellationToken: context.CancellationToken);
+
+        logger.LogInformation("Certificate renewed for cluster {ClusterId}", clusterId);
+
+        return new RenewCertificateResponse
+        {
+            ClientCertificatePem = certPem,
+            ClientPrivateKeyPem = keyPem,
+            ExpiresAt = Timestamp.FromDateTimeOffset(new DateTimeOffset(clientCert.NotAfter, TimeSpan.Zero)),
+        };
+    }
+
+    // ── RenewToken ───────────────────────────────────────────────────────────
+
+    public override async Task<RenewTokenResponse> RenewToken(
+        RenewTokenRequest request,
+        ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.ClusterId, out var clusterId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "cluster_id must be a valid UUID"));
+
+        var cluster = await db.Clusters
+            .Find(c => c.Id == clusterId)
+            .FirstOrDefaultAsync(context.CancellationToken)
+            ?? throw new RpcException(new Status(StatusCode.NotFound, $"Cluster {request.ClusterId} not found"));
+
+        var agentId = clusterId.ToString();
+        var orgId = "clustral";
+        var jwt = jwtIssuer.IssueToken(agentId, orgId, agentId, DefaultAllowedRpcs, cluster.TokenVersion);
+        var jwtExpiry = jwtIssuer.GetTokenExpiry();
+
+        logger.LogInformation("JWT renewed for cluster {ClusterId} (tokenVersion={Version})",
+            clusterId, cluster.TokenVersion);
+
+        return new RenewTokenResponse
+        {
+            Jwt = jwt,
+            ExpiresAt = Timestamp.FromDateTimeOffset(jwtExpiry),
+        };
     }
 
     // -------------------------------------------------------------------------

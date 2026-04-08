@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,12 +12,12 @@ import (
 	"time"
 
 	pb "clustral-agent/gen/clustral/v1"
+	"clustral-agent/internal/auth"
 	"clustral-agent/internal/config"
 	"clustral-agent/internal/credential"
 	"clustral-agent/internal/k8s"
 	"clustral-agent/internal/proxy"
 	"clustral-agent/internal/tunnel"
-	"crypto/tls"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
@@ -38,10 +39,23 @@ func main() {
 
 	creds := credential.NewStore(cfg.CredentialPath)
 
-	// Bootstrap credential if needed.
-	if err := ensureCredential(cfg, creds, logger); err != nil {
-		logger.Error("Failed to bootstrap credential", "error", err)
-		os.Exit(1)
+	// Bootstrap: exchange bootstrap token for mTLS cert + JWT.
+	if cfg.BootstrapToken != "" {
+		logger.Info("Bootstrap token provided — registering agent with mTLS + JWT")
+		if err := registerAgent(cfg, creds, logger); err != nil {
+			logger.Error("Failed to register agent", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// Check for mTLS credentials.
+	if !creds.HasMTLSCredentials() {
+		// Fall back to legacy bearer token flow.
+		logger.Info("No mTLS credentials found — using legacy bearer token auth")
+		if err := ensureLegacyCredential(cfg, creds, logger); err != nil {
+			logger.Error("Failed to bootstrap credential", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	// Create k8s proxy.
@@ -55,31 +69,80 @@ func main() {
 		logger.Info("Discovered Kubernetes version", "version", k8sVersion)
 	}
 
-	// Run tunnel.
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	mgr := tunnel.NewManager(cfg, creds, p, logger, k8sVersion)
-	mgr.Run(ctx)
+	// Start RenewalManager if mTLS credentials exist.
+	if creds.HasMTLSCredentials() {
+		jwt, err := creds.ReadJWT()
+		if err != nil {
+			logger.Error("Failed to read JWT", "error", err)
+			os.Exit(1)
+		}
+		jwtCreds := auth.NewJWTCredentials(jwt)
+
+		renewMgr := auth.NewRenewalManager(cfg, creds, jwtCreds, logger)
+		go renewMgr.Run(ctx)
+
+		mgr := tunnel.NewManager(cfg, creds, p, logger, k8sVersion)
+		mgr.SetMTLSCredentials(jwtCreds)
+		mgr.Run(ctx)
+	} else {
+		// Legacy bearer token tunnel.
+		mgr := tunnel.NewManager(cfg, creds, p, logger, k8sVersion)
+		mgr.Run(ctx)
+	}
 
 	logger.Info("Clustral Agent stopped")
 }
 
-func ensureCredential(cfg *config.Config, creds *credential.Store, logger *slog.Logger) error {
-	// If bootstrap token provided, always issue fresh credential.
-	if cfg.BootstrapToken != "" {
-		logger.Info("Bootstrap token provided — issuing fresh credential")
-		return issueCredential(cfg, creds, logger)
+// registerAgent exchanges the bootstrap token for a client certificate + JWT
+// via ClusterService.RegisterAgent. This is the new mTLS bootstrap flow.
+func registerAgent(cfg *config.Config, creds *credential.Store, logger *slog.Logger) error {
+	conn, err := grpc.NewClient(stripScheme(cfg.ControlPlaneURL),
+		grpcTransportCreds(cfg.ControlPlaneURL))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	client := pb.NewClusterServiceClient(conn)
+
+	resp, err := client.RegisterAgent(context.Background(), &pb.RegisterAgentRequest{
+		ClusterId:      cfg.ClusterID,
+		BootstrapToken: cfg.BootstrapToken,
+	})
+	if err != nil {
+		return fmt.Errorf("RegisterAgent: %w", err)
 	}
 
+	// Save all credentials to disk.
+	if err := creds.SaveCertAndKey([]byte(resp.ClientCertificatePem), []byte(resp.ClientPrivateKeyPem)); err != nil {
+		return fmt.Errorf("save cert: %w", err)
+	}
+	if err := creds.SaveCACert([]byte(resp.CaCertificatePem)); err != nil {
+		return fmt.Errorf("save CA cert: %w", err)
+	}
+	if err := creds.SaveJWT(resp.Jwt); err != nil {
+		return fmt.Errorf("save JWT: %w", err)
+	}
+
+	logger.Info("Agent registered with mTLS + JWT",
+		"clusterId", resp.ClusterId,
+		"certExpiresAt", resp.CertExpiresAt.AsTime(),
+		"jwtExpiresAt", resp.JwtExpiresAt.AsTime())
+	return nil
+}
+
+// ensureLegacyCredential handles the old bearer token bootstrap (backward compat).
+func ensureLegacyCredential(cfg *config.Config, creds *credential.Store, logger *slog.Logger) error {
 	token, err := creds.ReadToken()
 	if err != nil {
 		return err
 	}
 
 	if token == "" {
-		logger.Info("No credential found — need bootstrap token")
-		return fmt.Errorf("AGENT_BOOTSTRAP_TOKEN is required when no credential file exists")
+		return fmt.Errorf("no credentials found — AGENT_BOOTSTRAP_TOKEN is required for initial registration")
 	}
 
 	expiry, err := creds.ReadExpiry()
@@ -89,44 +152,14 @@ func ensureCredential(cfg *config.Config, creds *credential.Store, logger *slog.
 
 	if !expiry.IsZero() && time.Until(expiry) < cfg.CredentialRotationThreshold {
 		logger.Info("Credential expires soon — rotating")
-		return rotateCredential(cfg, creds, token, logger)
+		return rotateLegacyCredential(cfg, creds, token, logger)
 	}
 
-	logger.Info("Using existing credential", "path", cfg.CredentialPath)
+	logger.Info("Using existing legacy credential", "path", cfg.CredentialPath)
 	return nil
 }
 
-func issueCredential(cfg *config.Config, creds *credential.Store, logger *slog.Logger) error {
-	conn, err := grpc.NewClient(stripScheme(cfg.ControlPlaneURL),
-		grpcTransportCreds(cfg.ControlPlaneURL))
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	client := pb.NewAuthServiceClient(conn)
-
-	resp, err := client.IssueAgentCredential(context.Background(), &pb.IssueAgentCredentialRequest{
-		ClusterId:         cfg.ClusterID,
-		BootstrapToken:    cfg.BootstrapToken,
-		AgentPublicKeyPem: cfg.AgentPublicKeyPem,
-	})
-	if err != nil {
-		return fmt.Errorf("IssueAgentCredential: %w", err)
-	}
-
-	expiresAt := resp.ExpiresAt.AsTime()
-	if err := creds.Save(resp.Token, expiresAt); err != nil {
-		return fmt.Errorf("save credential: %w", err)
-	}
-
-	logger.Info("Agent credential issued",
-		"credentialId", resp.CredentialId,
-		"expiresAt", expiresAt)
-	return nil
-}
-
-func rotateCredential(cfg *config.Config, creds *credential.Store, currentToken string, logger *slog.Logger) error {
+func rotateLegacyCredential(cfg *config.Config, creds *credential.Store, currentToken string, logger *slog.Logger) error {
 	conn, err := grpc.NewClient(stripScheme(cfg.ControlPlaneURL),
 		grpcTransportCreds(cfg.ControlPlaneURL))
 	if err != nil {
@@ -160,7 +193,7 @@ func rotateCredential(cfg *config.Config, creds *credential.Store, currentToken 
 func grpcTransportCreds(rawURL string) grpc.DialOption {
 	if strings.HasPrefix(rawURL, "https://") {
 		return grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true, // self-signed certs in dev; use proper CA in production
+			InsecureSkipVerify: true, // used only for initial bootstrap; mTLS uses proper CA after
 		}))
 	}
 	return grpc.WithTransportCredentials(grpcinsecure.NewCredentials())

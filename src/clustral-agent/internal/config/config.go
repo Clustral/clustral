@@ -22,6 +22,9 @@ type Config struct {
 	ReconnectBackoffMultiplier float64
 	ReconnectMaxJitter         time.Duration
 	AgentVersion               string
+	CertRenewThreshold         time.Duration
+	JWTRenewThreshold          time.Duration
+	RenewalCheckInterval       time.Duration
 }
 
 func Load() *Config {
@@ -40,6 +43,9 @@ func Load() *Config {
 		ReconnectBackoffMultiplier: envFloat("AGENT_RECONNECT_BACKOFF_MULTIPLIER", 2.0),
 		ReconnectMaxJitter:         envDuration("AGENT_RECONNECT_MAX_JITTER", 5*time.Second),
 		AgentVersion:               envStr("AGENT_VERSION", "0.1.0"),
+		CertRenewThreshold:        envDuration("AGENT_CERT_RENEW_THRESHOLD", 30*24*time.Hour),
+		JWTRenewThreshold:         envDuration("AGENT_JWT_RENEW_THRESHOLD", 7*24*time.Hour),
+		RenewalCheckInterval:      envDuration("AGENT_RENEWAL_CHECK_INTERVAL", 6*time.Hour),
 	}
 }
 

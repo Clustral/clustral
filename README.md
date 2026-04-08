@@ -23,7 +23,7 @@ graph TB
     end
 
     subgraph "Clustral Platform"
-        NGX[nginx gateway<br/>:443 HTTPS / :5443 gRPC-TLS]
+        NGX[nginx gateway<br/>:443 HTTPS]
         WEB[Web UI<br/>Next.js 14]
         CP[ControlPlane<br/>ASP.NET Core]
         DB[(MongoDB)]
@@ -45,8 +45,7 @@ graph TB
     WEB -->|Server-side OIDC| OIDC
     WEB -->|"REST (SSR)"| CP
     CP --> DB
-    AGENT ==>|"gRPC tunnel<br/>(outbound TLS :5443)"| NGX
-    NGX -->|"TCP passthrough"| CP
+    AGENT ==>|"gRPC mTLS :5443<br/>(direct to Kestrel)"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
@@ -120,21 +119,20 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Agent as Agent (Go)
-    participant NGX as nginx :5443
-    participant CP as ControlPlane
+    participant CP as ControlPlane :5443
     participant DB as MongoDB
 
-    Note over Agent,NGX: All gRPC traffic flows through nginx<br/>TLS terminated at :5443, TCP passthrough to CP :5001
+    Note over Agent,CP: Agent connects directly to Kestrel :5443 (mTLS)
 
-    Agent->>NGX: AuthService.IssueAgentCredential (gRPC/TLS)
-    NGX->>CP: TCP passthrough :5001
-    CP->>DB: Store credential hash
-    CP-->>Agent: Agent credential + expiry
-    Agent->>Agent: Save to /etc/clustral/agent.token
+    Agent->>CP: ClusterService.RegisterAgent (bootstrap token)
+    CP->>CP: Verify token, issue cert + JWT
+    CP->>DB: Store certificate fingerprint
+    CP-->>Agent: client cert + key + CA cert + JWT
+    Agent->>Agent: Save to /etc/clustral/tls/
 
     loop Reconnect with backoff
-        Agent->>NGX: TunnelService.OpenTunnel (gRPC/TLS stream)
-        NGX->>CP: TCP passthrough (persistent)
+        Agent->>CP: TunnelService.OpenTunnel (mTLS + JWT)
+        CP->>CP: Verify cert chain, JWT, CN match, tokenVersion
         Agent->>CP: AgentHello (cluster ID, agent version, k8s version)
         CP-->>Agent: TunnelHello (ack)
         CP->>DB: Set cluster status = Connected
@@ -188,16 +186,50 @@ sequenceDiagram
     K8S-->>Agent: Authorized ✓
 ```
 
+### Agent mTLS Authentication
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant NGX as nginx :443
+    participant WebUI as Web UI
+    participant CP as ControlPlane
+    participant Agent as Agent
+
+    Admin->>NGX: Register cluster
+    NGX->>WebUI: proxy
+    WebUI->>CP: POST /api/v1/clusters
+    CP-->>WebUI: clusterId + bootstrap token
+
+    Note over Agent: First boot with bootstrap token
+    Agent->>CP: ClusterService.RegisterAgent :5443
+    CP->>CP: Verify bootstrap token
+    CP->>CP: Issue client cert (RSA 2048, 395d, CN=agentId)
+    CP->>CP: Issue JWT (RS256, 30d, tokenVersion)
+    CP-->>Agent: cert + key + CA cert + JWT
+    Agent->>Agent: Save credentials to disk
+
+    Note over Agent: Normal operation (mTLS + JWT)
+    Agent->>CP: TunnelService.OpenTunnel :5443 (mTLS + JWT)
+    CP->>CP: Verify cert chain, JWT, CN match, tokenVersion
+    CP-->>Agent: TunnelHello
+
+    Note over Agent: Auto-renewal (every 6h check)
+    Agent->>CP: RenewCertificate (cert expiry < 30d)
+    Agent->>CP: RenewToken (JWT expiry < 7d)
+```
+
 ### Security Model
 
 | Layer | Mechanism |
 |---|---|
-| External → nginx | TLS termination on :443 (HTTPS) and :5443 (gRPC/TLS) |
-| User → ControlPlane | OIDC JWT (from any provider), routed through nginx |
+| External → nginx | TLS termination on :443 (HTTPS) — REST API, kubectl proxy, Web UI |
+| User → ControlPlane | OIDC JWT (from any provider), routed through nginx :443 |
 | kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw), via nginx :443 |
-| Agent → ControlPlane | Long-lived agent credential (issued via bootstrap token, rotatable), via nginx :5443 |
+| Agent → ControlPlane | mTLS client certificate (RSA 2048, 395d) + RS256 JWT (30d), direct to Kestrel :5443 |
+| Agent credential revocation | tokenVersion increment invalidates all agent JWTs instantly |
 | Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
-| Tunnel transport | gRPC over TLS via nginx L4 TCP passthrough (no HTTP/2 parsing) |
+| Tunnel transport | gRPC over mTLS — agents connect directly to Kestrel :5443 (no nginx) |
 | Agent connectivity | Outbound only — no inbound firewall rules needed |
 | Per-user k8s access | Role assignments with k8s group impersonation (system:masters, etc.) |
 | Proxy rate limiting | Per-credential token bucket (100 QPS sustained, 200 burst) |
@@ -215,11 +247,11 @@ flowchart TB
     OIDC["OIDC Provider\n(Keycloak / Auth0 / Okta)\n:443"]
 
     subgraph platform ["Clustral Platform"]
-        NGX["nginx gateway\n:443 HTTPS | :5443 gRPC/TLS"]
+        NGX["nginx gateway\n:443 HTTPS"]
 
-        subgraph app ["Application Zone (internal only)"]
+        subgraph app ["Application Zone"]
             WEB["Web UI\n:3000"]
-            CP["ControlPlane\nREST :5000 | gRPC :5001"]
+            CP["ControlPlane\nREST :5000 | gRPC mTLS :5443"]
             DB[("MongoDB\n:27017")]
         end
     end
@@ -246,9 +278,8 @@ flowchart TB
     WEB -. "Server OIDC" .-> OIDC
     CP -. "JWKS" .-> OIDC
 
-    AGENT_A == "gRPC/TLS :5443\n(outbound only)" ==> NGX
-    AGENT_B == "gRPC/TLS :5443\n(outbound only)" ==> NGX
-    NGX == "TCP passthrough\n:5001" ==> CP
+    AGENT_A == "gRPC mTLS :5443\n(outbound, direct)" ==> CP
+    AGENT_B == "gRPC mTLS :5443\n(outbound, direct)" ==> CP
     AGENT_A --> K8S_A
     AGENT_B --> K8S_B
 
@@ -271,14 +302,13 @@ flowchart TB
 | Component | Port | Protocol | Direction | Description |
 |---|---|---|---|---|
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
-| **nginx gRPC (TLS)** | 5443 | gRPC/TLS | Inbound | L4 TCP passthrough — agent tunnel, credential auth |
-| **nginx gRPC (dev)** | 5444 | gRPC | Inbound | L4 TCP passthrough — plaintext for local dev |
+| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Direct** | Agent tunnel — mTLS + JWT, no nginx |
 | **ControlPlane REST** | 5000 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
-| **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | gRPC services (proxied by nginx) |
+| **ControlPlane gRPC** | 5001 | HTTP/2 | Internal | Legacy gRPC (local dev, migration) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **MongoDB** | 27017 | TCP | Internal | Database (never exposed publicly) |
 | **OIDC Provider** | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta — browser + server flows |
-| **Agent → nginx** | 5443 | gRPC/TLS | **Outbound only** | No inbound rules needed on cluster side |
+| **Agent → ControlPlane** | 5443 | gRPC/mTLS | **Outbound only** | Direct to Kestrel, no inbound rules needed |
 | **Agent → k8s API** | 6443 | HTTPS | In-cluster | ServiceAccount token + impersonation headers |
 
 #### nginx Routing
@@ -289,15 +319,16 @@ flowchart TB
 | `:443` | `/api/proxy/*` | ControlPlane `:5000` | kubectl tunnel proxy |
 | `:443` | `/healthz*` | ControlPlane `:5000` | Health checks |
 | `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
-| `:5443` | *(L4 TCP passthrough)* | ControlPlane `:5001` | All gRPC over TLS: tunnel, heartbeat, auth |
-| `:5444` | *(L4 TCP passthrough)* | ControlPlane `:5001` | All gRPC plaintext (local dev only) |
+
+> gRPC traffic (`:5443`) is **not** routed through nginx. Agents connect directly to Kestrel to avoid tunnel drops caused by nginx restarts.
 
 #### Network Requirements
 
-- **Agents connect outbound** to the nginx gRPC port (`:5443`) — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
-- **ControlPlane and Web UI are internal only** — not exposed publicly; nginx handles all external traffic
+- **Agents connect outbound** to the ControlPlane gRPC port (`:5443`) directly (mTLS) — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
+- **gRPC :5443 is NOT proxied through nginx** — persistent bidirectional tunnels must not be interrupted by nginx restarts or timeouts
+- **ControlPlane REST and Web UI are internal only** — not exposed publicly; nginx handles all HTTPS traffic on :443
 - **MongoDB** must never be exposed outside the application zone
-- **TLS** is required in production for all external traffic (nginx terminates TLS on both `:443` and `:5443`)
+- **TLS**: nginx terminates TLS on :443 for REST/Web UI; Kestrel handles mTLS on :5443 for agent gRPC
 - **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the ControlPlane (JWKS key fetch)
 - **kubectl traffic** flows: kubectl → nginx `:443` → ControlPlane → gRPC tunnel → Agent → k8s API
 
@@ -398,6 +429,12 @@ services:
       Oidc__ClientId: "clustral-control-plane"
       Oidc__Audience: "clustral-control-plane"
       Oidc__RequireHttpsMetadata: "false"
+      CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
+      CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
+    ports:
+      - "5443:5443"   # gRPC mTLS — agents connect directly
+    volumes:
+      - ./ca:/etc/clustral/ca:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5000/healthz/ready || exit 1"]
       interval: 10s
@@ -428,7 +465,7 @@ services:
         condition: service_healthy
     ports:
       - "443:443"
-      - "5443:5443"
+      # gRPC :5443 is exposed directly from controlplane (not nginx)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - certs:/etc/nginx/certs
@@ -463,13 +500,24 @@ curl -sL https://raw.githubusercontent.com/Clustral/clustral/main/infra/keycloak
   -o keycloak/clustral-realm.json
 ```
 
-### 3. Start
+### 3. Generate the CA certificate
+
+```bash
+mkdir -p ca
+openssl genrsa -out ca/ca.key 2048
+openssl req -x509 -new -nodes \
+  -key ca/ca.key -sha256 -days 3650 \
+  -subj "/CN=Clustral CA" \
+  -out ca/ca.crt
+```
+
+### 4. Start
 
 ```bash
 docker compose up -d
 ```
 
-### 4. Default users (Keycloak)
+### 5. Default users (Keycloak)
 
 | Username | Password | Role             |
 |----------|----------|------------------|
@@ -903,12 +951,91 @@ cd src/clustral-agent && go test -race ./...
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `AGENT_CLUSTER_ID` | Yes | — | Cluster ID from registration |
-| `AGENT_CONTROL_PLANE_URL` | Yes | — | gRPC endpoint (nginx `:5443` in production, ControlPlane `:5001` for local dev) |
-| `AGENT_BOOTSTRAP_TOKEN` | First boot | — | One-time bootstrap token |
-| `AGENT_CREDENTIAL_PATH` | No | `~/.clustral/agent.token` | Token file path |
+| `AGENT_CONTROL_PLANE_URL` | Yes | — | gRPC endpoint (Kestrel `:5443` for mTLS, `:5001` for local dev) |
+| `AGENT_BOOTSTRAP_TOKEN` | First boot | — | One-time bootstrap token (exchanged for cert + JWT) |
+| `AGENT_CREDENTIAL_PATH` | No | `~/.clustral/agent.token` | Base path for credential files |
 | `AGENT_KUBERNETES_API_URL` | No | `https://kubernetes.default.svc` | k8s API server URL |
 | `AGENT_KUBERNETES_SKIP_TLS_VERIFY` | No | `false` | Skip k8s TLS (dev only) |
 | `AGENT_HEARTBEAT_INTERVAL` | No | `30s` | Heartbeat frequency |
+| `AGENT_CERT_RENEW_THRESHOLD` | No | `720h` | Renew cert if expiry within this duration |
+| `AGENT_JWT_RENEW_THRESHOLD` | No | `168h` | Renew JWT if expiry within this duration |
+| `AGENT_RENEWAL_CHECK_INTERVAL` | No | `6h` | How often to check cert/JWT expiry |
+
+## Certificate Authority Setup
+
+The ControlPlane acts as an internal Certificate Authority (CA) that signs agent client certificates for mTLS and agent JWTs for authorization.
+
+### Development
+
+Generate a dev CA for local development:
+
+```bash
+mkdir -p infra/ca
+openssl genrsa -out infra/ca/ca.key 2048
+openssl req -x509 -new -nodes \
+  -key infra/ca/ca.key \
+  -sha256 -days 3650 \
+  -subj "/CN=Clustral Dev CA" \
+  -out infra/ca/ca.crt
+```
+
+Configure in `appsettings.Development.json`:
+
+```json
+{
+  "CertificateAuthority": {
+    "CaCertPath": "../../infra/ca/ca.crt",
+    "CaKeyPath": "../../infra/ca/ca.key"
+  }
+}
+```
+
+### Production
+
+Generate a production CA (RSA 4096, 10-year validity):
+
+```bash
+openssl genrsa -out clustral-ca.key 4096
+openssl req -x509 -new -nodes \
+  -key clustral-ca.key \
+  -sha256 -days 3650 \
+  -subj "/CN=Clustral Certificate Authority/O=YourOrg/OU=Platform" \
+  -out clustral-ca.crt
+
+# Verify
+openssl x509 -in clustral-ca.crt -text -noout
+```
+
+Deploy as a Kubernetes Secret:
+
+```bash
+kubectl -n clustral create secret tls clustral-ca \
+  --cert=clustral-ca.crt \
+  --key=clustral-ca.key
+```
+
+Mount in the ControlPlane deployment and configure:
+
+```json
+{
+  "CertificateAuthority": {
+    "CaCertPath": "/etc/clustral/ca/tls.crt",
+    "CaKeyPath": "/etc/clustral/ca/tls.key",
+    "ClientCertValidityDays": 395,
+    "JwtValidityDays": 30
+  }
+}
+```
+
+### CA Rotation
+
+1. Generate a new CA cert + key
+2. Deploy the new CA to the ControlPlane
+3. New agent certificates will be signed by the new CA
+4. Existing agents continue working until their certificates expire (max 395 days)
+5. For immediate rotation, re-register all agents with new bootstrap tokens
+
+> **Security**: The CA private key must be stored securely — never in git or container images. Use RBAC to restrict access to the K8s Secret. Consider HSMs or cloud KMS (Vault, AWS KMS, Azure Key Vault) for high-security environments.
 
 ## Keycloak Configuration
 

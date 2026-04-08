@@ -23,14 +23,18 @@ service AuthService {
   // kubectl proxy handler to authenticate incoming kubectl requests.
   rpc ValidateKubeconfigCredential(ValidateKubeconfigCredentialRequest) returns (ValidateKubeconfigCredentialResponse);
 
-  // IssueAgentCredential is called by the Agent on first boot.
-  // It exchanges the one-time bootstrap token (from ClusterService.Register)
-  // for a long-lived agent credential stored on disk by the Agent.
-  rpc IssueAgentCredential(IssueAgentCredentialRequest) returns (IssueAgentCredentialResponse);
+  // Deprecated: Use ClusterService.RegisterAgent instead.
+  // IssueAgentCredential exchanges a bootstrap token for a bearer token.
+  // New agents should use RegisterAgent which returns mTLS cert + JWT.
+  rpc IssueAgentCredential(IssueAgentCredentialRequest) returns (IssueAgentCredentialResponse) {
+    option deprecated = true;
+  }
 
-  // RotateAgentCredential renews an agent credential before it expires.
-  // The current valid credential is required to prove possession.
-  rpc RotateAgentCredential(RotateAgentCredentialRequest) returns (RotateAgentCredentialResponse);
+  // Deprecated: Use ClusterService.RenewCertificate / RenewToken instead.
+  // RotateAgentCredential renews a bearer token. New agents use mTLS + JWT renewal.
+  rpc RotateAgentCredential(RotateAgentCredentialRequest) returns (RotateAgentCredentialResponse) {
+    option deprecated = true;
+  }
 
   // RevokeCredential immediately invalidates any credential by ID.
   // Typically called on `clustral logout` or when a cluster is deregistered.

@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,11 +12,11 @@ import (
 	"time"
 
 	pb "clustral-agent/gen/clustral/v1"
+	"clustral-agent/internal/auth"
 	"clustral-agent/internal/config"
 	"clustral-agent/internal/credential"
 	"clustral-agent/internal/proxy"
 	"golang.org/x/sync/errgroup"
-	"crypto/tls"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -31,10 +32,16 @@ type Manager struct {
 	proxy             *proxy.Proxy
 	logger            *slog.Logger
 	kubernetesVersion string
+	jwtCreds          *auth.JWTCredentials // nil = legacy bearer token mode
 }
 
 func NewManager(cfg *config.Config, creds *credential.Store, p *proxy.Proxy, logger *slog.Logger, kubernetesVersion string) *Manager {
 	return &Manager{cfg: cfg, creds: creds, proxy: p, logger: logger, kubernetesVersion: kubernetesVersion}
+}
+
+// SetMTLSCredentials enables mTLS + JWT mode (instead of legacy bearer token).
+func (m *Manager) SetMTLSCredentials(jwtCreds *auth.JWTCredentials) {
+	m.jwtCreds = jwtCreds
 }
 
 func (m *Manager) Run(ctx context.Context) {
@@ -62,9 +69,17 @@ func (m *Manager) Run(ctx context.Context) {
 			continue
 		}
 
-		if s, ok := status.FromError(err); ok && s.Code() == codes.Unauthenticated {
-			m.logger.Error("Authentication rejected — check agent credential")
-			delay = m.cfg.ReconnectMaxDelay
+		if s, ok := status.FromError(err); ok {
+			switch s.Code() {
+			case codes.Unauthenticated:
+				m.logger.Error("Authentication rejected — credential may be expired or revoked")
+				delay = m.cfg.ReconnectMaxDelay
+			case codes.PermissionDenied:
+				m.logger.Error("Permission denied — agent credentials have been revoked. Stopping.")
+				return // Do not retry — credentials are explicitly revoked.
+			default:
+				m.logger.Warn("Tunnel error, reconnecting", "delay", delay, "error", err)
+			}
 		} else {
 			m.logger.Warn("Tunnel error, reconnecting", "delay", delay, "error", err)
 		}
@@ -84,21 +99,43 @@ func (m *Manager) Run(ctx context.Context) {
 }
 
 func (m *Manager) connectAndRun(ctx context.Context) error {
-	token, err := m.creds.ReadToken()
-	if err != nil || token == "" {
-		return fmt.Errorf("no agent credential found")
-	}
+	var opts []grpc.DialOption
 
-	// Create gRPC connection — TLS for https://, plaintext for http://.
-	var transportCreds grpc.DialOption
-	if strings.HasPrefix(m.cfg.ControlPlaneURL, "https://") {
-		transportCreds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true, // self-signed certs in dev; use proper CA in production
-		}))
+	if m.jwtCreds != nil {
+		// mTLS + JWT mode
+		cert, err := m.creds.ReadCert()
+		if err != nil {
+			return fmt.Errorf("read client cert: %w", err)
+		}
+		caPool, err := m.creds.ReadCACert()
+		if err != nil {
+			return fmt.Errorf("read CA cert: %w", err)
+		}
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      caPool,
+		}
+		opts = append(opts,
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			grpc.WithPerRPCCredentials(m.jwtCreds),
+		)
 	} else {
-		transportCreds = grpc.WithTransportCredentials(grpcinsecure.NewCredentials())
+		// Legacy bearer token mode
+		token, err := m.creds.ReadToken()
+		if err != nil || token == "" {
+			return fmt.Errorf("no agent credential found")
+		}
+
+		var transportCreds grpc.DialOption
+		if strings.HasPrefix(m.cfg.ControlPlaneURL, "https://") {
+			transportCreds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+				InsecureSkipVerify: true,
+			}))
+		} else {
+			transportCreds = grpc.WithTransportCredentials(grpcinsecure.NewCredentials())
+		}
+		opts = append(opts, transportCreds)
 	}
-	opts := []grpc.DialOption{transportCreds}
 
 	addr := strings.TrimPrefix(strings.TrimPrefix(m.cfg.ControlPlaneURL, "http://"), "https://")
 	conn, err := grpc.NewClient(addr, opts...)
@@ -107,9 +144,13 @@ func (m *Manager) connectAndRun(ctx context.Context) error {
 	}
 	defer conn.Close()
 
-	// Attach bearer token as metadata.
-	md := metadata.Pairs("authorization", "Bearer "+token)
-	streamCtx := metadata.NewOutgoingContext(ctx, md)
+	// For legacy mode, attach bearer token as metadata.
+	streamCtx := ctx
+	if m.jwtCreds == nil {
+		token, _ := m.creds.ReadToken()
+		md := metadata.Pairs("authorization", "Bearer "+token)
+		streamCtx = metadata.NewOutgoingContext(ctx, md)
+	}
 
 	tunnelClient := pb.NewTunnelServiceClient(conn)
 	clusterClient := pb.NewClusterServiceClient(conn)

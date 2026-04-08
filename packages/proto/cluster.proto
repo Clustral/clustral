@@ -27,6 +27,19 @@ service ClusterService {
 
   // Deregister removes a cluster. Existing tunnel sessions are terminated.
   rpc Deregister(DeregisterClusterRequest) returns (google.protobuf.Empty);
+
+  // RegisterAgent is called by the agent on first boot. Exchanges the one-time
+  // bootstrap token for a client certificate (mTLS) and JWT (authorization).
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+
+  // RenewCertificate issues a new client certificate before the current one
+  // expires. Requires mTLS + valid JWT (enforced by AgentAuthInterceptor).
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
+
+  // RenewToken issues a new JWT before the current one expires.
+  // The tokenVersion is NOT incremented — only explicit revocation does that.
+  // Requires mTLS + valid JWT (enforced by AgentAuthInterceptor).
+  rpc RenewToken(RenewTokenRequest) returns (RenewTokenResponse);
 }
 
 // -----------------------------------------------------------------------------
@@ -118,4 +131,60 @@ message UpdateClusterStatusRequest {
 
 message DeregisterClusterRequest {
   string cluster_id = 1;
+}
+
+// -----------------------------------------------------------------------------
+// Agent mTLS + JWT registration and renewal
+// -----------------------------------------------------------------------------
+
+message RegisterAgentRequest {
+  // Cluster ID assigned during web UI registration.
+  string cluster_id = 1;
+
+  // One-time bootstrap token from RegisterClusterResponse.
+  string bootstrap_token = 2;
+}
+
+message RegisterAgentResponse {
+  string cluster_id = 1;
+
+  // PEM-encoded client certificate signed by the Clustral CA.
+  string client_certificate_pem = 2;
+
+  // PEM-encoded private key for the client certificate.
+  string client_private_key_pem = 3;
+
+  // PEM-encoded CA certificate — agent must trust this for mTLS.
+  string ca_certificate_pem = 4;
+
+  // RS256 JWT for RPC-level authorization.
+  string jwt = 5;
+
+  google.protobuf.Timestamp cert_expires_at = 6;
+  google.protobuf.Timestamp jwt_expires_at = 7;
+}
+
+message RenewCertificateRequest {
+  string cluster_id = 1;
+}
+
+message RenewCertificateResponse {
+  // PEM-encoded new client certificate.
+  string client_certificate_pem = 1;
+
+  // PEM-encoded new private key.
+  string client_private_key_pem = 2;
+
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message RenewTokenRequest {
+  string cluster_id = 1;
+}
+
+message RenewTokenResponse {
+  // New RS256 JWT with the same tokenVersion.
+  string jwt = 1;
+
+  google.protobuf.Timestamp expires_at = 2;
 }

@@ -21,3 +21,9 @@ public sealed record ClusterDeleted(Guid ClusterId) : IDomainEvent
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
+
+public sealed record AgentCredentialsRevoked(
+    Guid ClusterId, int NewTokenVersion) : IDomainEvent
+{
+    public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
+}

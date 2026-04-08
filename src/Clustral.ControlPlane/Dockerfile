@@ -32,7 +32,7 @@ COPY --from=build /app/publish .
 
 USER clustral
 
-# REST on 5000, gRPC on 5001.
-EXPOSE 5000 5001
+# REST on 5000, legacy gRPC on 5001, mTLS gRPC on 5443.
+EXPOSE 5000 5001 5443
 
 ENTRYPOINT ["dotnet", "Clustral.ControlPlane.dll"]

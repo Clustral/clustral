@@ -140,8 +140,9 @@ public sealed class AuthServiceImpl(
             new() { Valid = false, Reason = reason };
     }
 
-    // ── IssueAgentCredential ──────────────────────────────────────────────────
+    // ── IssueAgentCredential (deprecated — use ClusterService.RegisterAgent) ──
 
+    [Obsolete("Use ClusterService.RegisterAgent instead.")]
     public override async Task<IssueAgentCredentialResponse> IssueAgentCredential(
         IssueAgentCredentialRequest request,
         ServerCallContext context)
@@ -210,8 +211,9 @@ public sealed class AuthServiceImpl(
         };
     }
 
-    // ── RotateAgentCredential ─────────────────────────────────────────────────
+    // ── RotateAgentCredential (deprecated — use ClusterService.RenewCertificate/RenewToken) ──
 
+    [Obsolete("Use ClusterService.RenewCertificate / RenewToken instead.")]
     public override async Task<RotateAgentCredentialResponse> RotateAgentCredential(
         RotateAgentCredentialRequest request,
         ServerCallContext context)

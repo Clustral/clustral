@@ -570,6 +570,359 @@ func (x *DeregisterClusterRequest) GetClusterId() string {
 	return ""
 }
 
+type RegisterAgentRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Cluster ID assigned during web UI registration.
+	ClusterId string `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	// One-time bootstrap token from RegisterClusterResponse.
+	BootstrapToken string `protobuf:"bytes,2,opt,name=bootstrap_token,json=bootstrapToken,proto3" json:"bootstrap_token,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RegisterAgentRequest) Reset() {
+	*x = RegisterAgentRequest{}
+	mi := &file_cluster_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterAgentRequest) ProtoMessage() {}
+
+func (x *RegisterAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterAgentRequest.ProtoReflect.Descriptor instead.
+func (*RegisterAgentRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RegisterAgentRequest) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
+}
+
+func (x *RegisterAgentRequest) GetBootstrapToken() string {
+	if x != nil {
+		return x.BootstrapToken
+	}
+	return ""
+}
+
+type RegisterAgentResponse struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ClusterId string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	// PEM-encoded client certificate signed by the Clustral CA.
+	ClientCertificatePem string `protobuf:"bytes,2,opt,name=client_certificate_pem,json=clientCertificatePem,proto3" json:"client_certificate_pem,omitempty"`
+	// PEM-encoded private key for the client certificate.
+	ClientPrivateKeyPem string `protobuf:"bytes,3,opt,name=client_private_key_pem,json=clientPrivateKeyPem,proto3" json:"client_private_key_pem,omitempty"`
+	// PEM-encoded CA certificate — agent must trust this for mTLS.
+	CaCertificatePem string `protobuf:"bytes,4,opt,name=ca_certificate_pem,json=caCertificatePem,proto3" json:"ca_certificate_pem,omitempty"`
+	// RS256 JWT for RPC-level authorization.
+	Jwt           string                 `protobuf:"bytes,5,opt,name=jwt,proto3" json:"jwt,omitempty"`
+	CertExpiresAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=cert_expires_at,json=certExpiresAt,proto3" json:"cert_expires_at,omitempty"`
+	JwtExpiresAt  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=jwt_expires_at,json=jwtExpiresAt,proto3" json:"jwt_expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterAgentResponse) Reset() {
+	*x = RegisterAgentResponse{}
+	mi := &file_cluster_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterAgentResponse) ProtoMessage() {}
+
+func (x *RegisterAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterAgentResponse.ProtoReflect.Descriptor instead.
+func (*RegisterAgentResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RegisterAgentResponse) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
+}
+
+func (x *RegisterAgentResponse) GetClientCertificatePem() string {
+	if x != nil {
+		return x.ClientCertificatePem
+	}
+	return ""
+}
+
+func (x *RegisterAgentResponse) GetClientPrivateKeyPem() string {
+	if x != nil {
+		return x.ClientPrivateKeyPem
+	}
+	return ""
+}
+
+func (x *RegisterAgentResponse) GetCaCertificatePem() string {
+	if x != nil {
+		return x.CaCertificatePem
+	}
+	return ""
+}
+
+func (x *RegisterAgentResponse) GetJwt() string {
+	if x != nil {
+		return x.Jwt
+	}
+	return ""
+}
+
+func (x *RegisterAgentResponse) GetCertExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CertExpiresAt
+	}
+	return nil
+}
+
+func (x *RegisterAgentResponse) GetJwtExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.JwtExpiresAt
+	}
+	return nil
+}
+
+type RenewCertificateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewCertificateRequest) Reset() {
+	*x = RenewCertificateRequest{}
+	mi := &file_cluster_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewCertificateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewCertificateRequest) ProtoMessage() {}
+
+func (x *RenewCertificateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewCertificateRequest.ProtoReflect.Descriptor instead.
+func (*RenewCertificateRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *RenewCertificateRequest) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
+}
+
+type RenewCertificateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// PEM-encoded new client certificate.
+	ClientCertificatePem string `protobuf:"bytes,1,opt,name=client_certificate_pem,json=clientCertificatePem,proto3" json:"client_certificate_pem,omitempty"`
+	// PEM-encoded new private key.
+	ClientPrivateKeyPem string                 `protobuf:"bytes,2,opt,name=client_private_key_pem,json=clientPrivateKeyPem,proto3" json:"client_private_key_pem,omitempty"`
+	ExpiresAt           *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RenewCertificateResponse) Reset() {
+	*x = RenewCertificateResponse{}
+	mi := &file_cluster_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewCertificateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewCertificateResponse) ProtoMessage() {}
+
+func (x *RenewCertificateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewCertificateResponse.ProtoReflect.Descriptor instead.
+func (*RenewCertificateResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RenewCertificateResponse) GetClientCertificatePem() string {
+	if x != nil {
+		return x.ClientCertificatePem
+	}
+	return ""
+}
+
+func (x *RenewCertificateResponse) GetClientPrivateKeyPem() string {
+	if x != nil {
+		return x.ClientPrivateKeyPem
+	}
+	return ""
+}
+
+func (x *RenewCertificateResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+type RenewTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClusterId     string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewTokenRequest) Reset() {
+	*x = RenewTokenRequest{}
+	mi := &file_cluster_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewTokenRequest) ProtoMessage() {}
+
+func (x *RenewTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewTokenRequest.ProtoReflect.Descriptor instead.
+func (*RenewTokenRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RenewTokenRequest) GetClusterId() string {
+	if x != nil {
+		return x.ClusterId
+	}
+	return ""
+}
+
+type RenewTokenResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// New RS256 JWT with the same tokenVersion.
+	Jwt           string                 `protobuf:"bytes,1,opt,name=jwt,proto3" json:"jwt,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewTokenResponse) Reset() {
+	*x = RenewTokenResponse{}
+	mi := &file_cluster_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewTokenResponse) ProtoMessage() {}
+
+func (x *RenewTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewTokenResponse.ProtoReflect.Descriptor instead.
+func (*RenewTokenResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *RenewTokenResponse) GetJwt() string {
+	if x != nil {
+		return x.Jwt
+	}
+	return ""
+}
+
+func (x *RenewTokenResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 var File_cluster_proto protoreflect.FileDescriptor
 
 const file_cluster_proto_rawDesc = "" +
@@ -621,19 +974,51 @@ const file_cluster_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\x0e2\x1a.clustral.v1.ClusterStatusR\x06status\"9\n" +
 	"\x18DeregisterClusterRequest\x12\x1d\n" +
 	"\n" +
-	"cluster_id\x18\x01 \x01(\tR\tclusterId*\x8a\x01\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\"^\n" +
+	"\x14RegisterAgentRequest\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12'\n" +
+	"\x0fbootstrap_token\x18\x02 \x01(\tR\x0ebootstrapToken\"\xe7\x02\n" +
+	"\x15RegisterAgentResponse\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\x124\n" +
+	"\x16client_certificate_pem\x18\x02 \x01(\tR\x14clientCertificatePem\x123\n" +
+	"\x16client_private_key_pem\x18\x03 \x01(\tR\x13clientPrivateKeyPem\x12,\n" +
+	"\x12ca_certificate_pem\x18\x04 \x01(\tR\x10caCertificatePem\x12\x10\n" +
+	"\x03jwt\x18\x05 \x01(\tR\x03jwt\x12B\n" +
+	"\x0fcert_expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rcertExpiresAt\x12@\n" +
+	"\x0ejwt_expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\fjwtExpiresAt\"8\n" +
+	"\x17RenewCertificateRequest\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\"\xc0\x01\n" +
+	"\x18RenewCertificateResponse\x124\n" +
+	"\x16client_certificate_pem\x18\x01 \x01(\tR\x14clientCertificatePem\x123\n" +
+	"\x16client_private_key_pem\x18\x02 \x01(\tR\x13clientPrivateKeyPem\x129\n" +
+	"\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"2\n" +
+	"\x11RenewTokenRequest\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x01 \x01(\tR\tclusterId\"a\n" +
+	"\x12RenewTokenResponse\x12\x10\n" +
+	"\x03jwt\x18\x01 \x01(\tR\x03jwt\x129\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt*\x8a\x01\n" +
 	"\rClusterStatus\x12\x1e\n" +
 	"\x1aCLUSTER_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLUSTER_STATUS_PENDING\x10\x01\x12\x1c\n" +
 	"\x18CLUSTER_STATUS_CONNECTED\x10\x02\x12\x1f\n" +
-	"\x1bCLUSTER_STATUS_DISCONNECTED\x10\x032\x8f\x03\n" +
+	"\x1bCLUSTER_STATUS_DISCONNECTED\x10\x032\x97\x05\n" +
 	"\x0eClusterService\x12U\n" +
 	"\bRegister\x12#.clustral.v1.RegisterClusterRequest\x1a$.clustral.v1.RegisterClusterResponse\x12K\n" +
 	"\x04List\x12 .clustral.v1.ListClustersRequest\x1a!.clustral.v1.ListClustersResponse\x12;\n" +
 	"\x03Get\x12\x1e.clustral.v1.GetClusterRequest\x1a\x14.clustral.v1.Cluster\x12O\n" +
 	"\fUpdateStatus\x12'.clustral.v1.UpdateClusterStatusRequest\x1a\x16.google.protobuf.Empty\x12K\n" +
 	"\n" +
-	"Deregister\x12%.clustral.v1.DeregisterClusterRequest\x1a\x16.google.protobuf.EmptyB\x0e\xaa\x02\vClustral.V1b\x06proto3"
+	"Deregister\x12%.clustral.v1.DeregisterClusterRequest\x1a\x16.google.protobuf.Empty\x12V\n" +
+	"\rRegisterAgent\x12!.clustral.v1.RegisterAgentRequest\x1a\".clustral.v1.RegisterAgentResponse\x12_\n" +
+	"\x10RenewCertificate\x12$.clustral.v1.RenewCertificateRequest\x1a%.clustral.v1.RenewCertificateResponse\x12M\n" +
+	"\n" +
+	"RenewToken\x12\x1e.clustral.v1.RenewTokenRequest\x1a\x1f.clustral.v1.RenewTokenResponseB\x0e\xaa\x02\vClustral.V1b\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once
@@ -648,7 +1033,7 @@ func file_cluster_proto_rawDescGZIP() []byte {
 }
 
 var file_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_cluster_proto_goTypes = []any{
 	(ClusterStatus)(0),                 // 0: clustral.v1.ClusterStatus
 	(*Cluster)(nil),                    // 1: clustral.v1.Cluster
@@ -659,37 +1044,53 @@ var file_cluster_proto_goTypes = []any{
 	(*GetClusterRequest)(nil),          // 6: clustral.v1.GetClusterRequest
 	(*UpdateClusterStatusRequest)(nil), // 7: clustral.v1.UpdateClusterStatusRequest
 	(*DeregisterClusterRequest)(nil),   // 8: clustral.v1.DeregisterClusterRequest
-	nil,                                // 9: clustral.v1.Cluster.LabelsEntry
-	nil,                                // 10: clustral.v1.RegisterClusterRequest.LabelsEntry
-	nil,                                // 11: clustral.v1.ListClustersRequest.LabelSelectorEntry
-	(*timestamppb.Timestamp)(nil),      // 12: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),              // 13: google.protobuf.Empty
+	(*RegisterAgentRequest)(nil),       // 9: clustral.v1.RegisterAgentRequest
+	(*RegisterAgentResponse)(nil),      // 10: clustral.v1.RegisterAgentResponse
+	(*RenewCertificateRequest)(nil),    // 11: clustral.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil),   // 12: clustral.v1.RenewCertificateResponse
+	(*RenewTokenRequest)(nil),          // 13: clustral.v1.RenewTokenRequest
+	(*RenewTokenResponse)(nil),         // 14: clustral.v1.RenewTokenResponse
+	nil,                                // 15: clustral.v1.Cluster.LabelsEntry
+	nil,                                // 16: clustral.v1.RegisterClusterRequest.LabelsEntry
+	nil,                                // 17: clustral.v1.ListClustersRequest.LabelSelectorEntry
+	(*timestamppb.Timestamp)(nil),      // 18: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 19: google.protobuf.Empty
 }
 var file_cluster_proto_depIdxs = []int32{
 	0,  // 0: clustral.v1.Cluster.status:type_name -> clustral.v1.ClusterStatus
-	12, // 1: clustral.v1.Cluster.registered_at:type_name -> google.protobuf.Timestamp
-	12, // 2: clustral.v1.Cluster.last_seen_at:type_name -> google.protobuf.Timestamp
-	9,  // 3: clustral.v1.Cluster.labels:type_name -> clustral.v1.Cluster.LabelsEntry
-	10, // 4: clustral.v1.RegisterClusterRequest.labels:type_name -> clustral.v1.RegisterClusterRequest.LabelsEntry
-	11, // 5: clustral.v1.ListClustersRequest.label_selector:type_name -> clustral.v1.ListClustersRequest.LabelSelectorEntry
+	18, // 1: clustral.v1.Cluster.registered_at:type_name -> google.protobuf.Timestamp
+	18, // 2: clustral.v1.Cluster.last_seen_at:type_name -> google.protobuf.Timestamp
+	15, // 3: clustral.v1.Cluster.labels:type_name -> clustral.v1.Cluster.LabelsEntry
+	16, // 4: clustral.v1.RegisterClusterRequest.labels:type_name -> clustral.v1.RegisterClusterRequest.LabelsEntry
+	17, // 5: clustral.v1.ListClustersRequest.label_selector:type_name -> clustral.v1.ListClustersRequest.LabelSelectorEntry
 	0,  // 6: clustral.v1.ListClustersRequest.status_filter:type_name -> clustral.v1.ClusterStatus
 	1,  // 7: clustral.v1.ListClustersResponse.clusters:type_name -> clustral.v1.Cluster
 	0,  // 8: clustral.v1.UpdateClusterStatusRequest.status:type_name -> clustral.v1.ClusterStatus
-	2,  // 9: clustral.v1.ClusterService.Register:input_type -> clustral.v1.RegisterClusterRequest
-	4,  // 10: clustral.v1.ClusterService.List:input_type -> clustral.v1.ListClustersRequest
-	6,  // 11: clustral.v1.ClusterService.Get:input_type -> clustral.v1.GetClusterRequest
-	7,  // 12: clustral.v1.ClusterService.UpdateStatus:input_type -> clustral.v1.UpdateClusterStatusRequest
-	8,  // 13: clustral.v1.ClusterService.Deregister:input_type -> clustral.v1.DeregisterClusterRequest
-	3,  // 14: clustral.v1.ClusterService.Register:output_type -> clustral.v1.RegisterClusterResponse
-	5,  // 15: clustral.v1.ClusterService.List:output_type -> clustral.v1.ListClustersResponse
-	1,  // 16: clustral.v1.ClusterService.Get:output_type -> clustral.v1.Cluster
-	13, // 17: clustral.v1.ClusterService.UpdateStatus:output_type -> google.protobuf.Empty
-	13, // 18: clustral.v1.ClusterService.Deregister:output_type -> google.protobuf.Empty
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	18, // 9: clustral.v1.RegisterAgentResponse.cert_expires_at:type_name -> google.protobuf.Timestamp
+	18, // 10: clustral.v1.RegisterAgentResponse.jwt_expires_at:type_name -> google.protobuf.Timestamp
+	18, // 11: clustral.v1.RenewCertificateResponse.expires_at:type_name -> google.protobuf.Timestamp
+	18, // 12: clustral.v1.RenewTokenResponse.expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 13: clustral.v1.ClusterService.Register:input_type -> clustral.v1.RegisterClusterRequest
+	4,  // 14: clustral.v1.ClusterService.List:input_type -> clustral.v1.ListClustersRequest
+	6,  // 15: clustral.v1.ClusterService.Get:input_type -> clustral.v1.GetClusterRequest
+	7,  // 16: clustral.v1.ClusterService.UpdateStatus:input_type -> clustral.v1.UpdateClusterStatusRequest
+	8,  // 17: clustral.v1.ClusterService.Deregister:input_type -> clustral.v1.DeregisterClusterRequest
+	9,  // 18: clustral.v1.ClusterService.RegisterAgent:input_type -> clustral.v1.RegisterAgentRequest
+	11, // 19: clustral.v1.ClusterService.RenewCertificate:input_type -> clustral.v1.RenewCertificateRequest
+	13, // 20: clustral.v1.ClusterService.RenewToken:input_type -> clustral.v1.RenewTokenRequest
+	3,  // 21: clustral.v1.ClusterService.Register:output_type -> clustral.v1.RegisterClusterResponse
+	5,  // 22: clustral.v1.ClusterService.List:output_type -> clustral.v1.ListClustersResponse
+	1,  // 23: clustral.v1.ClusterService.Get:output_type -> clustral.v1.Cluster
+	19, // 24: clustral.v1.ClusterService.UpdateStatus:output_type -> google.protobuf.Empty
+	19, // 25: clustral.v1.ClusterService.Deregister:output_type -> google.protobuf.Empty
+	10, // 26: clustral.v1.ClusterService.RegisterAgent:output_type -> clustral.v1.RegisterAgentResponse
+	12, // 27: clustral.v1.ClusterService.RenewCertificate:output_type -> clustral.v1.RenewCertificateResponse
+	14, // 28: clustral.v1.ClusterService.RenewToken:output_type -> clustral.v1.RenewTokenResponse
+	21, // [21:29] is the sub-list for method output_type
+	13, // [13:21] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_cluster_proto_init() }
@@ -703,7 +1104,7 @@ func file_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_proto_rawDesc), len(file_cluster_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

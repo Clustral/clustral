@@ -27,7 +27,14 @@ services:
       Oidc__ClientId: "clustral-control-plane"
       Oidc__Audience: "clustral-control-plane"
       Oidc__RequireHttpsMetadata: "false"
-    # No ports exposed — nginx handles all external traffic.
+      CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
+      CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
+    ports:
+      # gRPC mTLS — agents connect directly (not through nginx)
+      - "5443:5443"
+    volumes:
+      - ./infra/ca:/etc/clustral/ca:ro
+    # REST :5000 and legacy gRPC :5001 are internal — nginx handles REST via :443.
     # Uncomment for direct access during local dev without nginx:
     # ports:
     #   - "5100:5000"

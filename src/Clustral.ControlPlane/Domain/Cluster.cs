@@ -43,6 +43,18 @@ public sealed class Cluster : HasDomainEvents
 
     public Dictionary<string, string> Labels { get; set; } = new();
 
+    /// <summary>
+    /// Token version for JWT revocation. Incremented only on explicit revocation,
+    /// not on renewal. Agents with a JWT whose token_version &lt; this are rejected.
+    /// </summary>
+    public int TokenVersion { get; set; } = 1;
+
+    /// <summary>
+    /// SHA-256 fingerprint of the most recently issued agent client certificate.
+    /// </summary>
+    [BsonIgnoreIfNull]
+    public string? CertificateFingerprint { get; set; }
+
     // ── Aggregate methods ────────────────────────────────────────────────
 
     /// <summary>
@@ -106,6 +118,24 @@ public sealed class Cluster : HasDomainEvents
     public void ConsumeBootstrapToken()
     {
         BootstrapTokenHash = null;
+    }
+
+    /// <summary>
+    /// Revokes all agent credentials by incrementing the token version.
+    /// All JWTs with a lower version become invalid immediately.
+    /// </summary>
+    public void RevokeAgentCredentials()
+    {
+        TokenVersion++;
+        RaiseDomainEvent(new AgentCredentialsRevoked(Id, TokenVersion));
+    }
+
+    /// <summary>
+    /// Records the fingerprint of the most recently issued client certificate.
+    /// </summary>
+    public void RecordCertificateFingerprint(string fingerprint)
+    {
+        CertificateFingerprint = fingerprint;
     }
 }
 

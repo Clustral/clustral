@@ -74,8 +74,8 @@ services:
     restart: unless-stopped
     ports:
       - "443:443"
-      - "5443:5443"
-      - "5444:5444"
+      # gRPC :5443 is NOT proxied through nginx — agents connect directly to Kestrel.
+      # Removed :5443 and :5444 to prevent nginx from interfering with persistent tunnels.
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - certs:/etc/nginx/certs

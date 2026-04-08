@@ -44,12 +44,14 @@ type AuthServiceClient interface {
 	// ValidateKubeconfigCredential is called internally by the ControlPlane
 	// kubectl proxy handler to authenticate incoming kubectl requests.
 	ValidateKubeconfigCredential(ctx context.Context, in *ValidateKubeconfigCredentialRequest, opts ...grpc.CallOption) (*ValidateKubeconfigCredentialResponse, error)
-	// IssueAgentCredential is called by the Agent on first boot.
-	// It exchanges the one-time bootstrap token (from ClusterService.Register)
-	// for a long-lived agent credential stored on disk by the Agent.
+	// Deprecated: Do not use.
+	// Deprecated: Use ClusterService.RegisterAgent instead.
+	// IssueAgentCredential exchanges a bootstrap token for a bearer token.
+	// New agents should use RegisterAgent which returns mTLS cert + JWT.
 	IssueAgentCredential(ctx context.Context, in *IssueAgentCredentialRequest, opts ...grpc.CallOption) (*IssueAgentCredentialResponse, error)
-	// RotateAgentCredential renews an agent credential before it expires.
-	// The current valid credential is required to prove possession.
+	// Deprecated: Do not use.
+	// Deprecated: Use ClusterService.RenewCertificate / RenewToken instead.
+	// RotateAgentCredential renews a bearer token. New agents use mTLS + JWT renewal.
 	RotateAgentCredential(ctx context.Context, in *RotateAgentCredentialRequest, opts ...grpc.CallOption) (*RotateAgentCredentialResponse, error)
 	// RevokeCredential immediately invalidates any credential by ID.
 	// Typically called on `clustral logout` or when a cluster is deregistered.
@@ -84,6 +86,7 @@ func (c *authServiceClient) ValidateKubeconfigCredential(ctx context.Context, in
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *authServiceClient) IssueAgentCredential(ctx context.Context, in *IssueAgentCredentialRequest, opts ...grpc.CallOption) (*IssueAgentCredentialResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IssueAgentCredentialResponse)
@@ -94,6 +97,7 @@ func (c *authServiceClient) IssueAgentCredential(ctx context.Context, in *IssueA
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *authServiceClient) RotateAgentCredential(ctx context.Context, in *RotateAgentCredentialRequest, opts ...grpc.CallOption) (*RotateAgentCredentialResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RotateAgentCredentialResponse)
@@ -132,12 +136,14 @@ type AuthServiceServer interface {
 	// ValidateKubeconfigCredential is called internally by the ControlPlane
 	// kubectl proxy handler to authenticate incoming kubectl requests.
 	ValidateKubeconfigCredential(context.Context, *ValidateKubeconfigCredentialRequest) (*ValidateKubeconfigCredentialResponse, error)
-	// IssueAgentCredential is called by the Agent on first boot.
-	// It exchanges the one-time bootstrap token (from ClusterService.Register)
-	// for a long-lived agent credential stored on disk by the Agent.
+	// Deprecated: Do not use.
+	// Deprecated: Use ClusterService.RegisterAgent instead.
+	// IssueAgentCredential exchanges a bootstrap token for a bearer token.
+	// New agents should use RegisterAgent which returns mTLS cert + JWT.
 	IssueAgentCredential(context.Context, *IssueAgentCredentialRequest) (*IssueAgentCredentialResponse, error)
-	// RotateAgentCredential renews an agent credential before it expires.
-	// The current valid credential is required to prove possession.
+	// Deprecated: Do not use.
+	// Deprecated: Use ClusterService.RenewCertificate / RenewToken instead.
+	// RotateAgentCredential renews a bearer token. New agents use mTLS + JWT renewal.
 	RotateAgentCredential(context.Context, *RotateAgentCredentialRequest) (*RotateAgentCredentialResponse, error)
 	// RevokeCredential immediately invalidates any credential by ID.
 	// Typically called on `clustral logout` or when a cluster is deregistered.

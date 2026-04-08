@@ -38,3 +38,6 @@ docker-compose.override.yml
 
 # Clustral local state
 .clustral/
+
+# Dev CA (never commit private keys)
+infra/ca/

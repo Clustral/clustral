@@ -17,18 +17,28 @@ export function AgentSetupSteps({
   bootstrapToken,
   onDone,
 }: Props) {
-  const helmInstallCmd = [
-    "helm install clustral-agent ./infra/helm/clustral-agent \\",
-    `  --set agent.clusterId="${clusterId}" \\`,
-    `  --set agent.controlPlaneUrl="https://<YOUR_HOST>:5443" \\`,
-    `  --set agent.bootstrapToken="${bootstrapToken}"`,
+  const kubectlCmd = [
+    "# Apply RBAC",
+    "kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/serviceaccount.yaml",
+    "kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/clusterrole.yaml",
+    "kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/clusterrolebinding.yaml",
+    "",
+    "# Create the agent secret",
+    `kubectl -n clustral create secret generic clustral-agent-config \\`,
+    `  --from-literal=cluster-id="${clusterId}" \\`,
+    `  --from-literal=control-plane-url="https://<YOUR_HOST>:5443" \\`,
+    `  --from-literal=bootstrap-token="${bootstrapToken}"`,
+    "",
+    "# Deploy",
+    "kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/deployment.yaml",
   ].join("\n");
 
   const goRunCmd = [
     "cd src/clustral-agent",
     `export AGENT_CLUSTER_ID="${clusterId}"`,
-    "export AGENT_CONTROL_PLANE_URL=http://localhost:5001",
+    `export AGENT_CONTROL_PLANE_URL="https://localhost:5443"`,
     `export AGENT_BOOTSTRAP_TOKEN="${bootstrapToken}"`,
+    "export AGENT_CREDENTIAL_PATH=~/.clustral/agent.token",
     "go run .",
   ].join("\n");
 
@@ -41,8 +51,8 @@ export function AgentSetupSteps({
             Save the bootstrap token now
           </p>
           <p className="text-muted-foreground mt-0.5">
-            This token is shown only once and cannot be retrieved later. It is
-            used to authenticate the agent on first connection.
+            This token is shown only once and cannot be retrieved later. The agent
+            exchanges it for a client certificate and JWT on first boot (mTLS).
           </p>
         </div>
       </Alert>
@@ -64,10 +74,16 @@ export function AgentSetupSteps({
           Deploy the agent to <span className="font-semibold">{clusterName}</span>
         </h4>
 
-        <p className="text-xs text-muted-foreground mb-3">
-          Option 1: Helm (production)
+        <p className="text-xs text-muted-foreground mb-1">
+          The agent connects directly to the ControlPlane on port 5443 (mTLS).
+          On first boot, it exchanges the bootstrap token for a client certificate and JWT.
+          Certificates auto-renew before expiry.
         </p>
-        <CopyBlock value={helmInstallCmd} multiline />
+
+        <p className="text-xs text-muted-foreground mt-4 mb-3">
+          Option 1: Kubernetes (production)
+        </p>
+        <CopyBlock value={kubectlCmd} multiline />
 
         <p className="text-xs text-muted-foreground mt-4 mb-3">
           Option 2: Go (local dev)

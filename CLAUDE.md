@@ -38,20 +38,20 @@ clustral/
       │  JWT stored in TokenCache
       │  kubeconfig written via KubeconfigWriter
       ▼
-  nginx  (unified gateway)
+  nginx  (unified gateway — HTTPS only)
       │  :443 HTTPS  — REST API + kubectl proxy → ControlPlane :5000
       │                Web UI pages → Web UI :3000
-      │  :5443 gRPC/TLS — L4 TCP passthrough → ControlPlane :5001
-      │  :5444 gRPC     — L4 TCP passthrough (local dev only)
+      │  (gRPC NOT proxied — agents connect directly to Kestrel :5443)
       ▼
   ControlPlane  (ASP.NET Core)
-      │  REST :5000  — CLI + Web UI management calls (via nginx)
-      │  gRPC :5001  — TunnelService (bidirectional streaming to agents)
+      │  REST :5000   — CLI + Web UI management calls (via nginx)
+      │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no nginx)
+      │  gRPC :5001   — legacy plaintext (local dev / migration)
       │  MongoDB (clusters, users, audit log)
       │  OIDC — token introspection / JWKS validation
       ▼
   Agent  (Go service, runs in-cluster via Helm)
-      │  gRPC client → nginx :5443 (TLS) → ControlPlane :5001
+      │  gRPC client → Kestrel :5443 directly (mTLS + JWT)
       │  Receives proxied kubectl HTTP traffic over the tunnel
       │  Forwards locally to the Kubernetes API server
       ▼
@@ -61,7 +61,7 @@ clustral/
 Key flows:
 - **clustral login** — discovers ControlPlane URL and OIDC settings via Web UI's `/.well-known/clustral-configuration` (through nginx), then runs OIDC PKCE flow, writes token to `~/.clustral/token`. All subsequent CLI calls go through nginx to the ControlPlane.
 - **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
-- **Tunnel** — agent opens a persistent gRPC stream through nginx :5443 (TLS, L4 TCP passthrough) to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
+- **Tunnel** — agent opens a persistent gRPC stream directly to Kestrel :5443 (mTLS + JWT, no nginx) to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
 
 ---

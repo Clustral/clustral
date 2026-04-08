@@ -36,6 +36,9 @@ builder.Services.AddOptionsWithValidation<MongoDbOptions, MongoDbOptionsValidato
 
 builder.Services.AddOptionsWithValidation<ProxyOptions, ProxyOptionsValidator>(ProxyOptions.SectionName);
 
+builder.Services.AddOptionsWithValidation<Clustral.Sdk.Crypto.CertificateAuthorityOptions,
+    CertificateAuthorityOptionsValidator>(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName);
+
 var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,10 +123,67 @@ builder.Services.AddSwaggerGen(opts =>
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Certificate Authority + JWT Issuer (agent mTLS + JWT auth)
+// ─────────────────────────────────────────────────────────────────────────────
+
+builder.Services.AddSingleton<Clustral.Sdk.Crypto.CertificateAuthority>(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<Clustral.Sdk.Crypto.CertificateAuthorityOptions>>().Value;
+    return new Clustral.Sdk.Crypto.CertificateAuthority(opts.CaCertPath, opts.CaKeyPath, opts);
+});
+builder.Services.AddSingleton<Clustral.Sdk.Crypto.JwtIssuer>(sp =>
+{
+    var ca = sp.GetRequiredService<Clustral.Sdk.Crypto.CertificateAuthority>();
+    var opts = sp.GetRequiredService<IOptions<Clustral.Sdk.Crypto.CertificateAuthorityOptions>>().Value;
+    return new Clustral.Sdk.Crypto.JwtIssuer(ca, opts);
+});
+builder.Services.AddMemoryCache();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Kestrel mTLS endpoint (:5443) for agent gRPC
+// ─────────────────────────────────────────────────────────────────────────────
+
+builder.WebHost.ConfigureKestrel((ctx, kestrel) =>
+{
+    var caOpts = ctx.Configuration
+        .GetSection(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName)
+        .Get<Clustral.Sdk.Crypto.CertificateAuthorityOptions>();
+
+    if (caOpts is not null && !string.IsNullOrEmpty(caOpts.CaCertPath) && !string.IsNullOrEmpty(caOpts.CaKeyPath))
+    {
+        kestrel.ListenAnyIP(5443, listenOptions =>
+        {
+            listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
+            listenOptions.UseHttps(httpsOptions =>
+            {
+                // Server cert: use the CA cert itself as the server TLS cert
+                httpsOptions.ServerCertificate = System.Security.Cryptography.X509Certificates.X509Certificate2
+                    .CreateFromPemFile(caOpts.CaCertPath, caOpts.CaKeyPath);
+                httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
+                httpsOptions.ClientCertificateValidation = (cert, chain, errors) =>
+                {
+                    // Custom validation: cert must chain to our CA
+                    using var customChain = new System.Security.Cryptography.X509Certificates.X509Chain();
+                    customChain.ChainPolicy.RevocationMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
+                    customChain.ChainPolicy.TrustMode = System.Security.Cryptography.X509Certificates.X509ChainTrustMode.CustomRootTrust;
+                    var caCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPemFile(caOpts.CaCertPath);
+                    customChain.ChainPolicy.CustomTrustStore.Add(caCert);
+                    return customChain.Build(cert);
+                };
+            });
+        });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // gRPC
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services.AddGrpc(opts => { opts.EnableDetailedErrors = builder.Environment.IsDevelopment(); });
+builder.Services.AddGrpc(opts =>
+{
+    opts.Interceptors.Add<AgentAuthInterceptor>();
+    opts.EnableDetailedErrors = builder.Environment.IsDevelopment();
+});
 
 // Singleton session registry shared between TunnelServiceImpl instances.
 builder.Services.AddSingleton<TunnelSessionManager>();

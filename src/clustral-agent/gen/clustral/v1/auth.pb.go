@@ -920,12 +920,12 @@ const file_auth_proto_rawDesc = "" +
 	"\x1bINVALIDATION_REASON_EXPIRED\x10\x01\x12\x1f\n" +
 	"\x1bINVALIDATION_REASON_REVOKED\x10\x02\x12!\n" +
 	"\x1dINVALIDATION_REASON_NOT_FOUND\x10\x03\x12%\n" +
-	"!INVALIDATION_REASON_WRONG_CLUSTER\x10\x042\xcd\x04\n" +
+	"!INVALIDATION_REASON_WRONG_CLUSTER\x10\x042\xd7\x04\n" +
 	"\vAuthService\x12z\n" +
 	"\x19IssueKubeconfigCredential\x12-.clustral.v1.IssueKubeconfigCredentialRequest\x1a..clustral.v1.IssueKubeconfigCredentialResponse\x12\x83\x01\n" +
-	"\x1cValidateKubeconfigCredential\x120.clustral.v1.ValidateKubeconfigCredentialRequest\x1a1.clustral.v1.ValidateKubeconfigCredentialResponse\x12k\n" +
-	"\x14IssueAgentCredential\x12(.clustral.v1.IssueAgentCredentialRequest\x1a).clustral.v1.IssueAgentCredentialResponse\x12n\n" +
-	"\x15RotateAgentCredential\x12).clustral.v1.RotateAgentCredentialRequest\x1a*.clustral.v1.RotateAgentCredentialResponse\x12_\n" +
+	"\x1cValidateKubeconfigCredential\x120.clustral.v1.ValidateKubeconfigCredentialRequest\x1a1.clustral.v1.ValidateKubeconfigCredentialResponse\x12p\n" +
+	"\x14IssueAgentCredential\x12(.clustral.v1.IssueAgentCredentialRequest\x1a).clustral.v1.IssueAgentCredentialResponse\"\x03\x88\x02\x01\x12s\n" +
+	"\x15RotateAgentCredential\x12).clustral.v1.RotateAgentCredentialRequest\x1a*.clustral.v1.RotateAgentCredentialResponse\"\x03\x88\x02\x01\x12_\n" +
 	"\x10RevokeCredential\x12$.clustral.v1.RevokeCredentialRequest\x1a%.clustral.v1.RevokeCredentialResponseB\x0e\xaa\x02\vClustral.V1b\x06proto3"
 
 var (
