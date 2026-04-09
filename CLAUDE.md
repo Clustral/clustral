@@ -122,6 +122,9 @@ dotnet run -- access list
 dotnet run -- access approve <id>
 dotnet run -- access deny <id> --reason "..."
 dotnet run -- access revoke <id>
+dotnet run -- config              # show CLI files, session, kubeconfig
+dotnet run -- config show --json  # machine-readable
+dotnet run -- config path         # just print file paths
 ```
 
 NativeAOT publish:

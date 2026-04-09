@@ -751,6 +751,12 @@ clustral access revoke <request-id>
 
 # --- Utility ---
 
+# Show CLI configuration, files, session, and current kubeconfig context
+clustral config
+clustral config show              # same as `config`
+clustral config show --json       # machine-readable
+clustral config path              # just print file paths
+
 # Check version
 clustral version
 

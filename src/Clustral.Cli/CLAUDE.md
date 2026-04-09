@@ -27,6 +27,9 @@ clustral
 │   ├── approve <id>                ← Approve pending request
 │   ├── deny <id>                   ← Deny pending request
 │   └── revoke <id>                 ← Revoke active grant
+├── config
+│   ├── show [--json] [--remote]    ← Show CLI files, session, kubeconfig
+│   └── path                        ← Print file paths the CLI uses
 ├── update                          ← Self-update from GitHub
 └── version                         ← Show CLI version
 ```
@@ -45,7 +48,8 @@ Clustral.Cli/
 │   ├── KubeLogoutCommand.cs      ← clustral kube logout
 │   ├── UsersCommand.cs           ← clustral users list
 │   ├── RolesCommand.cs           ← clustral roles list
-│   └── AccessCommand.cs          ← clustral access (request, list, approve, deny, revoke)
+│   ├── AccessCommand.cs          ← clustral access (request, list, approve, deny, revoke)
+│   └── ConfigCommand.cs          ← clustral config show / path (offline introspection)
 │
 ├── Ui/
 │   └── CliErrors.cs              ← Card-style error display via Spectre.Console panels

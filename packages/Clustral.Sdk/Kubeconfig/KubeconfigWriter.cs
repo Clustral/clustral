@@ -263,6 +263,52 @@ public sealed class KubeconfigWriter
     }
 
     // -------------------------------------------------------------------------
+    // Inspection
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the names of all contexts defined in the kubeconfig file.
+    /// Returns an empty list if the file does not exist or has no contexts.
+    /// </summary>
+    public IReadOnlyList<string> ListContextNames()
+    {
+        if (!File.Exists(_kubeconfigPath))
+            return [];
+
+        var doc = ReadRawDocument();
+        var contexts = GetList(doc, "contexts");
+
+        var names = new List<string>(contexts.Count);
+        foreach (var item in contexts)
+        {
+            if (item is Dictionary<object, object> ctx &&
+                ctx.TryGetValue("name", out var nameObj) &&
+                nameObj is string name &&
+                !string.IsNullOrEmpty(name))
+            {
+                names.Add(name);
+            }
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// Returns the value of <c>current-context</c> from the kubeconfig file,
+    /// or <c>null</c> if the file does not exist or no current context is set.
+    /// </summary>
+    public string? GetCurrentContext()
+    {
+        if (!File.Exists(_kubeconfigPath))
+            return null;
+
+        var doc = ReadRawDocument();
+        if (doc.TryGetValue("current-context", out var cc) && cc is string s && !string.IsNullOrEmpty(s))
+            return s;
+
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
     // Validation
     // -------------------------------------------------------------------------
 

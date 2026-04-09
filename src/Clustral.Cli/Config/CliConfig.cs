@@ -45,7 +45,8 @@ public sealed class CliConfig
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static readonly string ConfigPath = Path.Combine(
+    /// <summary>Default path: <c>~/.clustral/config.json</c>.</summary>
+    public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".clustral", "config.json");
 
@@ -53,14 +54,17 @@ public sealed class CliConfig
     /// Reads <c>~/.clustral/config.json</c> if it exists, returning
     /// a default-initialised instance otherwise.
     /// </summary>
-    public static CliConfig Load()
+    public static CliConfig Load() => LoadFrom(DefaultPath);
+
+    /// <summary>Loads configuration from a specific file path. Used by tests.</summary>
+    public static CliConfig LoadFrom(string path)
     {
-        if (!File.Exists(ConfigPath))
+        if (!File.Exists(path))
             return new CliConfig();
 
         try
         {
-            var json = File.ReadAllText(ConfigPath);
+            var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize(json, CliJsonContext.Default.CliConfig)
                    ?? new CliConfig();
         }
@@ -74,9 +78,9 @@ public sealed class CliConfig
     /// <summary>Persists the current config to <c>~/.clustral/config.json</c>.</summary>
     public void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(DefaultPath)!);
         var json = JsonSerializer.Serialize(this, CliJsonContext.Default.CliConfig);
-        File.WriteAllText(ConfigPath, json);
+        File.WriteAllText(DefaultPath, json);
     }
 }
 
@@ -105,7 +109,67 @@ public sealed class CliConfig
 [JsonSerializable(typeof(AccessRequestDenyRequest))]
 [JsonSerializable(typeof(AccessRequestRevokeRequest))]
 [JsonSerializable(typeof(RevokeByTokenRequest))]
+[JsonSerializable(typeof(ConfigShowOutput))]
 internal partial class CliJsonContext : JsonSerializerContext { }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `clustral config show --json` output structure
+// ─────────────────────────────────────────────────────────────────────────────
+
+internal sealed class ConfigShowOutput
+{
+    [JsonPropertyName("files")]        public ConfigFiles        Files        { get; set; } = new();
+    [JsonPropertyName("controlPlane")] public ConfigControlPlane ControlPlane { get; set; } = new();
+    [JsonPropertyName("session")]      public ConfigSession      Session      { get; set; } = new();
+    [JsonPropertyName("cli")]          public ConfigCli          Cli          { get; set; } = new();
+}
+
+internal sealed class ConfigFiles
+{
+    [JsonPropertyName("config")]     public ConfigFileInfo       Config     { get; set; } = new();
+    [JsonPropertyName("token")]      public ConfigFileInfo       Token      { get; set; } = new();
+    [JsonPropertyName("kubeconfig")] public ConfigKubeconfigInfo Kubeconfig { get; set; } = new();
+}
+
+internal sealed class ConfigFileInfo
+{
+    [JsonPropertyName("path")]      public string Path      { get; set; } = string.Empty;
+    [JsonPropertyName("exists")]    public bool   Exists    { get; set; }
+    [JsonPropertyName("sizeBytes")] public long   SizeBytes { get; set; }
+}
+
+internal sealed class ConfigKubeconfigInfo
+{
+    [JsonPropertyName("path")]            public string       Path           { get; set; } = string.Empty;
+    [JsonPropertyName("exists")]          public bool         Exists         { get; set; }
+    [JsonPropertyName("currentContext")]  public string?      CurrentContext { get; set; }
+    [JsonPropertyName("totalContexts")]   public int          TotalContexts  { get; set; }
+    [JsonPropertyName("clustralContexts")] public List<string> ClustralContexts { get; set; } = [];
+}
+
+internal sealed class ConfigControlPlane
+{
+    [JsonPropertyName("url")]           public string Url           { get; set; } = string.Empty;
+    [JsonPropertyName("oidcAuthority")] public string OidcAuthority { get; set; } = string.Empty;
+    [JsonPropertyName("oidcClientId")]  public string OidcClientId  { get; set; } = string.Empty;
+    [JsonPropertyName("oidcScopes")]    public string OidcScopes    { get; set; } = string.Empty;
+    [JsonPropertyName("insecureTls")]   public bool   InsecureTls   { get; set; }
+    [JsonPropertyName("callbackPort")]  public int    CallbackPort  { get; set; }
+}
+
+internal sealed class ConfigSession
+{
+    [JsonPropertyName("status")]          public string          Status          { get; set; } = string.Empty;
+    [JsonPropertyName("subject")]         public string?         Subject         { get; set; }
+    [JsonPropertyName("issuedAt")]        public DateTimeOffset? IssuedAt        { get; set; }
+    [JsonPropertyName("expiresAt")]       public DateTimeOffset? ExpiresAt       { get; set; }
+    [JsonPropertyName("validForSeconds")] public long?           ValidForSeconds { get; set; }
+}
+
+internal sealed class ConfigCli
+{
+    [JsonPropertyName("version")] public string Version { get; set; } = string.Empty;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wire types for HTTP responses
