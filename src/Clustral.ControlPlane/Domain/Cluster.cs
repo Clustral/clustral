@@ -16,9 +16,6 @@ public sealed class Cluster : HasDomainEvents
     public string Name               { get; set; } = string.Empty;
     public string Description        { get; set; } = string.Empty;
 
-    /// <summary>PEM-encoded Ed25519 public key submitted at registration time.</summary>
-    public string AgentPublicKeyPem  { get; set; } = string.Empty;
-
     /// <summary>
     /// SHA-256 hex of the one-time bootstrap token issued at registration.
     /// Cleared once the Agent calls <c>AuthService.IssueAgentCredential</c>.
@@ -61,7 +58,7 @@ public sealed class Cluster : HasDomainEvents
     /// Creates a new cluster in Pending state with a bootstrap token hash.
     /// </summary>
     public static Cluster Create(
-        string name, string description, string agentPublicKeyPem,
+        string name, string description,
         string bootstrapTokenHash, Dictionary<string, string>? labels = null)
     {
         var cluster = new Cluster
@@ -69,7 +66,6 @@ public sealed class Cluster : HasDomainEvents
             Id = Guid.NewGuid(),
             Name = name,
             Description = description,
-            AgentPublicKeyPem = agentPublicKeyPem,
             BootstrapTokenHash = bootstrapTokenHash,
             Status = ClusterStatus.Pending,
             Labels = labels ?? new Dictionary<string, string>(),

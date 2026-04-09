@@ -31,7 +31,6 @@ public sealed class GrpcAuthServiceTests(
         var resp = await clusterSvc.RegisterAsync(new RegisterClusterRequest
         {
             Name = name ?? $"grpc-auth-{Guid.NewGuid().ToString()[..8]}",
-            AgentPublicKeyPem = "test-key",
         });
         return (resp.ClusterId, resp.BootstrapToken);
     }
@@ -177,7 +176,6 @@ public sealed class GrpcAuthServiceTests(
             {
                 ClusterId = clusterId,
                 BootstrapToken = bootstrapToken,
-                AgentPublicKeyPem = "test-key",
             });
 
         output.WriteLine($"Agent credential: id={response.CredentialId}, token={response.Token[..8]}...");
@@ -196,7 +194,6 @@ public sealed class GrpcAuthServiceTests(
         {
             ClusterId = clusterId,
             BootstrapToken = bootstrapToken,
-            AgentPublicKeyPem = "test-key",
         });
 
         // Second call fails — token consumed.
@@ -204,7 +201,6 @@ public sealed class GrpcAuthServiceTests(
         {
             ClusterId = clusterId,
             BootstrapToken = bootstrapToken,
-            AgentPublicKeyPem = "test-key",
         }).ResponseAsync;
 
         var ex = await act.Should().ThrowAsync<Grpc.Core.RpcException>();
@@ -224,7 +220,6 @@ public sealed class GrpcAuthServiceTests(
         {
             ClusterId = clusterId,
             BootstrapToken = bootstrapToken,
-            AgentPublicKeyPem = "test-key",
         });
 
         var rotated = await svc.RotateAgentCredentialAsync(new RotateAgentCredentialRequest

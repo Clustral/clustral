@@ -37,7 +37,6 @@ public sealed class GrpcClusterServiceTests(
         {
             Name = name,
             Description = "gRPC test cluster",
-            AgentPublicKeyPem = "test-pem-key",
         });
 
         output.WriteLine($"Registered: id={response.ClusterId}, token={response.BootstrapToken[..8]}...");
@@ -55,13 +54,11 @@ public sealed class GrpcClusterServiceTests(
         await svc.RegisterAsync(new RegisterClusterRequest
         {
             Name = name,
-            AgentPublicKeyPem = "key",
         });
 
         var act = () => svc.RegisterAsync(new RegisterClusterRequest
         {
             Name = name,
-            AgentPublicKeyPem = "key",
         }).ResponseAsync;
 
         var ex = await act.Should().ThrowAsync<Grpc.Core.RpcException>();
@@ -77,7 +74,6 @@ public sealed class GrpcClusterServiceTests(
         var act = () => svc.RegisterAsync(new RegisterClusterRequest
         {
             Name = "",
-            AgentPublicKeyPem = "key",
         }).ResponseAsync;
 
         var ex = await act.Should().ThrowAsync<Grpc.Core.RpcException>();
@@ -95,7 +91,6 @@ public sealed class GrpcClusterServiceTests(
         await svc.RegisterAsync(new RegisterClusterRequest
         {
             Name = name,
-            AgentPublicKeyPem = "key",
         });
 
         var response = await svc.ListAsync(new ListClustersRequest { PageSize = 100 });
@@ -116,7 +111,6 @@ public sealed class GrpcClusterServiceTests(
         {
             Name = name,
             Description = "test desc",
-            AgentPublicKeyPem = "key",
         });
 
         var cluster = await svc.GetAsync(new GetClusterRequest { ClusterId = reg.ClusterId });
@@ -152,7 +146,6 @@ public sealed class GrpcClusterServiceTests(
         var reg = await svc.RegisterAsync(new RegisterClusterRequest
         {
             Name = name,
-            AgentPublicKeyPem = "key",
         });
 
         // Heartbeat only updates status + last seen (k8s version comes from AgentHello).
@@ -179,7 +172,6 @@ public sealed class GrpcClusterServiceTests(
         var reg = await svc.RegisterAsync(new RegisterClusterRequest
         {
             Name = name,
-            AgentPublicKeyPem = "key",
         });
 
         await svc.DeregisterAsync(new DeregisterClusterRequest { ClusterId = reg.ClusterId });

@@ -23,7 +23,7 @@ public sealed class ClustersIntegrationTests(
 
         var response = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "Feature slice test", agentPublicKeyPem = "",
+            name, description = "Feature slice test",
         });
 
         var body = await response.Content.ReadAsStringAsync();
@@ -42,7 +42,7 @@ public sealed class ClustersIntegrationTests(
 
         var response = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name = "", description = "No name", agentPublicKeyPem = "",
+            name = "", description = "No name",
         });
 
         var body = await response.Content.ReadAsStringAsync();
@@ -61,7 +61,7 @@ public sealed class ClustersIntegrationTests(
         // Create first.
         var createResp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "", agentPublicKeyPem = "",
+            name, description = "",
         });
         createResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var createBody = await createResp.Content.ReadAsStringAsync();
@@ -86,7 +86,7 @@ public sealed class ClustersIntegrationTests(
 
         var createResp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "", agentPublicKeyPem = "",
+            name, description = "",
         });
         var createBody = await createResp.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(createBody);

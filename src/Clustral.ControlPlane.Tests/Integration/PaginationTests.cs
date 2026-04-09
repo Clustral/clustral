@@ -17,7 +17,6 @@ public sealed class PaginationTests(
         {
             name,
             description = "pagination test",
-            agentPublicKeyPem = "",
         });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync();

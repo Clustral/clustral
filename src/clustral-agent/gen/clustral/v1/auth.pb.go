@@ -485,11 +485,8 @@ type IssueAgentCredentialRequest struct {
 	ClusterId string                 `protobuf:"bytes,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	// One-time bootstrap token from RegisterClusterResponse.
 	BootstrapToken string `protobuf:"bytes,2,opt,name=bootstrap_token,json=bootstrapToken,proto3" json:"bootstrap_token,omitempty"`
-	// Agent's public key (PEM-encoded Ed25519) for mutual-TLS or token binding.
-	// Must match the key submitted at registration time.
-	AgentPublicKeyPem string `protobuf:"bytes,3,opt,name=agent_public_key_pem,json=agentPublicKeyPem,proto3" json:"agent_public_key_pem,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *IssueAgentCredentialRequest) Reset() {
@@ -532,13 +529,6 @@ func (x *IssueAgentCredentialRequest) GetClusterId() string {
 func (x *IssueAgentCredentialRequest) GetBootstrapToken() string {
 	if x != nil {
 		return x.BootstrapToken
-	}
-	return ""
-}
-
-func (x *IssueAgentCredentialRequest) GetAgentPublicKeyPem() string {
-	if x != nil {
-		return x.AgentPublicKeyPem
 	}
 	return ""
 }
@@ -881,12 +871,11 @@ const file_auth_proto_rawDesc = "" +
 	"\rcredential_id\x18\x03 \x01(\tR\fcredentialId\x129\n" +
 	"\n" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x127\n" +
-	"\x06reason\x18\x05 \x01(\x0e2\x1f.clustral.v1.InvalidationReasonR\x06reason\"\x96\x01\n" +
+	"\x06reason\x18\x05 \x01(\x0e2\x1f.clustral.v1.InvalidationReasonR\x06reason\"e\n" +
 	"\x1bIssueAgentCredentialRequest\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12'\n" +
-	"\x0fbootstrap_token\x18\x02 \x01(\tR\x0ebootstrapToken\x12/\n" +
-	"\x14agent_public_key_pem\x18\x03 \x01(\tR\x11agentPublicKeyPem\"\xcd\x01\n" +
+	"\x0fbootstrap_token\x18\x02 \x01(\tR\x0ebootstrapToken\"\xcd\x01\n" +
 	"\x1cIssueAgentCredentialResponse\x12#\n" +
 	"\rcredential_id\x18\x01 \x01(\tR\fcredentialId\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x127\n" +

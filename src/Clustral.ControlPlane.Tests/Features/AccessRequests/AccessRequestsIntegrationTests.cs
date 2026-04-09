@@ -16,7 +16,7 @@ public sealed class AccessRequestsIntegrationTests(
         var clusterName = $"ar-{Guid.NewGuid():N}"[..20];
         var clusterResp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name = clusterName, description = "", agentPublicKeyPem = "",
+            name = clusterName, description = "",
         });
         var clusterBody = await clusterResp.Content.ReadAsStringAsync();
         using var clusterDoc = JsonDocument.Parse(clusterBody);

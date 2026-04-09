@@ -63,7 +63,7 @@ public sealed class UsersIntegrationTests(
         var clusterName = $"cluster-assign-{Guid.NewGuid():N}"[..20];
         var clusterResp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name = clusterName, description = "", agentPublicKeyPem = "",
+            name = clusterName, description = "",
         });
         clusterResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var clusterBody = await clusterResp.Content.ReadAsStringAsync();
@@ -104,7 +104,7 @@ public sealed class UsersIntegrationTests(
         var clusterName = $"cl-rm-{Guid.NewGuid():N}"[..20];
         var clusterResp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name = clusterName, description = "", agentPublicKeyPem = "",
+            name = clusterName, description = "",
         });
         var clusterBody = await clusterResp.Content.ReadAsStringAsync();
         using var clusterDoc = JsonDocument.Parse(clusterBody);

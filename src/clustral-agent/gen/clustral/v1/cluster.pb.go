@@ -183,14 +183,11 @@ func (x *Cluster) GetLabels() map[string]string {
 type RegisterClusterRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Desired display name. Must be unique within the tenant.
-	Name        string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
-	// Public key (PEM-encoded) used by the Agent to prove its identity over the
-	// TunnelService stream. The control plane stores this for later verification.
-	AgentPublicKeyPem string            `protobuf:"bytes,3,opt,name=agent_public_key_pem,json=agentPublicKeyPem,proto3" json:"agent_public_key_pem,omitempty"`
-	Labels            map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	Name          string            `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string            `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Labels        map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RegisterClusterRequest) Reset() {
@@ -233,13 +230,6 @@ func (x *RegisterClusterRequest) GetName() string {
 func (x *RegisterClusterRequest) GetDescription() string {
 	if x != nil {
 		return x.Description
-	}
-	return ""
-}
-
-func (x *RegisterClusterRequest) GetAgentPublicKeyPem() string {
-	if x != nil {
-		return x.AgentPublicKeyPem
 	}
 	return ""
 }
@@ -940,11 +930,10 @@ const file_cluster_proto_rawDesc = "" +
 	"\x06labels\x18\b \x03(\v2 .clustral.v1.Cluster.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x83\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd2\x01\n" +
 	"\x16RegisterClusterRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\x12/\n" +
-	"\x14agent_public_key_pem\x18\x03 \x01(\tR\x11agentPublicKeyPem\x12G\n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12G\n" +
 	"\x06labels\x18\x04 \x03(\v2/.clustral.v1.RegisterClusterRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

@@ -10,7 +10,7 @@ public sealed class ClusterDomainTests
     [Fact]
     public void ConsumeBootstrapToken_ClearsHash()
     {
-        var cluster = Cluster.Create("test", "desc", "pem-key", "token-hash-123");
+        var cluster = Cluster.Create("test", "desc", "token-hash-123");
 
         cluster.BootstrapTokenHash.Should().Be("token-hash-123");
         cluster.ConsumeBootstrapToken();
@@ -20,7 +20,7 @@ public sealed class ClusterDomainTests
     [Fact]
     public void RevokeAgentCredentials_IncrementsTokenVersion()
     {
-        var cluster = Cluster.Create("test", "desc", "pem-key", "hash");
+        var cluster = Cluster.Create("test", "desc", "hash");
 
         cluster.TokenVersion.Should().Be(1);
         cluster.RevokeAgentCredentials();
@@ -32,7 +32,7 @@ public sealed class ClusterDomainTests
     [Fact]
     public void RevokeAgentCredentials_RaisesDomainEvent()
     {
-        var cluster = Cluster.Create("test", "desc", "pem-key", "hash");
+        var cluster = Cluster.Create("test", "desc", "hash");
         cluster.ClearDomainEvents(); // clear the ClusterRegistered event
 
         cluster.RevokeAgentCredentials();
@@ -46,7 +46,7 @@ public sealed class ClusterDomainTests
     [Fact]
     public void RecordCertificateFingerprint_StoresValue()
     {
-        var cluster = Cluster.Create("test", "desc", "pem-key", "hash");
+        var cluster = Cluster.Create("test", "desc", "hash");
 
         cluster.CertificateFingerprint.Should().BeNull();
         cluster.RecordCertificateFingerprint("abc123def456");

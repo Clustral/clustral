@@ -15,7 +15,7 @@ public sealed class CascadeDeletionTests(
         var name = $"cascade-{Guid.NewGuid():N}"[..20];
         var resp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "cascade test", agentPublicKeyPem = "",
+            name, description = "cascade test",
         });
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadAsStringAsync();

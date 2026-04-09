@@ -17,11 +17,11 @@ public sealed class ConcurrencyTests(
 
         var task1 = client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "concurrent 1", agentPublicKeyPem = "",
+            name, description = "concurrent 1",
         });
         var task2 = client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "concurrent 2", agentPublicKeyPem = "",
+            name, description = "concurrent 2",
         });
 
         var results = await Task.WhenAll(task1, task2);
@@ -67,7 +67,7 @@ public sealed class ConcurrencyTests(
         var name = $"conc-cred-{Guid.NewGuid():N}"[..20];
         var clusterResp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "concurrent cred test", agentPublicKeyPem = "",
+            name, description = "concurrent cred test",
         });
         clusterResp.EnsureSuccessStatusCode();
         var clusterBody = await clusterResp.Content.ReadAsStringAsync();
@@ -112,7 +112,7 @@ public sealed class ConcurrencyTests(
         var clusterName = $"conc-ad-{Guid.NewGuid():N}"[..20];
         var clusterResp = await adminClient.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name = clusterName, description = "", agentPublicKeyPem = "",
+            name = clusterName, description = "",
         });
         clusterResp.EnsureSuccessStatusCode();
         var clusterBody = await clusterResp.Content.ReadAsStringAsync();
@@ -168,7 +168,7 @@ public sealed class ConcurrencyTests(
         var clusterName = $"conc-dup-{Guid.NewGuid():N}"[..20];
         var clusterResp = await adminClient.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name = clusterName, description = "", agentPublicKeyPem = "",
+            name = clusterName, description = "",
         });
         clusterResp.EnsureSuccessStatusCode();
         var clusterBody = await clusterResp.Content.ReadAsStringAsync();

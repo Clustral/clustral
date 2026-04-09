@@ -75,11 +75,9 @@ public class ClusterModelsTests(ITestOutputHelper output)
         var request = new RegisterClusterRestRequest(
             Name: "test-cluster",
             Description: "A test cluster",
-            AgentPublicKeyPem: "PEM-KEY-DATA",
             Labels: new() { ["env"] = "dev" });
 
         output.WriteLine($"Name:    {request.Name}");
-        output.WriteLine($"PubKey:  {request.AgentPublicKeyPem[..10]}...");
         output.WriteLine($"Labels:  {request.Labels?.Count ?? 0}");
 
         Assert.Equal("test-cluster", request.Name);
@@ -91,11 +89,9 @@ public class ClusterModelsTests(ITestOutputHelper output)
         var request = new RegisterClusterRestRequest(Name: "minimal");
 
         output.WriteLine($"Description: \"{request.Description}\"");
-        output.WriteLine($"PubKey:      \"{request.AgentPublicKeyPem}\"");
         output.WriteLine($"Labels:      {request.Labels?.ToString() ?? "null"}");
 
         Assert.Equal("", request.Description);
-        Assert.Equal("", request.AgentPublicKeyPem);
         Assert.Null(request.Labels);
     }
 

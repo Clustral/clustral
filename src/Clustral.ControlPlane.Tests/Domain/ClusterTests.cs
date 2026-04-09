@@ -13,7 +13,6 @@ public class ClusterTests(ITestOutputHelper output)
         output.WriteLine($"Status:            {cluster.Status}");
         output.WriteLine($"Name:              \"{cluster.Name}\"");
         output.WriteLine($"Description:       \"{cluster.Description}\"");
-        output.WriteLine($"AgentPublicKeyPem: \"{cluster.AgentPublicKeyPem}\"");
         output.WriteLine($"BootstrapToken:    {cluster.BootstrapTokenHash ?? "null"}");
         output.WriteLine($"KubernetesVersion: {cluster.KubernetesVersion ?? "null"}");
         output.WriteLine($"Labels:            {cluster.Labels.Count} items");

@@ -37,9 +37,6 @@ public sealed class ClusterServiceImpl(
         if (string.IsNullOrWhiteSpace(request.Name))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "name is required"));
 
-        if (string.IsNullOrWhiteSpace(request.AgentPublicKeyPem))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "agent_public_key_pem is required"));
-
         // Reject duplicate names.
         var exists = await db.Clusters
             .Find(c => c.Name == request.Name)
@@ -58,7 +55,6 @@ public sealed class ClusterServiceImpl(
             Id                 = Guid.NewGuid(),
             Name               = request.Name,
             Description        = request.Description,
-            AgentPublicKeyPem  = request.AgentPublicKeyPem,
             BootstrapTokenHash = tokenHash,
             Status             = DomainClusterStatus.Pending,
             Labels             = request.Labels.ToDictionary(kv => kv.Key, kv => kv.Value),

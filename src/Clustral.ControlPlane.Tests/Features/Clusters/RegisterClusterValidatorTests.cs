@@ -12,7 +12,7 @@ public sealed class RegisterClusterValidatorTests(ITestOutputHelper output)
     [Fact]
     public void Validate_ValidName_Passes()
     {
-        var command = new RegisterClusterCommand("production", "Main cluster", "", null);
+        var command = new RegisterClusterCommand("production", "Main cluster", null);
         var result = _validator.Validate(command);
 
         output.WriteLine($"Valid: {result.IsValid}");
@@ -23,7 +23,7 @@ public sealed class RegisterClusterValidatorTests(ITestOutputHelper output)
     [Fact]
     public void Validate_EmptyName_Fails()
     {
-        var command = new RegisterClusterCommand("", "No name", "", null);
+        var command = new RegisterClusterCommand("", "No name", null);
         var result = _validator.Validate(command);
 
         output.WriteLine($"Valid: {result.IsValid}, Errors: {result.Errors.Count}");
@@ -35,7 +35,7 @@ public sealed class RegisterClusterValidatorTests(ITestOutputHelper output)
     [Fact]
     public void Validate_NullName_Fails()
     {
-        var command = new RegisterClusterCommand(null!, "Null name", "", null);
+        var command = new RegisterClusterCommand(null!, "Null name", null);
         var result = _validator.Validate(command);
 
         result.IsValid.Should().BeFalse();
@@ -45,7 +45,7 @@ public sealed class RegisterClusterValidatorTests(ITestOutputHelper output)
     public void Validate_NameTooLong_Fails()
     {
         var longName = new string('x', 101);
-        var command = new RegisterClusterCommand(longName, "", "", null);
+        var command = new RegisterClusterCommand(longName, "", null);
         var result = _validator.Validate(command);
 
         output.WriteLine($"Name length: {longName.Length}, Valid: {result.IsValid}");
@@ -58,7 +58,7 @@ public sealed class RegisterClusterValidatorTests(ITestOutputHelper output)
     public void Validate_Name100Chars_Passes()
     {
         var name = new string('x', 100);
-        var command = new RegisterClusterCommand(name, "", "", null);
+        var command = new RegisterClusterCommand(name, "", null);
         var result = _validator.Validate(command);
 
         result.IsValid.Should().BeTrue();

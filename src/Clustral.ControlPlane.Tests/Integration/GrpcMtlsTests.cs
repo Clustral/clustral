@@ -223,7 +223,6 @@ public sealed class GrpcMtlsTests(
         {
             Name = name,
             Description = "mTLS test cluster",
-            AgentPublicKeyPem = "test-key",
         });
 
         return (response.ClusterId, response.BootstrapToken);

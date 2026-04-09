@@ -13,7 +13,6 @@ namespace Clustral.ControlPlane.Features.Clusters.Commands;
 public record RegisterClusterCommand(
     string Name,
     string Description,
-    string AgentPublicKeyPem,
     Dictionary<string, string>? Labels) : ICommand<Result<RegisterClusterRestResponse>>;
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -36,8 +35,7 @@ public sealed class RegisterClusterHandler(
         var tokenHash = tokens.HashToken(bootstrapToken);
 
         var cluster = Cluster.Create(
-            request.Name, request.Description, request.AgentPublicKeyPem,
-            tokenHash, request.Labels);
+            request.Name, request.Description, tokenHash, request.Labels);
 
         await clusters.InsertAsync(cluster, ct);
         await mediator.DispatchDomainEventsAsync(cluster, ct);

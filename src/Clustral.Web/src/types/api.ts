@@ -36,7 +36,6 @@ export interface IssueCredentialResponse {
 export interface RegisterClusterRequest {
   name: string;
   description: string;
-  agentPublicKeyPem: string;
   labels: Record<string, string>;
 }
 

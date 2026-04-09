@@ -170,13 +170,6 @@ public sealed class AuthServiceImpl(
                 "Invalid bootstrap token."));
         }
 
-        // Verify the public key matches what was submitted at registration.
-        // Skip if neither side provided a key (local dev convenience).
-        if (!string.IsNullOrEmpty(cluster.AgentPublicKeyPem) &&
-            cluster.AgentPublicKeyPem != request.AgentPublicKeyPem)
-            throw new RpcException(new Status(StatusCode.Unauthenticated,
-                "Agent public key does not match the registered key."));
-
         // Consume the bootstrap token — it is single-use.
         var clearBootstrap = Builders<Domain.Cluster>.Update
             .Set(c => c.BootstrapTokenHash, null!);

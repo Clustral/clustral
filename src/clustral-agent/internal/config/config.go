@@ -12,7 +12,6 @@ type Config struct {
 	ControlPlaneURL            string
 	CredentialPath             string
 	BootstrapToken             string
-	AgentPublicKeyPem          string
 	KubernetesAPIURL           string
 	KubernetesSkipTLSVerify    bool
 	HeartbeatInterval          time.Duration
@@ -33,7 +32,6 @@ func Load() *Config {
 		ControlPlaneURL:            envStr("AGENT_CONTROL_PLANE_URL", ""),
 		CredentialPath:             envStr("AGENT_CREDENTIAL_PATH", defaultCredentialPath()),
 		BootstrapToken:             envStr("AGENT_BOOTSTRAP_TOKEN", ""),
-		AgentPublicKeyPem:          envStr("AGENT_PUBLIC_KEY_PEM", ""),
 		KubernetesAPIURL:           envStr("AGENT_KUBERNETES_API_URL", "https://kubernetes.default.svc"),
 		KubernetesSkipTLSVerify:    envBool("AGENT_KUBERNETES_SKIP_TLS_VERIFY", false),
 		HeartbeatInterval:          envDuration("AGENT_HEARTBEAT_INTERVAL", 30*time.Second),

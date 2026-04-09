@@ -85,9 +85,8 @@ message RegisterClusterRequest {
 
   string description = 2;
 
-  // Public key (PEM-encoded) used by the Agent to prove its identity over the
-  // TunnelService stream. The control plane stores this for later verification.
-  string agent_public_key_pem = 3;
+  // Field 3 was agent_public_key_pem — removed after mTLS migration.
+  // Agent identity is now proven via mTLS client certificate + RS256 JWT.
 
   map<string, string> labels = 4;
 }

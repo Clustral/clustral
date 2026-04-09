@@ -16,7 +16,7 @@ public sealed class AuthIntegrationTests(
         var name = $"auth-{Guid.NewGuid():N}"[..20];
         var resp = await client.PostAsJsonAsync("/api/v1/clusters", new
         {
-            name, description = "", agentPublicKeyPem = "",
+            name, description = "",
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = await resp.Content.ReadAsStringAsync();

@@ -12,7 +12,6 @@ namespace Clustral.ControlPlane.Api.Models;
 public sealed record RegisterClusterRestRequest(
     string Name,
     string Description = "",
-    string AgentPublicKeyPem = "",
     Dictionary<string, string>? Labels = null);
 
 public sealed record RegisterClusterRestResponse(

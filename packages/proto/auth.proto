@@ -143,9 +143,8 @@ message IssueAgentCredentialRequest {
   // One-time bootstrap token from RegisterClusterResponse.
   string bootstrap_token = 2;
 
-  // Agent's public key (PEM-encoded Ed25519) for mutual-TLS or token binding.
-  // Must match the key submitted at registration time.
-  string agent_public_key_pem = 3;
+  // Field 3 was agent_public_key_pem — removed after mTLS migration.
+  // This whole RPC is deprecated; new agents use ClusterService.RegisterAgent.
 }
 
 message IssueAgentCredentialResponse {

@@ -24,7 +24,7 @@ public sealed class ClustersController(IMediator mediator) : ControllerBase
         [FromBody] RegisterClusterRestRequest request, CancellationToken ct)
     {
         var result = await mediator.Send(
-            new RegisterClusterCommand(request.Name, request.Description, request.AgentPublicKeyPem, request.Labels), ct);
+            new RegisterClusterCommand(request.Name, request.Description, request.Labels), ct);
         return result.Match<IActionResult>(
             value => CreatedAtAction(nameof(Get), new { id = value.ClusterId }, value),
             error => error.ToActionResult());

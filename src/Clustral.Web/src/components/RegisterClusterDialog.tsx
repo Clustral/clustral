@@ -38,7 +38,6 @@ export function RegisterClusterDialog({ open, onClose }: Props) {
       registerCluster(token!, {
         name,
         description,
-        agentPublicKeyPem: "",
         labels: {},
       }),
     onSuccess: (data) => {

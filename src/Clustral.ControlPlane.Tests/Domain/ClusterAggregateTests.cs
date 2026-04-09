@@ -9,7 +9,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     [Fact]
     public void Create_SetsPendingStatus()
     {
-        var cluster = Cluster.Create("prod", "Production", "pem-key", "hash-abc");
+        var cluster = Cluster.Create("prod", "Production", "hash-abc");
 
         output.WriteLine($"Name: {cluster.Name}, Status: {cluster.Status}");
         cluster.Id.Should().NotBe(Guid.Empty);
@@ -23,7 +23,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     public void Create_WithLabels()
     {
         var labels = new Dictionary<string, string> { ["env"] = "prod", ["region"] = "eu" };
-        var cluster = Cluster.Create("prod", "Production", "pem", "hash", labels);
+        var cluster = Cluster.Create("prod", "Production", "hash", labels);
 
         cluster.Labels.Should().HaveCount(2);
         cluster.Labels["env"].Should().Be("prod");
@@ -32,7 +32,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     [Fact]
     public void Connect_SetsConnectedAndLastSeen()
     {
-        var cluster = Cluster.Create("test", "Test", "pem", "hash");
+        var cluster = Cluster.Create("test", "Test", "hash");
 
         cluster.Connect("v1.29.0", "0.2.0");
 
@@ -46,7 +46,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     [Fact]
     public void Connect_WithoutAgentVersion_PreservesNull()
     {
-        var cluster = Cluster.Create("test", "Test", "pem", "hash");
+        var cluster = Cluster.Create("test", "Test", "hash");
 
         cluster.Connect("v1.29.0");
 
@@ -56,7 +56,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     [Fact]
     public void Disconnect_SetsDisconnected()
     {
-        var cluster = Cluster.Create("test", "Test", "pem", "hash");
+        var cluster = Cluster.Create("test", "Test", "hash");
         cluster.Connect();
 
         cluster.Disconnect();
@@ -67,7 +67,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     [Fact]
     public void RecordHeartbeat_UpdatesLastSeen()
     {
-        var cluster = Cluster.Create("test", "Test", "pem", "hash");
+        var cluster = Cluster.Create("test", "Test", "hash");
         cluster.Connect();
         var firstSeen = cluster.LastSeenAt;
 
@@ -80,7 +80,7 @@ public sealed class ClusterAggregateTests(ITestOutputHelper output)
     [Fact]
     public void ConsumeBootstrapToken_ClearsHash()
     {
-        var cluster = Cluster.Create("test", "Test", "pem", "token-hash");
+        var cluster = Cluster.Create("test", "Test", "token-hash");
 
         cluster.BootstrapTokenHash.Should().Be("token-hash");
 
