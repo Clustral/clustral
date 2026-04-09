@@ -7,7 +7,10 @@ namespace Clustral.Cli.Tests;
 
 public class ProfileTableTests(ITestOutputHelper output)
 {
-    private static string Render(UserProfileResponse profile, string cpUrl = "https://cp.example.com")
+    private static string Render(
+        UserProfileResponse profile,
+        string cpUrl = "https://cp.example.com",
+        DateTimeOffset? expiry = null)
     {
         var roles = profile.Assignments
             .Select(a => a.RoleName)
@@ -23,7 +26,7 @@ public class ProfileTableTests(ITestOutputHelper output)
 
         var console = new TestConsole();
         console.Profile.Width = 80;
-        LoginCommand.RenderProfileTable(console, profile, cpUrl, roles, clusters);
+        LoginCommand.RenderProfileTable(console, profile, cpUrl, roles, clusters, expiry);
         return console.Output;
     }
 
@@ -278,5 +281,109 @@ public class ProfileTableTests(ITestOutputHelper output)
         output.WriteLine(rendered);
 
         Assert.DoesNotContain("Access", rendered);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // JWT "Valid until" row — rendered inside the profile table (Teleport-style).
+    // The plain TestConsole strips ANSI escape codes but keeps text content,
+    // so the literal "valid for ..." annotation is observable. Color tags
+    // (`green`, `yellow`, `red`) become inert markup that doesn't appear in
+    // the rendered output, so we assert on the relative duration string and
+    // its `XhYm` vs `Ym` shape rather than the color name.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RenderProfileTable_WithExpiry_RendersValidUntilRow()
+    {
+        var profile = new UserProfileResponse
+        {
+            Email = "alice@example.com",
+            Assignments = [],
+        };
+        var expiry = DateTimeOffset.UtcNow.AddHours(8).AddMinutes(15);
+
+        var rendered = Render(profile, expiry: expiry);
+
+        output.WriteLine("=== With Expiry (8h15m) ===");
+        output.WriteLine(rendered);
+
+        Assert.Contains("Valid until", rendered);
+        // Local-time formatted year/month/day must appear.
+        Assert.Contains(expiry.ToLocalTime().ToString("yyyy-MM-dd"), rendered);
+        Assert.Contains("valid for", rendered);
+    }
+
+    [Fact]
+    public void RenderProfileTable_WithExpiry_FarInFuture_UsesHourMinuteFormat()
+    {
+        var profile = new UserProfileResponse
+        {
+            Email = "alice@example.com",
+            Assignments = [],
+        };
+        // ~12h → green branch, "XhYm" duration shape (clock drift means the
+        // exact minute count isn't predictable, so just assert on the shape).
+        var expiry = DateTimeOffset.UtcNow.AddHours(12);
+
+        var rendered = Render(profile, expiry: expiry);
+
+        output.WriteLine("=== With Expiry (~12h, green) ===");
+        output.WriteLine(rendered);
+
+        Assert.Contains("Valid until", rendered);
+        // Match `valid for XXhYm` shape, regardless of the exact minute count.
+        var match = System.Text.RegularExpressions.Regex.Match(
+            rendered, @"valid for (\d+)h(\d+)m");
+        Assert.True(match.Success,
+            $"expected `valid for XhYm` shape, got: {rendered}");
+        Assert.InRange(int.Parse(match.Groups[1].Value), 11, 12);
+    }
+
+    [Fact]
+    public void RenderProfileTable_WithExpiry_LessThan10Minutes_UsesMinutesOnlyFormat()
+    {
+        var profile = new UserProfileResponse
+        {
+            Email = "alice@example.com",
+            Assignments = [],
+        };
+        // ~8 minutes → red branch, "Xm" duration shape (no hours).
+        // Comfortable buffer above 0 and below 10 to absorb clock drift.
+        var expiry = DateTimeOffset.UtcNow.AddMinutes(8);
+
+        var rendered = Render(profile, expiry: expiry);
+
+        output.WriteLine("=== With Expiry (~8m, red) ===");
+        output.WriteLine(rendered);
+
+        Assert.Contains("Valid until", rendered);
+        // Match `valid for Xm` shape (no hours component) and bound the
+        // minute count between 1 and 9 to absorb clock drift.
+        var match = System.Text.RegularExpressions.Regex.Match(
+            rendered, @"valid for (\d+)m\b");
+        Assert.True(match.Success,
+            $"expected `valid for Xm` shape, got: {rendered}");
+        var minutes = int.Parse(match.Groups[1].Value);
+        Assert.InRange(minutes, 1, 9);
+        // Should NOT use the "XhYm" format for sub-hour durations.
+        Assert.DoesNotContain("valid for 0h", rendered);
+    }
+
+    [Fact]
+    public void RenderProfileTable_NoExpiry_DoesNotRenderValidUntilRow()
+    {
+        var profile = new UserProfileResponse
+        {
+            Email = "alice@example.com",
+            Assignments = [],
+        };
+
+        var rendered = Render(profile, expiry: null);
+
+        output.WriteLine("=== No Expiry ===");
+        output.WriteLine(rendered);
+
+        Assert.DoesNotContain("Valid until", rendered);
+        Assert.DoesNotContain("valid for", rendered);
     }
 }

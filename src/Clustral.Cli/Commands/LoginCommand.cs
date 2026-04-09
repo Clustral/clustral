@@ -265,17 +265,7 @@ internal static class LoginCommand
             AnsiConsole.MarkupLine("[green]✓[/] [bold]Logged in successfully[/]");
             AnsiConsole.WriteLine();
 
-            RenderProfileTable(AnsiConsole.Console, profile, cpUrl, roles, clusters);
-
-            if (expiry.HasValue)
-            {
-                var remaining = expiry.Value - DateTimeOffset.UtcNow;
-                var validFor = remaining.TotalHours >= 1
-                    ? $"{(int)remaining.TotalHours}h{remaining.Minutes}m"
-                    : $"{(int)remaining.TotalMinutes}m";
-                var color = remaining.TotalMinutes < 10 ? "red" : remaining.TotalHours < 1 ? "yellow" : "green";
-                AnsiConsole.MarkupLine($"\n[grey]Valid until[/]  {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [[{color}]valid for {validFor}[/]]");
-            }
+            RenderProfileTable(AnsiConsole.Console, profile, cpUrl, roles, clusters, expiry);
         }
         catch
         {
@@ -311,7 +301,8 @@ internal static class LoginCommand
         UserProfileResponse profile,
         string cpUrl,
         List<string> roles,
-        List<string> clusters)
+        List<string> clusters,
+        DateTimeOffset? expiry = null)
     {
         var table = new Table()
             .Border(TableBorder.None)
@@ -324,6 +315,19 @@ internal static class LoginCommand
         table.AddRow("[grey]Email[/]", profile.Email.EscapeMarkup());
         table.AddRow("[grey]Kubernetes[/]", "[green]enabled[/]");
         table.AddRow("[grey]CLI version[/]", $"v{VersionCommand.GetVersion()}");
+
+        if (expiry.HasValue)
+        {
+            var remaining = expiry.Value - DateTimeOffset.UtcNow;
+            var validFor = remaining.TotalHours >= 1
+                ? $"{(int)remaining.TotalHours}h{remaining.Minutes}m"
+                : $"{(int)remaining.TotalMinutes}m";
+            var color = remaining.TotalMinutes < 10 ? "red"
+                      : remaining.TotalHours < 1   ? "yellow"
+                      : "green";
+            table.AddRow("[grey]Valid until[/]",
+                $"{expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss K} [[[{color}]valid for {validFor}[/]]]");
+        }
 
         table.AddRow("[grey]Roles[/]", roles.Count > 0
             ? $"[yellow]{string.Join(", ", roles).EscapeMarkup()}[/]"
