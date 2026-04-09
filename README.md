@@ -1089,6 +1089,120 @@ dotnet test src/Clustral.E2E.Tests
 > Both ControlPlane and CLI use **FluentAssertions** (`.Should().Be(...)`) in
 > all tests.
 
+#### E2E test architecture
+
+Every E2E test runs against the **real production binaries** on a shared Docker network. There are no mocks, no in-process shortcuts, no test-only auth handlers. Keycloak issues real OIDC tokens, the ControlPlane validates real JWTs, and the Go agent forwards real multi-value impersonation headers to a real Kubernetes API.
+
+```mermaid
+flowchart LR
+    subgraph host ["Test host (xUnit)"]
+        TEST["E2E Test<br/>HttpClient + ControlPlaneClient"]
+    end
+
+    subgraph dockernet ["Docker network: clustral-e2e-{guid}"]
+        KC["keycloak<br/>:8080<br/>real OIDC + clustral realm"]
+        MONGO[("mongo<br/>:27017<br/>no auth")]
+        CP["controlplane<br/>:5100 REST<br/>:5443 mTLS gRPC<br/>(built from Dockerfile)"]
+        AGENT["agent<br/>(per-test container)<br/>real Go binary<br/>(built from Dockerfile)"]
+        K3S["k3s<br/>:6443<br/>real Kubernetes API<br/>privileged container"]
+    end
+
+    TEST -- "1\. OIDC password grant" --> KC
+    TEST -- "2\. REST API (Bearer JWT)" --> CP
+    TEST -- "3\. kubectl proxy" --> CP
+
+    CP -- "JWKS validation" --> KC
+    CP -- "store clusters,<br/>roles, credentials" --> MONGO
+    AGENT == "mTLS + JWT tunnel<br/>(:5443, direct)" ==> CP
+    AGENT -- "impersonated kubectl<br/>(SA token + multi-value<br/>Impersonate-Group)" --> K3S
+
+    style KC fill:#ce93d8,stroke:#7b1fa2,color:#000
+    style MONGO fill:#a5d6a7,stroke:#388e3c,color:#000
+    style CP fill:#90caf9,stroke:#1565c0,color:#000
+    style AGENT fill:#ffcc80,stroke:#ef6c00,color:#000
+    style K3S fill:#fdd835,stroke:#f9a825,color:#000
+    style TEST fill:#fff,stroke:#666,color:#000
+```
+
+**Container responsibilities:**
+
+| Container | Image | Purpose |
+|---|---|---|
+| `mongo` | `mongo:8` (no auth) | ControlPlane data store |
+| `keycloak` | `quay.io/keycloak/keycloak:24.0` | Real OIDC provider, imports `infra/keycloak/clustral-realm.json` |
+| `k3s` | `rancher/k3s` (privileged) | Real Kubernetes API |
+| `controlplane` | built from `src/Clustral.ControlPlane/Dockerfile` | Production ControlPlane image |
+| Per-test agent | built from `src/clustral-agent/Dockerfile` | Real Go binary, fresh container per test |
+
+#### E2E test coverage (24 tests across 7 files)
+
+```mermaid
+graph TB
+    subgraph bootstrap ["Bootstrap & lifecycle"]
+        AB["AgentBootstrapTests (1)<br/>register → mTLS → tunnel up"]
+        AR["AgentReconnectionTests (2)<br/>stop → disconnected;<br/>fresh agent → reconnect"]
+        ARR["AgentRenewalTests (2)<br/>cert + JWT auto-renewal<br/>(aggressive thresholds)"]
+    end
+
+    subgraph proxy ["kubectl proxy path"]
+        KP["KubectlProxyTests (6)<br/>list NS, get pods, CRUD,<br/>400 invalid UUID,<br/>401 no token,<br/>502 agent down"]
+    end
+
+    subgraph access ["Access control"]
+        RBA["RoleBasedAccessTests (6)<br/>no role → 403,<br/>system:masters → 201,<br/>unknown group → K3s denies,<br/>static assignment + removal,<br/>multi-group regression"]
+        AR2["AccessRequestLifecycleTests (3)<br/>JIT request + approve → 200,<br/>then expires → 403;<br/>deny → 403;<br/>active grant + revoke → 403"]
+    end
+
+    subgraph cred ["Credentials"]
+        CL["CredentialLifecycleTests (3)<br/>issue + use + revoke → 401,<br/>expired credential → 401,<br/>cross-cluster → 403"]
+    end
+
+    style AB fill:#90caf9,stroke:#1565c0,color:#000
+    style AR fill:#90caf9,stroke:#1565c0,color:#000
+    style ARR fill:#90caf9,stroke:#1565c0,color:#000
+    style KP fill:#a5d6a7,stroke:#388e3c,color:#000
+    style RBA fill:#ffcc80,stroke:#ef6c00,color:#000
+    style AR2 fill:#ffcc80,stroke:#ef6c00,color:#000
+    style CL fill:#ce93d8,stroke:#7b1fa2,color:#000
+```
+
+#### Typical E2E test flow
+
+```mermaid
+sequenceDiagram
+    participant Test as xUnit Test
+    participant CP as ControlPlane :5100
+    participant KC as Keycloak
+    participant Agent as Go Agent (Docker)
+    participant K3s as K3s API :6443
+
+    Test->>KC: OIDC password grant (admin/admin)
+    KC-->>Test: access token (JWT)
+    Test->>CP: POST /api/v1/clusters (Bearer JWT)
+    CP-->>Test: clusterId + bootstrap token
+
+    Test->>Agent: docker run with bootstrap token
+    Agent->>CP: ClusterService.RegisterAgent :5443
+    CP-->>Agent: client cert + key + CA cert + JWT
+    Agent->>CP: TunnelService.OpenTunnel (mTLS + JWT)
+    CP-->>Test: cluster status = Connected (poll)
+
+    Test->>CP: POST /api/v1/roles (k8sGroups)
+    Test->>CP: POST /api/v1/users/{me}/assignments
+    Test->>CP: POST /api/v1/auth/kubeconfig-credential
+    CP-->>Test: short-lived bearer token
+
+    Test->>CP: GET /api/proxy/{clusterId}/api/v1/namespaces<br/>(Bearer kubeconfig token)
+    CP->>CP: validate token, resolve impersonation
+    CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-Group (×N)
+    Agent->>K3s: GET /api/v1/namespaces<br/>+ Impersonate-Group: ... (×N separate headers)
+    K3s-->>Agent: real namespace list
+    Agent-->>CP: HttpResponseFrame
+    CP-->>Test: real K3s response
+
+    Note over Test: Test asserts on real K3s data,<br/>then disposes the agent container
+```
+
 ## Web UI Environment Variables
 
 | Variable | Required | Default | Description |
