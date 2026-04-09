@@ -20,7 +20,7 @@ public class CliErrorsTests(ITestOutputHelper output)
 
         Assert.Contains("401", console.Output);
         Assert.Contains("Unauthorized", console.Output);
-        Assert.Contains("Error", console.Output);
+        Assert.Contains("HTTP Error", console.Output);
     }
 
     [Fact]
@@ -238,6 +238,10 @@ public class CliErrorsTests(ITestOutputHelper output)
 
         Assert.Contains("Error", console.Output);
         Assert.Contains("Role 'admin' not found.", console.Output);
+        // Two-line layout: title on its own line, message on a separate line.
+        var lines = console.Output.Split('\n');
+        Assert.Contains(lines, l => l.Contains("Error") && !l.Contains("Role"));
+        Assert.Contains(lines, l => l.Contains("Role 'admin' not found.") && !l.Contains("● Error"));
     }
 
     [Fact]
@@ -255,7 +259,7 @@ public class CliErrorsTests(ITestOutputHelper output)
     // ── WriteNotConfigured ──────────────────────────────────────────────────
 
     [Fact]
-    public void WriteNotConfigured_ShowsIssueAndFix()
+    public void WriteNotConfigured_ShowsIssueAndHint()
     {
         var console = new TestConsole(); console.Profile.Width = 80;
         CliErrors.WriteNotConfigured(console, "Not logged in", "clustral login");
@@ -263,7 +267,7 @@ public class CliErrorsTests(ITestOutputHelper output)
         output.WriteLine("=== Not Configured ===");
         output.WriteLine(console.Output);
 
-        Assert.Contains("Config", console.Output);
+        Assert.Contains("Not configured", console.Output);
         Assert.Contains("Not logged in", console.Output);
         Assert.Contains("clustral login", console.Output);
     }
@@ -281,10 +285,10 @@ public class CliErrorsTests(ITestOutputHelper output)
         Assert.Contains("clustral login", console.Output);
     }
 
-    // ── Card structure ──────────────────────────────────────────────────────
+    // ── Layout: indicator + flat detail rows (no panel borders) ─────────────
 
     [Fact]
-    public void AllCards_HaveRoundedBorders()
+    public void AllRenderings_HaveNoPanelBorders()
     {
         var c1 = new TestConsole(); c1.Profile.Width = 80;
         var c2 = new TestConsole(); c2.Profile.Width = 80;
@@ -296,13 +300,81 @@ public class CliErrorsTests(ITestOutputHelper output)
         CliErrors.WriteError(c3, "test");
         CliErrors.WriteNotConfigured(c4, "test", "fix");
 
-        output.WriteLine("=== All Card Types ===");
-        output.WriteLine($"HTTP:   has borders = {c1.Output.Contains("─")}");
-        output.WriteLine($"Conn:   has borders = {c2.Output.Contains("─")}");
-        output.WriteLine($"Error:  has borders = {c3.Output.Contains("─")}");
-        output.WriteLine($"Config: has borders = {c4.Output.Contains("─")}");
+        output.WriteLine("=== Border-free renderings ===");
+        foreach (var (name, c) in new[] { ("HTTP", c1), ("Conn", c2), ("Error", c3), ("Config", c4) })
+            output.WriteLine($"{name}:\n{c.Output}");
 
-        Assert.All(new[] { c1.Output, c2.Output, c3.Output, c4.Output },
-            card => Assert.Contains("─", card));
+        // None of the border-drawing characters from `BoxBorder.Rounded` should
+        // appear in the output now that the panels are gone.
+        Assert.All(
+            new[] { c1.Output, c2.Output, c3.Output, c4.Output },
+            o =>
+            {
+                Assert.DoesNotContain("─", o);
+                Assert.DoesNotContain("╭", o);
+                Assert.DoesNotContain("╰", o);
+                Assert.DoesNotContain("│", o);
+            });
+    }
+
+    [Fact]
+    public void WriteHttpError_RendersRedCircleIndicator()
+    {
+        var console = new TestConsole(); console.Profile.Width = 80;
+        CliErrors.WriteHttpError(console, 404, """{"detail":"Nope."}""");
+
+        output.WriteLine("=== Red circle ===");
+        output.WriteLine(console.Output);
+
+        Assert.Contains("●", console.Output);
+        Assert.Contains("HTTP Error", console.Output);
+    }
+
+    [Fact]
+    public void WriteConnectionError_RendersRedCircleIndicator()
+    {
+        var console = new TestConsole(); console.Profile.Width = 80;
+        CliErrors.WriteConnectionError(console, new TaskCanceledException("timed out"));
+
+        output.WriteLine("=== Red circle (connection) ===");
+        output.WriteLine(console.Output);
+
+        Assert.Contains("●", console.Output);
+        Assert.Contains("Connection Error", console.Output);
+    }
+
+    [Fact]
+    public void WriteNotConfigured_RendersYellowCircleIndicator()
+    {
+        var console = new TestConsole(); console.Profile.Width = 80;
+        CliErrors.WriteNotConfigured(console, "Not logged in", "clustral login");
+
+        output.WriteLine("=== Yellow circle ===");
+        output.WriteLine(console.Output);
+
+        Assert.Contains("●", console.Output);
+        Assert.Contains("Not configured", console.Output);
+    }
+
+    [Fact]
+    public void WriteValidationErrors_RendersYellowCircleIndicator()
+    {
+        var console = new TestConsole(); console.Profile.Width = 80;
+        var failures = new List<FluentValidation.Results.ValidationFailure>
+        {
+            new("clusterId", "must be a GUID"),
+            new("ttl",       "must be ISO-8601"),
+        };
+        CliErrors.WriteValidationErrors(console, failures);
+
+        output.WriteLine("=== Yellow circle (validation) ===");
+        output.WriteLine(console.Output);
+
+        Assert.Contains("●", console.Output);
+        Assert.Contains("Invalid input", console.Output);
+        Assert.Contains("clusterId", console.Output);
+        Assert.Contains("must be a GUID", console.Output);
+        Assert.Contains("ttl", console.Output);
+        Assert.Contains("must be ISO-8601", console.Output);
     }
 }

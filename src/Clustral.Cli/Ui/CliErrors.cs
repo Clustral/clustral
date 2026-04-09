@@ -4,14 +4,16 @@ using Spectre.Console;
 namespace Clustral.Cli.Ui;
 
 /// <summary>
-/// Rich card-style error display for CLI commands using Spectre.Console panels.
-/// Parses RFC 7807 Problem Details from ControlPlane responses and renders
-/// structured error cards that are easy to read and copy into GitHub issues.
+/// Flat error and warning display for CLI commands. Each method renders a
+/// coloured circle indicator + plain title on the first line, then the detail
+/// rows in dimmed text below — no panels, no borders. Errors use a red
+/// indicator; warnings use a yellow one. The detail rows match the dominant
+/// <c>[dim]</c> convention used elsewhere in the CLI.
 /// </summary>
 internal static class CliErrors
 {
     /// <summary>
-    /// Displays an error card from an HTTP response (status code + body).
+    /// Displays an HTTP error from a response (status code + body).
     /// Parses Problem Details JSON if available.
     /// </summary>
     internal static void WriteHttpError(int statusCode, string responseBody) =>
@@ -23,34 +25,22 @@ internal static class CliErrors
         var hint = GetStatusHint(statusCode);
         var statusLabel = GetStatusLabel(statusCode);
 
-        var table = new Table().Border(TableBorder.None).HideHeaders()
-            .AddColumn("Key").AddColumn("Value");
+        WriteHeader(console, "red", "HTTP Error");
 
-        table.AddRow("[grey]Status[/]", $"[bold]{statusCode}[/] {statusLabel.EscapeMarkup()}");
-        table.AddRow("[grey]Message[/]", message.EscapeMarkup());
+        var table = NewDetailTable();
+        AddDimRow(table, "Status",  $"{statusCode} {statusLabel}".TrimEnd());
+        AddDimRow(table, "Message", message);
+        if (code is not null)    AddDimRow(table, "Code",     code);
+        if (field is not null)   AddDimRow(table, "Field",    field);
+        if (traceId is not null) AddDimRow(table, "Trace ID", traceId);
+        if (hint is not null)    AddDimRow(table, "Hint",     hint);
 
-        if (code is not null)
-            table.AddRow("[grey]Code[/]", $"[dim]{code.EscapeMarkup()}[/]");
-        if (field is not null)
-            table.AddRow("[grey]Field[/]", $"[yellow]{field.EscapeMarkup()}[/]");
-        if (traceId is not null)
-            table.AddRow("[grey]Trace ID[/]", $"[dim]{traceId.EscapeMarkup()}[/]");
-        if (hint is not null)
-            table.AddRow("[grey]Hint[/]", $"[cyan]{hint.EscapeMarkup()}[/]");
-
-        var panel = new Panel(table)
-            .Header("[red] Error [/]")
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Red))
-            .Padding(1, 0);
-
-        console.WriteLine();
-        console.Write(panel);
+        console.Write(table);
         console.WriteLine();
     }
 
     /// <summary>
-    /// Displays a connection/network error card with helpful context.
+    /// Displays a connection / network error with helpful context.
     /// </summary>
     internal static void WriteConnectionError(Exception ex) =>
         WriteConnectionError(AnsiConsole.Console, ex);
@@ -59,97 +49,109 @@ internal static class CliErrors
     {
         var (title, message, hint) = ClassifyConnectionError(ex);
 
-        var table = new Table().Border(TableBorder.None).HideHeaders()
-            .AddColumn("Key").AddColumn("Value");
+        WriteHeader(console, "red", "Connection Error");
 
-        table.AddRow("[grey]Type[/]", title.EscapeMarkup());
-        table.AddRow("[grey]Detail[/]", message.EscapeMarkup());
+        var table = NewDetailTable();
+        AddDimRow(table, "Type",      title);
+        AddDimRow(table, "Detail",    message);
         if (hint is not null)
-            table.AddRow("[grey]Hint[/]", $"[cyan]{hint.EscapeMarkup()}[/]");
-        table.AddRow("[grey]Exception[/]", $"[dim]{ex.GetType().Name.EscapeMarkup()}[/]");
+            AddDimRow(table, "Hint",  hint);
+        AddDimRow(table, "Exception", ex.GetType().Name);
 
-        var panel = new Panel(table)
-            .Header("[red] Connection Error [/]")
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Red))
-            .Padding(1, 0);
-
-        console.WriteLine();
-        console.Write(panel);
+        console.Write(table);
         console.WriteLine();
     }
 
     /// <summary>
-    /// Displays a simple error card.
+    /// Displays a simple one-line error message.
     /// </summary>
     internal static void WriteError(string message) =>
         WriteError(AnsiConsole.Console, message);
 
     internal static void WriteError(IAnsiConsole console, string message)
     {
-        var panel = new Panel($"  {message.EscapeMarkup()}")
-            .Header("[red] Error [/]")
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Red))
-            .Padding(1, 0);
+        WriteHeader(console, "red", "Error");
 
-        console.WriteLine();
-        console.Write(panel);
+        var table = NewDetailTable();
+        // 2-space prefix matches AddDimRow so the message indents under the title.
+        table.AddRow("", $"  [dim]{message.EscapeMarkup()}[/]");
+
+        console.Write(table);
         console.WriteLine();
     }
 
     /// <summary>
-    /// Displays a "not configured" error card with a fix command.
+    /// Displays a "not configured" warning with a hint about how to fix it.
     /// </summary>
-    internal static void WriteNotConfigured(string what, string fix) =>
-        WriteNotConfigured(AnsiConsole.Console, what, fix);
+    internal static void WriteNotConfigured(string what, string hint) =>
+        WriteNotConfigured(AnsiConsole.Console, what, hint);
 
-    internal static void WriteNotConfigured(IAnsiConsole console, string what, string fix)
+    internal static void WriteNotConfigured(IAnsiConsole console, string what, string hint)
     {
-        var table = new Table().Border(TableBorder.None).HideHeaders()
-            .AddColumn("Key").AddColumn("Value");
+        WriteHeader(console, "yellow", "Not configured");
 
-        table.AddRow("[grey]Issue[/]", what.EscapeMarkup());
-        table.AddRow("[grey]Fix[/]", $"[cyan]{fix.EscapeMarkup()}[/]");
+        var table = NewDetailTable();
+        AddDimRow(table, "Issue", what);
+        AddDimRow(table, "Hint",  hint);
 
-        var panel = new Panel(table)
-            .Header("[yellow] Config [/]")
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Yellow))
-            .Padding(1, 0);
-
-        console.WriteLine();
-        console.Write(panel);
+        console.Write(table);
         console.WriteLine();
     }
 
     /// <summary>
-    /// Displays a validation error card listing each invalid field and its message.
+    /// Displays validation failures, one row per invalid field.
     /// </summary>
     internal static void WriteValidationErrors(IReadOnlyList<FluentValidation.Results.ValidationFailure> errors) =>
         WriteValidationErrors(AnsiConsole.Console, errors);
 
     internal static void WriteValidationErrors(IAnsiConsole console, IReadOnlyList<FluentValidation.Results.ValidationFailure> errors)
     {
-        var table = new Table().Border(TableBorder.None).HideHeaders()
-            .AddColumn("Field").AddColumn("Message");
+        WriteHeader(console, "yellow", "Invalid input");
 
+        var table = NewDetailTable();
         foreach (var e in errors)
-            table.AddRow(
-                $"[yellow]{e.PropertyName.EscapeMarkup()}[/]",
-                e.ErrorMessage.EscapeMarkup());
+            AddDimRow(table, e.PropertyName, e.ErrorMessage);
 
-        var panel = new Panel(table)
-            .Header("[yellow] Validation [/]")
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.Yellow))
-            .Padding(1, 0);
-
-        console.WriteLine();
-        console.Write(panel);
+        console.Write(table);
         console.WriteLine();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Layout helpers — shared by all five public methods.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Writes a leading blank line, then the indicator + title line.
+    /// The title is plain text (no markup), so the terminal renders it in
+    /// the default foreground colour.
+    /// </summary>
+    private static void WriteHeader(IAnsiConsole console, string color, string title)
+    {
+        console.WriteLine();
+        console.MarkupLine($"[{color}]●[/] {title.EscapeMarkup()}");
+    }
+
+    /// <summary>
+    /// Returns an empty borderless 2-column table used for the dimmed detail
+    /// rows below the header. The label column carries 2 spaces of leading
+    /// whitespace inside its values so the rows visually indent under the
+    /// indicator + title above them.
+    /// </summary>
+    private static Table NewDetailTable() =>
+        new Table()
+            .Border(TableBorder.None)
+            .HideHeaders()
+            .AddColumn(new TableColumn("Label"))
+            .AddColumn(new TableColumn("Value"));
+
+    /// <summary>Adds a `<c>  [dim]label[/]  [dim]value[/]</c>` row.</summary>
+    private static void AddDimRow(Table table, string label, string value) =>
+        table.AddRow(
+            $"  [dim]{label.EscapeMarkup()}[/]",
+            $"[dim]{value.EscapeMarkup()}[/]");
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Body classification — unchanged from the previous panel-based version.
     // ─────────────────────────────────────────────────────────────────────────
 
     private static (string Message, string? Code, string? Field, string? TraceId)

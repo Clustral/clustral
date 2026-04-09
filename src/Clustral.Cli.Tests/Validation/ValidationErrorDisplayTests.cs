@@ -24,7 +24,7 @@ public sealed class ValidationErrorDisplayTests(ITestOutputHelper output)
         output.WriteLine("=== Output ===");
         output.WriteLine(console.Output);
 
-        console.Output.Should().Contain("Validation");
+        console.Output.Should().Contain("Invalid input");
         console.Output.Should().Contain("ClusterId");
         console.Output.Should().Contain("Cluster ID must be a valid GUID.");
     }
@@ -52,7 +52,7 @@ public sealed class ValidationErrorDisplayTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void WriteValidationErrors_UsesYellowBorder()
+    public void WriteValidationErrors_RendersHeaderWithIndicator()
     {
         var console = new TestConsole();
         console.Profile.Width = 80;
@@ -67,8 +67,9 @@ public sealed class ValidationErrorDisplayTests(ITestOutputHelper output)
         output.WriteLine("=== Output ===");
         output.WriteLine(console.Output);
 
-        // The panel header should contain "Validation".
-        console.Output.Should().Contain("Validation");
+        // Yellow circle indicator + "Invalid input" title, then the field rows.
+        console.Output.Should().Contain("●");
+        console.Output.Should().Contain("Invalid input");
         console.Output.Should().Contain("Role");
         console.Output.Should().Contain("Role is required.");
     }
