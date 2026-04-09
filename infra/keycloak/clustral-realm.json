@@ -43,13 +43,13 @@
     {
       "clientId": "clustral-cli",
       "name": "Clustral CLI",
-      "description": "Public client for the clustral CLI — Authorization Code + PKCE flow.",
+      "description": "Public client for the clustral CLI — Authorization Code + PKCE flow. Direct access grants enabled for E2E test automation.",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,
       "bearerOnly": false,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true,
       "redirectUris": [

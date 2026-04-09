@@ -8,5 +8,6 @@
     <Project Path="src/Clustral.Cli.Tests/Clustral.Cli.Tests.csproj" />
     <Project Path="src/Clustral.ControlPlane/Clustral.ControlPlane.csproj" />
     <Project Path="src/Clustral.ControlPlane.Tests/Clustral.ControlPlane.Tests.csproj" />
+    <Project Path="src/Clustral.E2E.Tests/Clustral.E2E.Tests.csproj" />
   </Folder>
 </Solution>
