@@ -140,6 +140,11 @@ which k8s rejects.
 The `ClusterRole` only needs the `impersonate` verb — k8s RBAC enforces
 permissions per the impersonated user/groups.
 
+This behaviour is regression-tested end-to-end by `RoleBasedAccessTests` in
+`src/Clustral.E2E.Tests/`. That suite runs the **real** agent binary (built
+from this Dockerfile) against a real K3s cluster, so any change that breaks
+multi-value impersonation header forwarding fails RBAC against k3s.
+
 ---
 
 ## In-cluster auth

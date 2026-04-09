@@ -257,8 +257,9 @@ To add a new feature:
 6. Add request/response DTOs to `Api/Models/` if not already present.
 7. **Write unit tests** for the validator and handler in `Tests/Features/<FeatureName>/`.
 8. **Write integration tests** in `Tests/Features/<FeatureName>/` or `Tests/Integration/` using `ClustralWebApplicationFactory`.
-9. **Use FluentAssertions** in all tests (`.Should().Be(...)`) — do not use `Assert.Equal` or `Assert.True`.
-10. **Use FluentValidation** for all input validation — do NOT use `[Required]` or other data annotations. FluentValidation handles validation via the `ValidationBehavior` MediatR pipeline.
+9. **For agent/proxy/credential changes**, also add an end-to-end test in `src/Clustral.E2E.Tests/` so the real Go agent + real K3s exercise the change. Use the existing `E2EFixture` and `E2ETestContext` helpers.
+10. **Use FluentAssertions** in all tests (`.Should().Be(...)`) — do not use `Assert.Equal` or `Assert.True`.
+11. **Use FluentValidation** for all input validation — do NOT use `[Required]` or other data annotations. FluentValidation handles validation via the `ValidationBehavior` MediatR pipeline.
 
 ## Adding a new gRPC method
 
@@ -271,6 +272,10 @@ To add a new feature:
    `Grpc.Net.Client` against `WebApplicationFactory`. Use the `ResponseVersionHandler`
    pattern (see `GrpcClusterServiceTests.cs`) to bridge HTTP/1.1 test server with
    gRPC's HTTP/2 requirement.
+6. **For tunnel/auth/proxy methods**, add an end-to-end test in `src/Clustral.E2E.Tests/`
+   so the real Go agent exercises the new RPC against a real K3s API. The in-process
+   gRPC tests bypass the `AgentAuthInterceptor` (it skips when `localPort != 5443`),
+   so they cannot validate the mTLS bootstrap or full network behaviour.
 
 ## Security-sensitive paths
 

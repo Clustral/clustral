@@ -1050,16 +1050,28 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET (687 tests — unit + integration + gRPC with Testcontainers + FluentAssertions)
-dotnet test Clustral.slnx
+# .NET unit + integration tests (713 tests — fast, no Docker network required)
+dotnet test Clustral.slnx --filter "Category!=E2E"
 
-# Go Agent (42 tests with race detector)
+# Go Agent (with race detector)
 cd src/clustral-agent && go test -race ./...
+
+# End-to-end tests (12 scenarios — full Docker stack: K3s, Keycloak, real Go agent)
+dotnet test src/Clustral.E2E.Tests
 ```
 
-> **729 total tests** across .NET and Go.
-> Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) to
-> spin up real MongoDB instances. Docker must be running to execute them.
+> **725+ total tests** across .NET and Go, in three layers:
+>
+> 1. **Unit tests** — pure logic, no external dependencies.
+> 2. **Integration tests** — `WebApplicationFactory` + Testcontainers MongoDB, exercising
+>    the ControlPlane in-process. Docker must be running.
+> 3. **End-to-end tests** (`src/Clustral.E2E.Tests`) — the full production path:
+>    `kubectl → ControlPlane → gRPC tunnel → Go Agent → real Kubernetes API`,
+>    with K3s, Keycloak, MongoDB, ControlPlane (built from Dockerfile), and the
+>    Go agent (built from Dockerfile) all running on a shared Docker network.
+>    The Go agent runs as the real binary so multi-value k8s impersonation
+>    headers are validated end-to-end. Requires Docker with privileged container
+>    support (K3s requirement).
 >
 > The ControlPlane uses **vertical slicing** with **CQS** (Command-Query Separation).
 > Commands and queries live in separate `Commands/` and `Queries/` subfolders per

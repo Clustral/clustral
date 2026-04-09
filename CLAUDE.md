@@ -199,16 +199,24 @@ Services:
 
 ## Testing
 
-687 tests across 3 .NET projects + 35 Go tests. Run all with:
+Three layers, run independently:
+
 ```bash
-dotnet test Clustral.slnx
+# Unit + integration (713 .NET tests, fast — Testcontainers MongoDB only)
+dotnet test Clustral.slnx --filter "Category!=E2E"
+
+# Go agent (race detector enabled)
 cd src/clustral-agent && go test -race ./...
+
+# End-to-end (12 tests, slow — full Docker stack: K3s + Keycloak + real Go agent)
+dotnet test src/Clustral.E2E.Tests
 ```
 
 - **Unit tests**: `*.Tests` projects alongside each `src/` project.
 - **Integration tests**: `src/Clustral.ControlPlane.Tests/Integration/` — uses Testcontainers (MongoDB) + `WebApplicationFactory`; requires Docker running. Do not mock the database.
-- **gRPC integration tests**: `GrpcClusterServiceTests` and `GrpcAuthServiceTests` test all gRPC endpoints using `Grpc.Net.Client` against the test server. Cover register, list, get, update status, deregister, credential issuance/validation/rotation/revocation, and bootstrap token single-use.
+- **gRPC integration tests**: `GrpcClusterServiceTests`, `GrpcAuthServiceTests`, `GrpcMtlsTests` test all gRPC endpoints using `Grpc.Net.Client` against the test server. Cover register, list, get, update status, deregister, credential issuance/validation/rotation/revocation, mTLS bootstrap, and bootstrap token single-use.
 - **CLI integration tests**: `CliIntegrationTests` verify CLI wire types deserialize correctly against the real ControlPlane API.
+- **End-to-end tests**: `src/Clustral.E2E.Tests/` — orchestrates Mongo + Keycloak + K3s + ControlPlane (built from Dockerfile) + the real Go agent (built from Dockerfile) on a shared Docker network. Tests the full production path including the gRPC tunnel and multi-value impersonation header forwarding. Tagged `[Trait("Category", "E2E")]` so the regular `dotnet test --filter "Category!=E2E"` skips them. Requires Docker with privileged container support (K3s needs it).
 - **Web tests**: `src/Clustral.Web` uses Vitest (`bun test`) and Playwright for e2e (`bun e2e`).
 
 ---
@@ -258,4 +266,4 @@ cd src/clustral-agent && go test -race ./...
 - **Command aliases**: all listing commands support both `list` and `ls` aliases.
 - **xUnit test output**: use `ITestOutputHelper` in xUnit tests, not `Console.WriteLine`.
 - **Integration tests need Docker** running for Testcontainers.
-- **Every new feature must include tests.** Write both unit tests and integration tests for ControlPlane, CLI, and SDK changes. Integration tests use `WebApplicationFactory` + Testcontainers MongoDB. Frontend (Web UI) tests are not yet required but will be added later.
+- **Every new feature must include tests.** Write both unit tests and integration tests for ControlPlane, CLI, and SDK changes. Integration tests use `WebApplicationFactory` + Testcontainers MongoDB. Cross-component changes (anything that touches the agent ↔ ControlPlane tunnel, kubectl proxy path, or credential lifecycle) should also have an end-to-end test in `src/Clustral.E2E.Tests/` so the real Go agent + real K3s exercise the change. Frontend (Web UI) tests are not yet required but will be added later.
