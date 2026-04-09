@@ -49,13 +49,16 @@ Clustral.E2E.Tests/
 │   ├── ControlPlaneClient.cs    ← typed REST API wrapper
 │   └── AgentLogReader.cs        ← polls container logs for renewal events
 └── Tests/
-    ├── AgentBootstrapTests.cs       ← register cluster → agent connects → tunnel up
-    ├── KubectlProxyTests.cs         ← real kubectl through tunnel → real K3s response
-    ├── RoleBasedAccessTests.cs      ← multi-value impersonation header forwarding
-    ├── AgentReconnectionTests.cs    ← tunnel teardown and recovery
-    ├── CredentialLifecycleTests.cs  ← issue → use → revoke → 401
-    └── AgentRenewalTests.cs         ← cert and JWT renewal under aggressive thresholds
+    ├── AgentBootstrapTests.cs           ← register cluster → agent connects → tunnel up
+    ├── KubectlProxyTests.cs             ← real kubectl through tunnel + proxy error paths (400, 401, 502)
+    ├── RoleBasedAccessTests.cs          ← multi-value impersonation, static assignment, removal
+    ├── AgentReconnectionTests.cs        ← tunnel teardown and recovery
+    ├── CredentialLifecycleTests.cs      ← issue, use, revoke, expire, cross-cluster
+    ├── AgentRenewalTests.cs             ← cert and JWT renewal under aggressive thresholds
+    └── AccessRequestLifecycleTests.cs   ← JIT access: request, approve, deny, revoke, expire
 ```
+
+**24 E2E tests** total across 7 files.
 
 ---
 

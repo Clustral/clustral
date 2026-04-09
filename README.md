@@ -1056,11 +1056,11 @@ dotnet test Clustral.slnx --filter "Category!=E2E"
 # Go Agent (with race detector)
 cd src/clustral-agent && go test -race ./...
 
-# End-to-end tests (12 scenarios — full Docker stack: K3s, Keycloak, real Go agent)
+# End-to-end tests (24 scenarios — full Docker stack: K3s, Keycloak, real Go agent)
 dotnet test src/Clustral.E2E.Tests
 ```
 
-> **725+ total tests** across .NET and Go, in three layers:
+> **737+ total tests** across .NET and Go, in three layers:
 >
 > 1. **Unit tests** — pure logic, no external dependencies.
 > 2. **Integration tests** — `WebApplicationFactory` + Testcontainers MongoDB, exercising

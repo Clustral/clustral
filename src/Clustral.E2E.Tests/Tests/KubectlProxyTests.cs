@@ -101,4 +101,69 @@ public sealed class KubectlProxyTests(E2EFixture fixture, ITestOutputHelper outp
             delete.StatusCode.Should().Be(HttpStatusCode.OK);
         }
     }
+
+    [Fact]
+    public async Task ProxyWithInvalidClusterUuid_Returns400()
+    {
+        var cp = fixture.CreateControlPlaneClient();
+        await cp.SignInAsync();
+
+        // Use any cluster ID — the malformed UUID is in the proxy URL.
+        // We send the request directly bypassing the helper because we want
+        // a non-Guid string in the path.
+        using var http = new HttpClient { BaseAddress = cp.BaseAddress };
+        var request = new HttpRequestMessage(HttpMethod.Get, "api/proxy/not-a-uuid/api/v1/namespaces");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "any-token");
+
+        using var response = await http.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "malformed cluster ID is rejected at input validation, before auth");
+    }
+
+    [Fact]
+    public async Task ProxyWithoutBearerToken_Returns401()
+    {
+        var cp = fixture.CreateControlPlaneClient();
+        await cp.SignInAsync();
+
+        var registration = await cp.RegisterClusterAsync($"e2e-noauth-{Guid.NewGuid():N}".Substring(0, 30));
+
+        using var http = new HttpClient { BaseAddress = cp.BaseAddress };
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"api/proxy/{registration.ClusterId}/api/v1/namespaces");
+        // Intentionally no Authorization header.
+
+        using var response = await http.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "missing bearer token is rejected at the proxy auth layer");
+    }
+
+    [Fact]
+    public async Task ProxyWhenAgentDisconnected_Returns502()
+    {
+        var cp = fixture.CreateControlPlaneClient();
+        await cp.SignInAsync();
+
+        // Register a cluster but never start an agent.
+        var registration = await cp.RegisterClusterAsync($"e2e-noagent-{Guid.NewGuid():N}".Substring(0, 30));
+
+        // Assign a role so we get past the role check (otherwise we'd see 403, not 502).
+        var role = await cp.CreateRoleAsync(
+            name: $"e2e-noagent-role-{Guid.NewGuid():N}".Substring(0, 30),
+            kubernetesGroups: new[] { "system:masters" });
+        var me = await cp.GetCurrentUserAsync();
+        await cp.AssignRoleAsync(me.Id, role.Id, registration.ClusterId);
+
+        // Issue credential.
+        var credential = await cp.IssueKubeconfigCredentialAsync(registration.ClusterId);
+
+        // Proxy request without an active agent → BadGateway (no tunnel session).
+        using var response = await cp.KubectlGetAsync(
+            registration.ClusterId, credential.Token, "/api/v1/namespaces");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadGateway,
+            "no tunnel session for the cluster — agent never connected");
+    }
 }

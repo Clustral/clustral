@@ -208,7 +208,7 @@ dotnet test Clustral.slnx --filter "Category!=E2E"
 # Go agent (race detector enabled)
 cd src/clustral-agent && go test -race ./...
 
-# End-to-end (12 tests, slow — full Docker stack: K3s + Keycloak + real Go agent)
+# End-to-end (24 tests, slow — full Docker stack: K3s + Keycloak + real Go agent)
 dotnet test src/Clustral.E2E.Tests
 ```
 

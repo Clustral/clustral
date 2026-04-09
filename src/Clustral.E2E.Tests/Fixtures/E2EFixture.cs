@@ -33,7 +33,7 @@ public sealed class E2EFixture : IAsyncLifetime
     private const int MongoInternalPort = 27017;
 
     private INetwork _network = null!;
-    private MongoDbContainer _mongo = null!;
+    private IContainer _mongo = null!;
     private IContainer _keycloak = null!;
     private K3sContainer _k3s = null!;
     private IContainer _controlPlane = null!;
@@ -43,6 +43,8 @@ public sealed class E2EFixture : IAsyncLifetime
     private string _tempCaDir = null!;
     private string _caCertPath = null!;
     private string _caKeyPath = null!;
+    private string _k3sSaTokenPath = null!;
+    private string _k3sCaCertFilePath = null!;
 
     public string K3sKubeconfig { get; private set; } = string.Empty;
 
@@ -91,6 +93,11 @@ public sealed class E2EFixture : IAsyncLifetime
 
         // Capture K3s kubeconfig for tests that want to verify k8s state directly.
         K3sKubeconfig = await _k3s.GetKubeconfigAsync();
+
+        // Provision a ServiceAccount in K3s and extract its token + CA cert.
+        // The agent reads /var/run/secrets/kubernetes.io/serviceaccount/{token,ca.crt}
+        // — these files get bind-mounted into per-test agent containers.
+        await ProvisionK3sServiceAccountAsync();
 
         // Now start ControlPlane (depends on Mongo + Keycloak).
         _controlPlane = BuildControlPlaneContainer();
@@ -149,6 +156,11 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("AGENT_RENEWAL_CHECK_INTERVAL", options.RenewalCheckInterval)
             .WithEnvironment("AGENT_CERT_RENEW_THRESHOLD", options.CertRenewThreshold)
             .WithEnvironment("AGENT_JWT_RENEW_THRESHOLD", options.JwtRenewThreshold)
+            // Mount the K3s SA token + CA cert at the in-cluster path so the agent's
+            // saTokenRoundTripper can authenticate to K3s. Without this, the agent
+            // gets 401 from K3s because it has no credentials.
+            .WithBindMount(_k3sSaTokenPath, "/var/run/secrets/kubernetes.io/serviceaccount/token", AccessMode.ReadOnly)
+            .WithBindMount(_k3sCaCertFilePath, "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt", AccessMode.ReadOnly)
             .WithCleanUp(true);
 
         var container = builder.Build();
@@ -158,18 +170,24 @@ public sealed class E2EFixture : IAsyncLifetime
 
     // ─── Container builders ───────────────────────────────────────────────
 
-    private MongoDbContainer BuildMongoContainer() =>
-        new MongoDbBuilder()
+    private IContainer BuildMongoContainer() =>
+        // Use a plain ContainerBuilder (not MongoDbBuilder) so MongoDB starts
+        // without authentication. The container is on an isolated Docker network,
+        // only the ControlPlane talks to it, and the connection string in
+        // BuildControlPlaneContainer doesn't include credentials.
+        new ContainerBuilder()
             .WithImage("mongo:8")
             .WithNetwork(_network)
             .WithNetworkAliases(MongoAlias)
+            .WithPortBinding(MongoInternalPort, assignRandomHostPort: true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(MongoInternalPort))
             .WithCleanUp(true)
             .Build();
 
     private IContainer BuildKeycloakContainer()
     {
         var realmFile = Path.GetFullPath(Path.Combine(
-            CommonDirectoryPath.GetSolutionDirectory().DirectoryPath,
+            GetRepoRootPath().DirectoryPath,
             "infra", "keycloak", "clustral-realm.json"));
 
         return new ContainerBuilder()
@@ -208,7 +226,7 @@ public sealed class E2EFixture : IAsyncLifetime
 
     private IFutureDockerImage BuildControlPlaneImage() =>
         new ImageFromDockerfileBuilder()
-            .WithDockerfileDirectory(CommonDirectoryPath.GetSolutionDirectory(), string.Empty)
+            .WithDockerfileDirectory(GetRepoRootPath(), string.Empty)
             .WithDockerfile("src/Clustral.ControlPlane/Dockerfile")
             .WithName($"clustral-controlplane-e2e:{Guid.NewGuid():N}")
             .WithBuildArgument("VERSION", "0.0.0-e2e")
@@ -218,13 +236,35 @@ public sealed class E2EFixture : IAsyncLifetime
 
     private IFutureDockerImage BuildAgentImage() =>
         new ImageFromDockerfileBuilder()
-            .WithDockerfileDirectory(CommonDirectoryPath.GetSolutionDirectory(), "src/clustral-agent")
+            .WithDockerfileDirectory(GetRepoRootPath(), "src/clustral-agent")
             .WithDockerfile("Dockerfile")
             .WithName($"clustral-agent-e2e:{Guid.NewGuid():N}")
             .WithBuildArgument("VERSION", "0.0.0-e2e")
             .WithCleanUp(true)
             .WithDeleteIfExists(true)
             .Build();
+
+    /// <summary>
+    /// Finds the repository root by walking up from the current directory until
+    /// it finds <c>Clustral.slnx</c>. Testcontainers' built-in
+    /// <c>CommonDirectoryPath.GetSolutionDirectory()</c> only searches for
+    /// <c>*.sln</c> files, which this repo doesn't have (we use the new
+    /// <c>.slnx</c> XML solution format).
+    /// </summary>
+    private static CommonDirectoryPath GetRepoRootPath()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Clustral.slnx")))
+            {
+                return new CommonDirectoryPath(dir.FullName);
+            }
+            dir = dir.Parent;
+        }
+        throw new DirectoryNotFoundException(
+            "Could not locate Clustral.slnx by walking up from " + AppContext.BaseDirectory);
+    }
 
     private IContainer BuildControlPlaneContainer() =>
         new ContainerBuilder()
@@ -284,6 +324,82 @@ public sealed class E2EFixture : IAsyncLifetime
         throw new TimeoutException($"ControlPlane did not become ready within {timeout}");
     }
 
+    /// <summary>
+    /// Creates a cluster-admin ServiceAccount in K3s and writes its token + CA cert
+    /// to the temp directory so they can be bind-mounted into agent containers
+    /// at <c>/var/run/secrets/kubernetes.io/serviceaccount/</c>.
+    /// </summary>
+    private async Task ProvisionK3sServiceAccountAsync()
+    {
+        const string sa = "clustral-agent";
+        const string ns = "default";
+
+        // Create SA + ClusterRoleBinding (cluster-admin so impersonation works).
+        // Use kubectl inside the K3s container — it has the binary preinstalled.
+        var manifest = $@"
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {sa}
+  namespace: {ns}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {sa}-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: {sa}
+  namespace: {ns}
+";
+
+        // Write manifest into the K3s container and apply it.
+        var manifestPath = "/tmp/clustral-agent-sa.yaml";
+        await _k3s.CopyAsync(System.Text.Encoding.UTF8.GetBytes(manifest), manifestPath);
+
+        var apply = await _k3s.ExecAsync(["kubectl", "apply", "-f", manifestPath]);
+        if (apply.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"kubectl apply failed: {apply.Stderr}");
+
+        // Generate a token for the ServiceAccount (k8s 1.24+ — TokenRequest API).
+        var tokenResult = await _k3s.ExecAsync(
+            ["kubectl", "create", "token", sa, "-n", ns, "--duration=24h"]);
+        if (tokenResult.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"kubectl create token failed: {tokenResult.Stderr}");
+
+        var token = tokenResult.Stdout.Trim();
+
+        // Extract the K3s CA cert from the kubeconfig (base64-encoded inline).
+        var caCertB64 = ExtractKubeconfigCaCert(K3sKubeconfig);
+        var caCertPem = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(caCertB64));
+
+        _k3sSaTokenPath = Path.Combine(_tempCaDir, "k3s-sa-token");
+        _k3sCaCertFilePath = Path.Combine(_tempCaDir, "k3s-ca.crt");
+
+        await File.WriteAllTextAsync(_k3sSaTokenPath, token);
+        await File.WriteAllTextAsync(_k3sCaCertFilePath, caCertPem);
+    }
+
+    private static string ExtractKubeconfigCaCert(string kubeconfigYaml)
+    {
+        // Find the certificate-authority-data line (YAML).
+        const string key = "certificate-authority-data:";
+        var idx = kubeconfigYaml.IndexOf(key, StringComparison.Ordinal);
+        if (idx < 0)
+            throw new InvalidOperationException("certificate-authority-data not found in kubeconfig");
+
+        var rest = kubeconfigYaml[(idx + key.Length)..];
+        var endOfLine = rest.IndexOfAny(['\r', '\n']);
+        var b64 = (endOfLine >= 0 ? rest[..endOfLine] : rest).Trim();
+        return b64;
+    }
+
     private static void GenerateTestCA(string certPath, string keyPath)
     {
         using var caKey = RSA.Create(2048);
@@ -307,6 +423,14 @@ public sealed class E2EFixture : IAsyncLifetime
 
         request.CertificateExtensions.Add(
             new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
+
+        // SANs — must include the hostname agents use to connect.
+        // The agent connects to https://controlplane:5443 (Docker network alias).
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName("controlplane");
+        sanBuilder.AddDnsName("localhost");
+        sanBuilder.AddIpAddress(System.Net.IPAddress.Loopback);
+        request.CertificateExtensions.Add(sanBuilder.Build());
 
         using var caCert = request.CreateSelfSigned(
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(10));

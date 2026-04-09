@@ -125,10 +125,80 @@ public sealed class ControlPlaneClient : IDisposable
                ?? throw new InvalidOperationException("Empty user profile response");
     }
 
-    public async Task AssignRoleAsync(Guid userId, Guid roleId, Guid clusterId, CancellationToken ct = default)
+    public async Task<AssignmentDto> AssignRoleAsync(Guid userId, Guid roleId, Guid clusterId, CancellationToken ct = default)
     {
         var request = await BuildAuthenticatedRequest(HttpMethod.Post, $"api/v1/users/{userId}/assignments", ct);
         request.Content = JsonContent.Create(new { roleId, clusterId });
+
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccess(response, ct);
+
+        return await response.Content.ReadFromJsonAsync<AssignmentDto>(cancellationToken: ct)
+               ?? throw new InvalidOperationException("Empty assignment response");
+    }
+
+    public async Task RemoveAssignmentAsync(Guid userId, Guid assignmentId, CancellationToken ct = default)
+    {
+        var request = await BuildAuthenticatedRequest(HttpMethod.Delete,
+            $"api/v1/users/{userId}/assignments/{assignmentId}", ct);
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccess(response, ct);
+    }
+
+    // ─── Access requests (JIT) ───────────────────────────────────────────────
+
+    public async Task<AccessRequestDto> CreateAccessRequestAsync(
+        Guid roleId, Guid clusterId, string reason, string requestedDuration,
+        CancellationToken ct = default)
+    {
+        var request = await BuildAuthenticatedRequest(HttpMethod.Post, "api/v1/access-requests", ct);
+        request.Content = JsonContent.Create(new
+        {
+            roleId,
+            clusterId,
+            reason,
+            requestedDuration,
+            suggestedReviewerEmails = (string[]?)null,
+        });
+
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccess(response, ct);
+
+        return await response.Content.ReadFromJsonAsync<AccessRequestDto>(cancellationToken: ct)
+               ?? throw new InvalidOperationException("Empty access request response");
+    }
+
+    public async Task<AccessRequestDto> ApproveAccessRequestAsync(
+        Guid requestId, string? durationOverride = null, CancellationToken ct = default)
+    {
+        var request = await BuildAuthenticatedRequest(HttpMethod.Post,
+            $"api/v1/access-requests/{requestId}/approve", ct);
+        request.Content = JsonContent.Create(new { durationOverride });
+
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccess(response, ct);
+
+        return await response.Content.ReadFromJsonAsync<AccessRequestDto>(cancellationToken: ct)
+               ?? throw new InvalidOperationException("Empty access request response");
+    }
+
+    public async Task DenyAccessRequestAsync(
+        Guid requestId, string reason, CancellationToken ct = default)
+    {
+        var request = await BuildAuthenticatedRequest(HttpMethod.Post,
+            $"api/v1/access-requests/{requestId}/deny", ct);
+        request.Content = JsonContent.Create(new { reason });
+
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccess(response, ct);
+    }
+
+    public async Task RevokeAccessRequestAsync(
+        Guid requestId, string? reason = null, CancellationToken ct = default)
+    {
+        var request = await BuildAuthenticatedRequest(HttpMethod.Post,
+            $"api/v1/access-requests/{requestId}/revoke", ct);
+        request.Content = JsonContent.Create(new { reason });
 
         using var response = await _http.SendAsync(request, ct);
         await EnsureSuccess(response, ct);
@@ -235,3 +305,14 @@ public sealed record IssueCredentialDto(
 public sealed record UserProfileDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("email")] string Email);
+
+public sealed record AssignmentDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("userId")] Guid UserId,
+    [property: JsonPropertyName("roleId")] Guid RoleId,
+    [property: JsonPropertyName("clusterId")] Guid ClusterId);
+
+public sealed record AccessRequestDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("grantExpiresAt")] DateTimeOffset? GrantExpiresAt);
