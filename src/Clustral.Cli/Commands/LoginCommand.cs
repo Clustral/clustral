@@ -91,7 +91,11 @@ internal static class LoginCommand
         var httpHandler = insecure
             ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
             : new HttpClientHandler();
-        using var http = new HttpClient(httpHandler);
+        using var http = new HttpClient(httpHandler)
+        {
+            // Bound every HTTP call so an unreachable ControlPlane fails fast.
+            Timeout = TimeSpan.FromSeconds(10),
+        };
 
         // ── Check for existing valid session ──────────────────────────────
         if (!force)
@@ -112,9 +116,21 @@ internal static class LoginCommand
         }
 
         // ── Discover OIDC configuration from ControlPlane ─────────────────
-        AnsiConsole.MarkupLine($"\n  [cyan]●[/] Connecting to [bold]{cpUrl.EscapeMarkup()}[/]...");
+        ControlPlaneConfig? discovered;
+        try
+        {
+            discovered = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+                $"Discovering ControlPlane configuration at {cpUrl}...",
+                innerCt => DiscoverConfigAsync(http, cpUrl, innerCt),
+                ct);
+        }
+        catch (Clustral.Cli.Http.CliHttpTimeoutException)
+        {
+            CliErrors.WriteError("ControlPlane unreachable (timed out after 10s).");
+            ctx.ExitCode = 1;
+            return;
+        }
 
-        var discovered = await DiscoverConfigAsync(http, cpUrl, ct);
         if (discovered is null)
         {
             CliErrors.WriteError("Could not reach the ControlPlane.");

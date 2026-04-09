@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Http;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -49,7 +50,7 @@ internal static class KubeLogoutCommand
             ? cluster
             : $"clustral-{cluster}";
 
-        // ── 1. Find the context and its token in kubeconfig ──────────────
+        // ── 1. Find the context and its token in kubeconfig (local) ──────
         var kubeconfigPath = KubeconfigWriter.DefaultKubeconfigPath();
         var allContexts = LogoutCommand.FindClustralContexts(kubeconfigPath);
         var match = allContexts.FirstOrDefault(c => c.ContextName == contextName);
@@ -60,24 +61,27 @@ internal static class KubeLogoutCommand
             return;
         }
 
-        // ── 2. Revoke the token on ControlPlane ──────────────────────────
-        if (match.Token is not null && !string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
+        // ── 2. Local cleanup FIRST — instant, no network ─────────────────
+        var writer = new KubeconfigWriter(kubeconfigPath);
+        writer.RemoveClusterEntry(contextName);
+        AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context [cyan]{contextName.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]Disconnected from {contextName.EscapeMarkup()}[/]");
+
+        // ── 3. Best-effort remote revocation with spinner + 5s timeout ───
+        if (match.Token is null || string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
+            return;
+
+        var cache = new TokenCache();
+        var jwt = await cache.ReadAsync(ct);
+        if (jwt is null) return;
+
+        try
         {
-            var cache = new TokenCache();
-            var jwt = await cache.ReadAsync(ct);
-
-            if (jwt is not null)
-            {
-                try
+            await CliHttp.RunWithSpinnerAsync(
+                "Revoking credential on ControlPlane...",
+                async innerCt =>
                 {
-                    var handler = insecure
-                        ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
-                        : new HttpClientHandler();
-
-                    using var http = new HttpClient(handler)
-                    {
-                        BaseAddress = new Uri(config.ControlPlaneUrl.TrimEnd('/') + "/"),
-                    };
+                    using var http = CliHttp.CreateClient(config.ControlPlaneUrl, insecure);
                     http.DefaultRequestHeaders.Authorization =
                         new AuthenticationHeaderValue("Bearer", jwt);
 
@@ -85,25 +89,25 @@ internal static class KubeLogoutCommand
                         new RevokeByTokenRequest { Token = match.Token },
                         CliJsonContext.Default.RevokeByTokenRequest);
                     using var content = new StringContent(body, Encoding.UTF8, "application/json");
-                    var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, ct);
+                    var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, innerCt);
 
                     if (response.IsSuccessStatusCode)
-                        AnsiConsole.MarkupLine($"  [red]✗[/] Revoked credential for [cyan]{contextName.EscapeMarkup()}[/]");
+                        AnsiConsole.MarkupLine($"[green]✓[/] Revoked credential on ControlPlane.");
                     else
-                        AnsiConsole.MarkupLine($"  [yellow]![/] Credential revocation returned {(int)response.StatusCode} (continuing)");
-                }
-                catch (Exception ex)
-                {
-                    AnsiConsole.MarkupLine($"  [yellow]![/] Could not revoke credential: [dim]{ex.Message.EscapeMarkup()}[/]");
-                }
-            }
+                        AnsiConsole.MarkupLine($"[yellow]![/] Credential revocation returned {(int)response.StatusCode} (continuing).");
+                },
+                ct);
         }
-
-        // ── 3. Remove the context from kubeconfig ────────────────────────
-        var writer = new KubeconfigWriter(kubeconfigPath);
-        writer.RemoveClusterEntry(contextName);
-        AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context [cyan]{contextName.EscapeMarkup()}[/]");
-
-        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]Disconnected from {contextName.EscapeMarkup()}[/]");
+        catch (CliHttpTimeoutException)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]![/] Could not reach ControlPlane — local logout complete. " +
+                "[dim]Server-side credential will expire on its own.[/]");
+        }
+        catch (Exception)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]![/] ControlPlane revocation failed — local logout complete.");
+        }
     }
 }

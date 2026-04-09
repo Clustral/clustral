@@ -41,7 +41,11 @@ internal static class UpdateCommand
 
         Console.WriteLine($"Current version: v{currentVersion}");
 
-        using var http = new HttpClient();
+        // GitHub gets a longer timeout because the binary download is the slow path.
+        using var http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+        };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("clustral-cli");
 
         try
@@ -57,7 +61,10 @@ internal static class UpdateCommand
                 apiUrl = $"https://api.github.com/repos/{Repo}/releases/latest";
             }
 
-            var json = await http.GetStringAsync(apiUrl, ct);
+            var json = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+                "Checking for updates...",
+                innerCt => http.GetStringAsync(apiUrl, innerCt),
+                ct);
 
             string? tagName = null;
             string? assetUrl = null;
@@ -109,9 +116,10 @@ internal static class UpdateCommand
                 return;
             }
 
-            Console.WriteLine($"Downloading v{latestVersion} for {artifactName}...");
-
-            var binaryData = await http.GetByteArrayAsync(assetUrl, ct);
+            var binaryData = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+                $"Downloading v{latestVersion} for {artifactName}...",
+                innerCt => http.GetByteArrayAsync(assetUrl, innerCt),
+                ct);
 
             // Replace the current binary.
             var currentPath = Environment.ProcessPath;
@@ -143,6 +151,11 @@ internal static class UpdateCommand
             File.Delete(oldPath);
 
             Console.WriteLine($"Updated to v{latestVersion}.");
+        }
+        catch (Clustral.Cli.Http.CliHttpTimeoutException)
+        {
+            CliErrors.WriteError("GitHub unreachable (timed out after 30s).");
+            ctx.ExitCode = 1;
         }
         catch (Exception ex)
         {

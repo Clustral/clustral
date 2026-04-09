@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
 using Clustral.Cli.Validation;
 using Clustral.Sdk.Auth;
@@ -116,17 +117,19 @@ internal static class KubeLoginCommand
             return;
         }
 
-        // ── Call ControlPlane REST API ────────────────────────────────────────
+        // ── Call ControlPlane REST API (with spinner + 5s timeout) ────────────
         IssueCredentialResponse credential;
         try
         {
-            credential = await IssueCredentialAsync(
-                controlPlaneUrl, token, clusterId, ttl, insecure, ct);
+            credential = await CliHttp.RunWithSpinnerAsync(
+                "Issuing kubeconfig credential...",
+                innerCt => IssueCredentialAsync(controlPlaneUrl, token, clusterId, ttl, insecure, innerCt),
+                ct);
         }
-        catch (OperationCanceledException)
+        catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("Operation cancelled.");
-            ctx.ExitCode = 130;
+            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            ctx.ExitCode = 1;
             return;
         }
         catch (Exception ex)
@@ -186,14 +189,7 @@ internal static class KubeLoginCommand
         bool              skipTls,
         CancellationToken ct)
     {
-        var handler = skipTls
-            ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
-            : new HttpClientHandler();
-
-        using var http = new HttpClient(handler)
-        {
-            BaseAddress = new Uri(controlPlaneUrl.TrimEnd('/') + "/"),
-        };
+        using var http = CliHttp.CreateClient(controlPlaneUrl, skipTls);
         http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", bearerToken);
 

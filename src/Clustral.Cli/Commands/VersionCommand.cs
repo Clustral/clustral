@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Reflection;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Http;
 using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
@@ -35,47 +36,30 @@ internal static class VersionCommand
 
         try
         {
-            using var http = new HttpClient
-            {
-                BaseAddress = new Uri(config.ControlPlaneUrl.TrimEnd('/') + "/"),
-                Timeout = TimeSpan.FromSeconds(5),
-            };
-
-            if (config.InsecureTls)
-            {
-                var handler = new HttpClientHandler
+            var cpVersion = await CliHttp.RunWithSpinnerAsync(
+                "Fetching ControlPlane version...",
+                async ct =>
                 {
-                    ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
-                };
-                http.Dispose();
-                using var insecureHttp = new HttpClient(handler)
-                {
-                    BaseAddress = new Uri(config.ControlPlaneUrl.TrimEnd('/') + "/"),
-                    Timeout = TimeSpan.FromSeconds(5),
-                };
-                await FetchAndDisplayControlPlaneVersion(insecureHttp);
-                return;
-            }
+                    using var http = CliHttp.CreateClient(config.ControlPlaneUrl, config.InsecureTls);
+                    var response = await http.GetAsync("api/v1/config", ct);
+                    response.EnsureSuccessStatusCode();
+                    var json = await response.Content.ReadAsStringAsync(ct);
+                    var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
+                    return cpConfig?.Version;
+                });
 
-            await FetchAndDisplayControlPlaneVersion(http);
+            if (!string.IsNullOrEmpty(cpVersion))
+                AnsiConsole.MarkupLine($"[grey]ControlPlane[/]    [bold cyan]v{cpVersion.EscapeMarkup()}[/]");
+            else
+                AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](version unknown)[/]");
+        }
+        catch (CliHttpTimeoutException)
+        {
+            AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](unreachable — timed out)[/]");
         }
         catch
         {
             AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](unreachable)[/]");
         }
-    }
-
-    private static async Task FetchAndDisplayControlPlaneVersion(HttpClient http)
-    {
-        var response = await http.GetAsync("api/v1/config");
-        response.EnsureSuccessStatusCode();
-        var json = await response.Content.ReadAsStringAsync();
-        var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
-        var cpVersion = cpConfig?.Version;
-
-        if (!string.IsNullOrEmpty(cpVersion))
-            AnsiConsole.MarkupLine($"[grey]ControlPlane[/]    [bold cyan]v{cpVersion.EscapeMarkup()}[/]");
-        else
-            AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](version unknown)[/]");
     }
 }

@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Spectre.Console;
@@ -57,39 +58,47 @@ internal static class UsersCommand
             return;
         }
 
-        var handler = insecure
-            ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
-            : new HttpClientHandler();
-
-        using var http = new HttpClient(handler)
-        {
-            BaseAddress = new Uri(controlPlaneUrl.TrimEnd('/') + "/"),
-        };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", token);
-
         try
         {
-            var response = await http.GetAsync("api/v1/users", ct);
+            var result = await CliHttp.RunWithSpinnerAsync(
+                "Loading users...",
+                async innerCt =>
+                {
+                    using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+                    http.DefaultRequestHeaders.Authorization =
+                        new AuthenticationHeaderValue("Bearer", token);
 
-            if (!response.IsSuccessStatusCode)
+                    var response = await http.GetAsync("api/v1/users", innerCt);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var detail = await response.Content.ReadAsStringAsync(innerCt);
+                        return ((int?)response.StatusCode, detail, (UserListResponse?)null);
+                    }
+
+                    var json = await response.Content.ReadAsStringAsync(innerCt);
+                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.UserListResponse);
+                    return ((int?)null, (string?)null, parsed);
+                });
+
+            if (result.Item1 is int status)
             {
-                var detail = await response.Content.ReadAsStringAsync(ct);
-                CliErrors.WriteHttpError((int)response.StatusCode, detail);
+                CliErrors.WriteHttpError(status, result.Item2 ?? "");
                 ctx.ExitCode = 1;
                 return;
             }
 
-            var json = await response.Content.ReadAsStringAsync(ct);
-            var result = JsonSerializer.Deserialize(json, CliJsonContext.Default.UserListResponse);
-
-            if (result is null || result.Users.Count == 0)
+            if (result.Item3 is null || result.Item3.Users.Count == 0)
             {
                 AnsiConsole.MarkupLine("[dim]No users found.[/]");
                 return;
             }
 
-            RenderUsersTable(AnsiConsole.Console, result.Users);
+            RenderUsersTable(AnsiConsole.Console, result.Item3.Users);
+        }
+        catch (CliHttpTimeoutException)
+        {
+            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            ctx.ExitCode = 1;
         }
         catch (Exception ex)
         {

@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Http;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -38,62 +39,80 @@ internal static class LogoutCommand
         var config   = CliConfig.Load();
         var insecure = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
 
-        // ── 1. Read kubeconfig and find all clustral contexts ─────────────
-        var kubeconfigPath = KubeconfigWriter.DefaultKubeconfigPath();
-        var writer = new KubeconfigWriter(kubeconfigPath);
+        // ── 1. Read kubeconfig + collect clustral contexts (local) ────────
+        var kubeconfigPath   = KubeconfigWriter.DefaultKubeconfigPath();
+        var writer           = new KubeconfigWriter(kubeconfigPath);
         var clustralContexts = FindClustralContexts(kubeconfigPath);
+        var cache            = new TokenCache();
+        var jwt              = await cache.ReadAsync(ct);
 
-        // ── 2. Revoke tokens on ControlPlane ──────────────────────────────
-        var cache = new TokenCache();
-        var jwt = await cache.ReadAsync(ct);
-
-        if (jwt is not null && !string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
-        {
-            var handler = insecure
-                ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
-                : new HttpClientHandler();
-
-            using var http = new HttpClient(handler)
-            {
-                BaseAddress = new Uri(config.ControlPlaneUrl.TrimEnd('/') + "/"),
-            };
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", jwt);
-
-            // Revoke each kubeconfig token.
-            foreach (var (contextName, token) in clustralContexts)
-            {
-                if (string.IsNullOrEmpty(token)) continue;
-
-                try
-                {
-                    var body = JsonSerializer.Serialize(
-                        new RevokeByTokenRequest { Token = token },
-                        CliJsonContext.Default.RevokeByTokenRequest);
-                    using var content = new StringContent(body, Encoding.UTF8, "application/json");
-                    var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, ct);
-
-                    if (response.IsSuccessStatusCode)
-                        AnsiConsole.MarkupLine($"  [red]✗[/] Revoked credential for [cyan]{contextName.EscapeMarkup()}[/]");
-                }
-                catch
-                {
-                    // Best effort — continue even if revocation fails.
-                }
-            }
-        }
-
-        // ── 3. Remove clustral contexts from kubeconfig ───────────────────
+        // ── 2. Local cleanup FIRST — instant, no network ──────────────────
         foreach (var (contextName, _) in clustralContexts)
         {
             writer.RemoveClusterEntry(contextName);
             AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context: [cyan]{contextName.EscapeMarkup()}[/]");
         }
 
-        // ── 4. Clear the JWT ──────────────────────────────────────────────
         await cache.ClearAsync(ct);
+        AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Logged out locally.[/]");
 
-        AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Logged out.[/]");
+        // ── 3. Best-effort remote revocation with spinner + 5s timeout ────
+        var tokensToRevoke = clustralContexts
+            .Where(c => !string.IsNullOrEmpty(c.Token))
+            .ToList();
+
+        if (jwt is null || string.IsNullOrWhiteSpace(config.ControlPlaneUrl) || tokensToRevoke.Count == 0)
+        {
+            return;
+        }
+
+        var revoked = 0;
+        try
+        {
+            await CliHttp.RunWithSpinnerAsync(
+                $"Revoking {tokensToRevoke.Count} credential(s) on ControlPlane...",
+                async innerCt =>
+                {
+                    using var http = CliHttp.CreateClient(config.ControlPlaneUrl, insecure);
+                    http.DefaultRequestHeaders.Authorization =
+                        new AuthenticationHeaderValue("Bearer", jwt);
+
+                    foreach (var (contextName, token) in tokensToRevoke)
+                    {
+                        try
+                        {
+                            var body = JsonSerializer.Serialize(
+                                new RevokeByTokenRequest { Token = token! },
+                                CliJsonContext.Default.RevokeByTokenRequest);
+                            using var content = new StringContent(body, Encoding.UTF8, "application/json");
+                            var response = await http.PostAsync("api/v1/auth/revoke-by-token", content, innerCt);
+                            if (response.IsSuccessStatusCode)
+                                revoked++;
+                        }
+                        catch (Exception ex) when (!CliHttp.IsTimeout(ex))
+                        {
+                            // Per-token error — continue with the next token.
+                        }
+                    }
+                },
+                ct);
+
+            if (revoked > 0)
+                AnsiConsole.MarkupLine($"[green]✓[/] Revoked {revoked} credential(s) on ControlPlane.");
+            else
+                AnsiConsole.MarkupLine("[yellow]![/] No credentials revoked on ControlPlane.");
+        }
+        catch (CliHttpTimeoutException)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]![/] Could not reach ControlPlane — local logout complete. " +
+                "[dim]Server-side credentials will expire on their own.[/]");
+        }
+        catch (Exception)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]![/] ControlPlane revocation failed — local logout complete.");
+        }
     }
 
     /// <summary>

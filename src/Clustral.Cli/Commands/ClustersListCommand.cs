@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Spectre.Console;
@@ -64,41 +65,49 @@ internal static class ClustersListCommand
             return;
         }
 
-        var handler = insecure
-            ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
-            : new HttpClientHandler();
-
-        using var http = new HttpClient(handler)
-        {
-            BaseAddress = new Uri(controlPlaneUrl.TrimEnd('/') + "/"),
-        };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", token);
-
         var qs = string.IsNullOrEmpty(status) ? "" : $"?statusFilter={status}";
 
         try
         {
-            var response = await http.GetAsync($"api/v1/clusters{qs}", ct);
+            var result = await CliHttp.RunWithSpinnerAsync(
+                "Loading clusters...",
+                async innerCt =>
+                {
+                    using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+                    http.DefaultRequestHeaders.Authorization =
+                        new AuthenticationHeaderValue("Bearer", token);
 
-            if (!response.IsSuccessStatusCode)
+                    var response = await http.GetAsync($"api/v1/clusters{qs}", innerCt);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var detail = await response.Content.ReadAsStringAsync(innerCt);
+                        return ((int?)response.StatusCode, detail, (ClusterListResponse?)null);
+                    }
+
+                    var json = await response.Content.ReadAsStringAsync(innerCt);
+                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.ClusterListResponse);
+                    return ((int?)null, (string?)null, parsed);
+                });
+
+            if (result.Item1 is int code)
             {
-                var detail = await response.Content.ReadAsStringAsync(ct);
-                CliErrors.WriteHttpError((int)response.StatusCode, detail);
+                CliErrors.WriteHttpError(code, result.Item2 ?? "");
                 ctx.ExitCode = 1;
                 return;
             }
 
-            var json = await response.Content.ReadAsStringAsync(ct);
-            var result = JsonSerializer.Deserialize(json, CliJsonContext.Default.ClusterListResponse);
-
-            if (result is null || result.Clusters.Count == 0)
+            if (result.Item3 is null || result.Item3.Clusters.Count == 0)
             {
                 AnsiConsole.MarkupLine("[dim]No clusters found.[/]");
                 return;
             }
 
-            RenderClusterTable(AnsiConsole.Console, result.Clusters);
+            RenderClusterTable(AnsiConsole.Console, result.Item3.Clusters);
+        }
+        catch (CliHttpTimeoutException)
+        {
+            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            ctx.ExitCode = 1;
         }
         catch (Exception ex)
         {
