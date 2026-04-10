@@ -116,20 +116,10 @@ internal static class LoginCommand
         }
 
         // ── Discover OIDC configuration from ControlPlane ─────────────────
-        ControlPlaneConfig? discovered;
-        try
-        {
-            discovered = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.DiscoveringConfig(cpUrl),
-                innerCt => DiscoverConfigAsync(http, cpUrl, innerCt),
-                ct);
-        }
-        catch (Clustral.Cli.Http.CliHttpTimeoutException)
-        {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
-            return;
-        }
+        var discovered = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.DiscoveringConfig(cpUrl),
+            innerCt => DiscoverConfigAsync(http, cpUrl, innerCt),
+            ct);
 
         if (discovered is null)
         {
@@ -159,26 +149,13 @@ internal static class LoginCommand
             port,
             http);
 
-        try
-        {
-            var token = await flow.LoginAsync(ct);
+        var token = await flow.LoginAsync(ct);
 
-            var cache = new TokenCache();
-            await cache.StoreAsync(token, ct);
+        var tokenCache = new TokenCache();
+        await tokenCache.StoreAsync(token, ct);
 
-            // Fetch and display user profile.
-            await DisplayProfileAsync(http, effectiveCpUrl, token, ct);
-        }
-        catch (OperationCanceledException)
-        {
-            CliErrors.WriteError(Messages.Errors.Cancelled);
-            ctx.ExitCode = 130;
-        }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+        // Fetch and display user profile.
+        await DisplayProfileAsync(http, effectiveCpUrl, token, ct);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

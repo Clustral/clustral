@@ -168,9 +168,7 @@ internal static class AccessCommand
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(ct);
-            CliErrors.WriteHttpError((int)response.StatusCode, detail);
-            ctx.ExitCode = 1;
-            return;
+            throw new CliHttpErrorException((int)response.StatusCode, detail);
         }
 
         var respJson = await response.Content.ReadAsStringAsync(ct);
@@ -229,48 +227,31 @@ internal static class AccessCommand
         if (active) qs += "&active=true";
         else if (!string.IsNullOrEmpty(status)) qs += $"&status={status}";
 
-        try
-        {
-            var result = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.LoadingAccessRequests,
-                async innerCt =>
+        var result = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.LoadingAccessRequests,
+            async innerCt =>
+            {
+                var response = await http.GetAsync($"api/v1/access-requests{qs}", innerCt);
+                if (!response.IsSuccessStatusCode)
                 {
-                    var response = await http.GetAsync($"api/v1/access-requests{qs}", innerCt);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var detail = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, detail, (AccessRequestListResponse?)null);
-                    }
-                    var json = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.AccessRequestListResponse);
-                    return ((int?)null, (string?)null, parsed);
-                }, ct);
+                    var detail = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, detail, (AccessRequestListResponse?)null);
+                }
+                var json = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.AccessRequestListResponse);
+                return ((int?)null, (string?)null, parsed);
+            }, ct);
 
-            if (result.Item1 is int code)
-            {
-                CliErrors.WriteHttpError(code, result.Item2 ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
+        if (result.Item1 is int code)
+            throw new CliHttpErrorException(code, result.Item2 ?? "");
 
-            if (result.Item3 is null || result.Item3.Requests.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[dim]No access requests found.[/]");
-                return;
-            }
-
-            RenderAccessTable(AnsiConsole.Console, result.Item3.Requests);
-        }
-        catch (CliHttpTimeoutException)
+        if (result.Item3 is null || result.Item3.Requests.Count == 0)
         {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
+            AnsiConsole.MarkupLine("[dim]No access requests found.[/]");
+            return;
         }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+
+        RenderAccessTable(AnsiConsole.Console, result.Item3.Requests);
     }
 
     private static async Task HandleApproveAsync(InvocationContext ctx)
@@ -287,50 +268,33 @@ internal static class AccessCommand
         using var http = CreateClient(ctx, out var exitCode);
         if (http is null) { ctx.ExitCode = exitCode; return; }
 
-        try
-        {
-            var (statusCode, detail, req) = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.ApprovingRequest,
-                async innerCt =>
-                {
-                    var body = new AccessRequestApproveRequest();
-                    var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestApproveRequest);
-                    using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                    var response = await http.PostAsync($"api/v1/access-requests/{requestId}/approve", content, innerCt);
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var d = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, d, (AccessRequestResponse?)null);
-                    }
-                    var respJson = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
-                    return ((int?)null, (string?)null, parsed);
-                }, ct);
-
-            if (statusCode is int code)
+        var (statusCode, detail, req) = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.ApprovingRequest,
+            async innerCt =>
             {
-                CliErrors.WriteHttpError(code, detail ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
+                var body = new AccessRequestApproveRequest();
+                var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestApproveRequest);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await http.PostAsync($"api/v1/access-requests/{requestId}/approve", content, innerCt);
 
-            AnsiConsole.MarkupLine($"[green]✓[/] Approved request [cyan]{req!.Id[..8]}...[/]");
-            AnsiConsole.MarkupLine($"  [grey]User[/]     {req.RequesterEmail.EscapeMarkup()}");
-            AnsiConsole.MarkupLine($"  [grey]Role[/]     [yellow]{req.RoleName.EscapeMarkup()}[/]");
-            AnsiConsole.MarkupLine($"  [grey]Cluster[/]  [cyan]{req.ClusterName.EscapeMarkup()}[/]");
-            AnsiConsole.MarkupLine($"  [grey]Expires[/]  {req.GrantExpiresAt?.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
-        }
-        catch (CliHttpTimeoutException)
-        {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
-        }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+                if (!response.IsSuccessStatusCode)
+                {
+                    var d = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, d, (AccessRequestResponse?)null);
+                }
+                var respJson = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
+                return ((int?)null, (string?)null, parsed);
+            }, ct);
+
+        if (statusCode is int code)
+            throw new CliHttpErrorException(code, detail ?? "");
+
+        AnsiConsole.MarkupLine($"[green]✓[/] Approved request [cyan]{req!.Id[..8]}...[/]");
+        AnsiConsole.MarkupLine($"  [grey]User[/]     {req.RequesterEmail.EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"  [grey]Role[/]     [yellow]{req.RoleName.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"  [grey]Cluster[/]  [cyan]{req.ClusterName.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"  [grey]Expires[/]  {req.GrantExpiresAt?.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
     }
 
     private static async Task HandleDenyAsync(InvocationContext ctx)
@@ -348,44 +312,27 @@ internal static class AccessCommand
         using var http = CreateClient(ctx, out var exitCode);
         if (http is null) { ctx.ExitCode = exitCode; return; }
 
-        try
-        {
-            var (statusCode, detail) = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.DenyingRequest,
-                async innerCt =>
-                {
-                    var body = new AccessRequestDenyRequest { Reason = reason };
-                    var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestDenyRequest);
-                    using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                    var response = await http.PostAsync($"api/v1/access-requests/{requestId}/deny", content, innerCt);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var d = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, d);
-                    }
-                    return ((int?)null, (string?)null);
-                }, ct);
-
-            if (statusCode is int code)
+        var (statusCode, detail) = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.DenyingRequest,
+            async innerCt =>
             {
-                CliErrors.WriteHttpError(code, detail ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
+                var body = new AccessRequestDenyRequest { Reason = reason };
+                var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestDenyRequest);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await http.PostAsync($"api/v1/access-requests/{requestId}/deny", content, innerCt);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var d = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, d);
+                }
+                return ((int?)null, (string?)null);
+            }, ct);
 
-            AnsiConsole.MarkupLine($"[red]✗[/] Denied request [cyan]{requestId[..Math.Min(8, requestId.Length)]}...[/]");
-            AnsiConsole.MarkupLine($"  [grey]Reason[/]  {reason.EscapeMarkup()}");
-        }
-        catch (CliHttpTimeoutException)
-        {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
-        }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+        if (statusCode is int code)
+            throw new CliHttpErrorException(code, detail ?? "");
+
+        AnsiConsole.MarkupLine($"[red]✗[/] Denied request [cyan]{requestId[..Math.Min(8, requestId.Length)]}...[/]");
+        AnsiConsole.MarkupLine($"  [grey]Reason[/]  {reason.EscapeMarkup()}");
     }
 
     private static async Task HandleRevokeAsync(InvocationContext ctx)
@@ -405,51 +352,34 @@ internal static class AccessCommand
         var reason = ctx.ParseResult.GetValueForOption(
             ctx.ParseResult.CommandResult.Command.Options.FirstOrDefault(o => o.Name == "reason") as Option<string?>);
 
-        try
-        {
-            var (statusCode, detail, req) = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.RevokingGrant,
-                async innerCt =>
-                {
-                    var body = new AccessRequestRevokeRequest { Reason = reason };
-                    var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestRevokeRequest);
-                    using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                    var response = await http.PostAsync($"api/v1/access-requests/{requestId}/revoke", content, innerCt);
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var d = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, d, (AccessRequestResponse?)null);
-                    }
-                    var respJson = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
-                    return ((int?)null, (string?)null, parsed);
-                }, ct);
-
-            if (statusCode is int code)
+        var (statusCode, detail, req) = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.RevokingGrant,
+            async innerCt =>
             {
-                CliErrors.WriteHttpError(code, detail ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
+                var body = new AccessRequestRevokeRequest { Reason = reason };
+                var json = JsonSerializer.Serialize(body, CliJsonContext.Default.AccessRequestRevokeRequest);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await http.PostAsync($"api/v1/access-requests/{requestId}/revoke", content, innerCt);
 
-            AnsiConsole.MarkupLine($"[red]✗[/] Revoked grant [cyan]{req!.Id[..8]}...[/]");
-            AnsiConsole.MarkupLine($"  [grey]User[/]     {req.RequesterEmail.EscapeMarkup()}");
-            AnsiConsole.MarkupLine($"  [grey]Role[/]     [yellow]{req.RoleName.EscapeMarkup()}[/]");
-            AnsiConsole.MarkupLine($"  [grey]Cluster[/]  [cyan]{req.ClusterName.EscapeMarkup()}[/]");
-            if (reason is not null)
-                AnsiConsole.MarkupLine($"  [grey]Reason[/]   {reason.EscapeMarkup()}");
-        }
-        catch (CliHttpTimeoutException)
-        {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
-        }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+                if (!response.IsSuccessStatusCode)
+                {
+                    var d = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, d, (AccessRequestResponse?)null);
+                }
+                var respJson = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
+                return ((int?)null, (string?)null, parsed);
+            }, ct);
+
+        if (statusCode is int code)
+            throw new CliHttpErrorException(code, detail ?? "");
+
+        AnsiConsole.MarkupLine($"[red]✗[/] Revoked grant [cyan]{req!.Id[..8]}...[/]");
+        AnsiConsole.MarkupLine($"  [grey]User[/]     {req.RequesterEmail.EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"  [grey]Role[/]     [yellow]{req.RoleName.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"  [grey]Cluster[/]  [cyan]{req.ClusterName.EscapeMarkup()}[/]");
+        if (reason is not null)
+            AnsiConsole.MarkupLine($"  [grey]Reason[/]   {reason.EscapeMarkup()}");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

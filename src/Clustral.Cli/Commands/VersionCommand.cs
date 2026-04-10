@@ -35,32 +35,21 @@ internal static class VersionCommand
             return;
         }
 
-        try
-        {
-            var cpVersion = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.FetchingVersion,
-                async ct =>
-                {
-                    using var http = CliHttp.CreateClient(config.ControlPlaneUrl, config.InsecureTls);
-                    var response = await http.GetAsync("api/v1/config", ct);
-                    response.EnsureSuccessStatusCode();
-                    var json = await response.Content.ReadAsStringAsync(ct);
-                    var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
-                    return cpConfig?.Version;
-                });
+        var cpVersion = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.FetchingVersion,
+            async ct =>
+            {
+                using var http = CliHttp.CreateClient(config.ControlPlaneUrl, config.InsecureTls);
+                var response = await http.GetAsync("api/v1/config", ct);
+                response.EnsureSuccessStatusCode();
+                var json = await response.Content.ReadAsStringAsync(ct);
+                var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
+                return cpConfig?.Version;
+            });
 
-            if (!string.IsNullOrEmpty(cpVersion))
-                AnsiConsole.MarkupLine($"[grey]ControlPlane[/]    [bold cyan]v{cpVersion.EscapeMarkup()}[/]");
-            else
-                AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](version unknown)[/]");
-        }
-        catch (CliHttpTimeoutException)
-        {
-            AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](unreachable — timed out)[/]");
-        }
-        catch
-        {
-            AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](unreachable)[/]");
-        }
+        if (!string.IsNullOrEmpty(cpVersion))
+            AnsiConsole.MarkupLine($"[grey]ControlPlane[/]    [bold cyan]v{cpVersion.EscapeMarkup()}[/]");
+        else
+            AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](version unknown)[/]");
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Spectre.Console;
 
 namespace Clustral.Cli.Http;
@@ -33,7 +34,11 @@ internal static class CliHttp
             handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
         }
 
-        return new HttpClient(handler)
+        HttpMessageHandler pipeline = CliDebug.Enabled
+            ? new DebugLoggingHandler(handler)
+            : handler;
+
+        return new HttpClient(pipeline)
         {
             BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
             Timeout = timeout ?? DefaultTimeout,
@@ -53,6 +58,7 @@ internal static class CliHttp
     {
         T result = default!;
         Exception? captured = null;
+        var sw = CliDebug.Enabled ? Stopwatch.StartNew() : null;
 
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
@@ -68,6 +74,10 @@ internal static class CliHttp
                     captured = ex;
                 }
             }).ConfigureAwait(false);
+
+        sw?.Stop();
+        if (CliDebug.Enabled && sw is not null)
+            AnsiConsole.MarkupLine($"[dim]  ⏱ {statusMessage.EscapeMarkup()} completed in {sw.ElapsedMilliseconds}ms[/]");
 
         if (captured is not null)
         {
@@ -117,5 +127,23 @@ internal sealed class CliHttpTimeoutException : Exception
         : base($"Timed out: {statusMessage}", inner)
     {
         StatusMessage = statusMessage;
+    }
+}
+
+/// <summary>
+/// Thrown when an HTTP response has a non-success status code.
+/// Carries the status code and response body so the global exception handler
+/// can render the appropriate error via <see cref="Ui.CliErrors.WriteHttpError"/>.
+/// </summary>
+internal sealed class CliHttpErrorException : Exception
+{
+    public int StatusCode { get; }
+    public string ResponseBody { get; }
+
+    public CliHttpErrorException(int statusCode, string responseBody)
+        : base($"HTTP {statusCode}")
+    {
+        StatusCode = statusCode;
+        ResponseBody = responseBody;
     }
 }

@@ -58,53 +58,36 @@ internal static class UsersCommand
             return;
         }
 
-        try
-        {
-            var result = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.LoadingUsers,
-                async innerCt =>
+        var result = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.LoadingUsers,
+            async innerCt =>
+            {
+                using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+                http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                var response = await http.GetAsync("api/v1/users", innerCt);
+                if (!response.IsSuccessStatusCode)
                 {
-                    using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
-                    http.DefaultRequestHeaders.Authorization =
-                        new AuthenticationHeaderValue("Bearer", token);
+                    var detail = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, detail, (UserListResponse?)null);
+                }
 
-                    var response = await http.GetAsync("api/v1/users", innerCt);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var detail = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, detail, (UserListResponse?)null);
-                    }
+                var json = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.UserListResponse);
+                return ((int?)null, (string?)null, parsed);
+            });
 
-                    var json = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.UserListResponse);
-                    return ((int?)null, (string?)null, parsed);
-                });
+        if (result.Item1 is int status)
+            throw new CliHttpErrorException(status, result.Item2 ?? "");
 
-            if (result.Item1 is int status)
-            {
-                CliErrors.WriteHttpError(status, result.Item2 ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
-
-            if (result.Item3 is null || result.Item3.Users.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[dim]No users found.[/]");
-                return;
-            }
-
-            RenderUsersTable(AnsiConsole.Console, result.Item3.Users);
-        }
-        catch (CliHttpTimeoutException)
+        if (result.Item3 is null || result.Item3.Users.Count == 0)
         {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
+            AnsiConsole.MarkupLine("[dim]No users found.[/]");
+            return;
         }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+
+        RenderUsersTable(AnsiConsole.Console, result.Item3.Users);
     }
 
     internal static void RenderUsersTable(IAnsiConsole console, List<UserResponse> users)

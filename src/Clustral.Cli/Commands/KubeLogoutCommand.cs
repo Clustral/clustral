@@ -99,16 +99,18 @@ internal static class KubeLogoutCommand
                 },
                 ct);
         }
-        catch (CliHttpTimeoutException)
+        catch (CliHttpTimeoutException ex)
         {
             AnsiConsole.MarkupLine(
                 $"[yellow]![/] {Messages.Warnings.ControlPlaneUnreachable} " +
                 $"[dim]{Messages.Warnings.CredentialsExpireNaturally}[/]");
+            if (CliDebug.Enabled) CliErrors.WriteDebugException(AnsiConsole.Console, ex);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             AnsiConsole.MarkupLine(
                 $"[yellow]![/] {Messages.Warnings.RevocationFailed}");
+            if (CliDebug.Enabled) CliErrors.WriteDebugException(AnsiConsole.Console, ex);
         }
     }
 }

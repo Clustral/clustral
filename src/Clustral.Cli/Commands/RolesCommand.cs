@@ -58,53 +58,36 @@ internal static class RolesCommand
             return;
         }
 
-        try
-        {
-            var result = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.LoadingRoles,
-                async innerCt =>
+        var result = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.LoadingRoles,
+            async innerCt =>
+            {
+                using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+                http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                var response = await http.GetAsync("api/v1/roles", innerCt);
+                if (!response.IsSuccessStatusCode)
                 {
-                    using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
-                    http.DefaultRequestHeaders.Authorization =
-                        new AuthenticationHeaderValue("Bearer", token);
+                    var detail = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, detail, (RoleListResponse?)null);
+                }
 
-                    var response = await http.GetAsync("api/v1/roles", innerCt);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var detail = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, detail, (RoleListResponse?)null);
-                    }
+                var json = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.RoleListResponse);
+                return ((int?)null, (string?)null, parsed);
+            });
 
-                    var json = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.RoleListResponse);
-                    return ((int?)null, (string?)null, parsed);
-                });
+        if (result.Item1 is int status)
+            throw new CliHttpErrorException(status, result.Item2 ?? "");
 
-            if (result.Item1 is int status)
-            {
-                CliErrors.WriteHttpError(status, result.Item2 ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
-
-            if (result.Item3 is null || result.Item3.Roles.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[dim]No roles found.[/]");
-                return;
-            }
-
-            RenderRolesTable(AnsiConsole.Console, result.Item3.Roles);
-        }
-        catch (CliHttpTimeoutException)
+        if (result.Item3 is null || result.Item3.Roles.Count == 0)
         {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
+            AnsiConsole.MarkupLine("[dim]No roles found.[/]");
+            return;
         }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+
+        RenderRolesTable(AnsiConsole.Console, result.Item3.Roles);
     }
 
     internal static void RenderRolesTable(IAnsiConsole console, List<RoleResponse> roles)

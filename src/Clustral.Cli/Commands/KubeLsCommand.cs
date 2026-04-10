@@ -54,54 +54,37 @@ internal static class KubeLsCommand
             return;
         }
 
-        try
-        {
-            var result = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.LoadingClusters,
-                async innerCt =>
+        var result = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.LoadingClusters,
+            async innerCt =>
+            {
+                using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+                http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                var response = await http.GetAsync("api/v1/clusters", innerCt);
+                if (!response.IsSuccessStatusCode)
                 {
-                    using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
-                    http.DefaultRequestHeaders.Authorization =
-                        new AuthenticationHeaderValue("Bearer", token);
+                    var detail = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, detail, (ClusterListResponse?)null);
+                }
 
-                    var response = await http.GetAsync("api/v1/clusters", innerCt);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var detail = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, detail, (ClusterListResponse?)null);
-                    }
+                var json = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.ClusterListResponse);
+                return ((int?)null, (string?)null, parsed);
+            });
 
-                    var json = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.ClusterListResponse);
-                    return ((int?)null, (string?)null, parsed);
-                });
+        if (result.Item1 is int status)
+            throw new CliHttpErrorException(status, result.Item2 ?? "");
 
-            if (result.Item1 is int status)
-            {
-                CliErrors.WriteHttpError(status, result.Item2 ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
-
-            if (result.Item3 is null || result.Item3.Clusters.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[dim]No Kubernetes clusters found.[/]");
-                return;
-            }
-
-            var currentContext = GetCurrentClustralContext();
-            RenderKubeLsTable(AnsiConsole.Console, result.Item3.Clusters, currentContext);
-        }
-        catch (CliHttpTimeoutException)
+        if (result.Item3 is null || result.Item3.Clusters.Count == 0)
         {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
+            AnsiConsole.MarkupLine("[dim]No Kubernetes clusters found.[/]");
+            return;
         }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+
+        var currentContext = GetCurrentClustralContext();
+        RenderKubeLsTable(AnsiConsole.Console, result.Item3.Clusters, currentContext);
     }
 
     internal static void RenderKubeLsTable(

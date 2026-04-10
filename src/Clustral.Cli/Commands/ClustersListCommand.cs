@@ -67,53 +67,36 @@ internal static class ClustersListCommand
 
         var qs = string.IsNullOrEmpty(status) ? "" : $"?statusFilter={status}";
 
-        try
-        {
-            var result = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.LoadingClusters,
-                async innerCt =>
+        var result = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.LoadingClusters,
+            async innerCt =>
+            {
+                using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+                http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                var response = await http.GetAsync($"api/v1/clusters{qs}", innerCt);
+                if (!response.IsSuccessStatusCode)
                 {
-                    using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
-                    http.DefaultRequestHeaders.Authorization =
-                        new AuthenticationHeaderValue("Bearer", token);
+                    var detail = await response.Content.ReadAsStringAsync(innerCt);
+                    return ((int?)response.StatusCode, detail, (ClusterListResponse?)null);
+                }
 
-                    var response = await http.GetAsync($"api/v1/clusters{qs}", innerCt);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var detail = await response.Content.ReadAsStringAsync(innerCt);
-                        return ((int?)response.StatusCode, detail, (ClusterListResponse?)null);
-                    }
+                var json = await response.Content.ReadAsStringAsync(innerCt);
+                var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.ClusterListResponse);
+                return ((int?)null, (string?)null, parsed);
+            });
 
-                    var json = await response.Content.ReadAsStringAsync(innerCt);
-                    var parsed = JsonSerializer.Deserialize(json, CliJsonContext.Default.ClusterListResponse);
-                    return ((int?)null, (string?)null, parsed);
-                });
+        if (result.Item1 is int code)
+            throw new CliHttpErrorException(code, result.Item2 ?? "");
 
-            if (result.Item1 is int code)
-            {
-                CliErrors.WriteHttpError(code, result.Item2 ?? "");
-                ctx.ExitCode = 1;
-                return;
-            }
-
-            if (result.Item3 is null || result.Item3.Clusters.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[dim]No clusters found.[/]");
-                return;
-            }
-
-            RenderClusterTable(AnsiConsole.Console, result.Item3.Clusters);
-        }
-        catch (CliHttpTimeoutException)
+        if (result.Item3 is null || result.Item3.Clusters.Count == 0)
         {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
+            AnsiConsole.MarkupLine("[dim]No clusters found.[/]");
+            return;
         }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-        }
+
+        RenderClusterTable(AnsiConsole.Console, result.Item3.Clusters);
     }
 
     internal static void RenderClusterTable(IAnsiConsole console, List<ClusterResponse> clusters)

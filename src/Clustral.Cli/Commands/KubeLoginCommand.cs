@@ -127,33 +127,13 @@ internal static class KubeLoginCommand
         if (clusterId is null) return;
 
         // ── Call ControlPlane REST API (with spinner + 5s timeout) ────────────
-        IssueCredentialResponse credential;
-        try
-        {
-            credential = await CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.IssuingCredential,
-                innerCt => IssueCredentialAsync(controlPlaneUrl, token, clusterId, ttl, insecure, innerCt),
-                ct);
-        }
-        catch (CliHttpTimeoutException)
-        {
-            CliErrors.WriteError(Messages.Errors.Timeout);
-            ctx.ExitCode = 1;
-            return;
-        }
-        catch (Exception ex)
-        {
-            CliErrors.WriteConnectionError(ex);
-            ctx.ExitCode = 1;
-            return;
-        }
+        var credential = await CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.IssuingCredential,
+            innerCt => IssueCredentialAsync(controlPlaneUrl, token, clusterId, ttl, insecure, innerCt),
+            ct);
 
         if (string.IsNullOrEmpty(credential.Token))
-        {
-            CliErrors.WriteError(Messages.Errors.EmptyToken);
-            ctx.ExitCode = 1;
-            return;
-        }
+            throw new InvalidOperationException(Messages.Errors.EmptyToken);
 
         // ── Write kubeconfig entry ────────────────────────────────────────────
         var serverUrl = $"{controlPlaneUrl.TrimEnd('/')}/api/proxy/{clusterId}";
@@ -165,17 +145,8 @@ internal static class KubeLoginCommand
             ExpiresAt:             credential.ExpiresAt,
             InsecureSkipTlsVerify: insecure || serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
 
-        try
-        {
-            var writer = new KubeconfigWriter();
-            writer.WriteClusterEntry(entry, setCurrentContext: !noSetContext);
-        }
-        catch (Exception ex)
-        {
-            CliErrors.WriteError(Messages.Errors.WriteFailed(ex.Message));
-            ctx.ExitCode = 1;
-            return;
-        }
+        var writer = new KubeconfigWriter();
+        writer.WriteClusterEntry(entry, setCurrentContext: !noSetContext);
 
         AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.KubeconfigUpdated}[/]");
         AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");

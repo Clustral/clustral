@@ -53,10 +53,13 @@ Clustral.Cli/
 │   └── NameResolver.cs           ← Shared cluster/role name → ID resolver (name or GUID)
 │
 ├── Http/
-│   └── CliHttp.cs                ← Shared HTTP client factory + spinner helper
+│   ├── CliHttp.cs                ← Shared HTTP client factory + spinner helper + CliHttpErrorException
+│   └── DebugLoggingHandler.cs    ← HTTP request/response tracing when --debug is on
 │
 ├── Ui/
-│   └── CliErrors.cs              ← Flat error/warning display (● indicator + dim detail rows)
+│   ├── CliErrors.cs              ← Flat error/warning display (● indicator + dim detail rows)
+│   ├── CliExceptionHandler.cs    ← Global exception classifier (mirrors ControlPlane's GlobalExceptionHandlerMiddleware)
+│   └── Messages.cs               ← Centralized user-facing string catalog
 │
 ├── Auth/
 │   ├── OidcFlowHandler.cs        ← PKCE orchestration (verifier, challenge, browser, exchange)

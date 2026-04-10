@@ -92,7 +92,8 @@ internal static class LogoutCommand
                         }
                         catch (Exception ex) when (!CliHttp.IsTimeout(ex))
                         {
-                            // Per-token error — continue with the next token.
+                            if (CliDebug.Enabled)
+                                AnsiConsole.MarkupLine($"[dim]  DEBUG: {ex.GetType().Name}: {ex.Message.EscapeMarkup()}[/]");
                         }
                     }
                 },
@@ -103,16 +104,18 @@ internal static class LogoutCommand
             else
                 AnsiConsole.MarkupLine($"[yellow]![/] {Messages.Warnings.NoCredentialsRevoked}");
         }
-        catch (CliHttpTimeoutException)
+        catch (CliHttpTimeoutException ex)
         {
             AnsiConsole.MarkupLine(
                 $"[yellow]![/] {Messages.Warnings.ControlPlaneUnreachable} " +
                 $"[dim]{Messages.Warnings.CredentialsExpireNaturally}[/]");
+            if (CliDebug.Enabled) CliErrors.WriteDebugException(AnsiConsole.Console, ex);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             AnsiConsole.MarkupLine(
                 $"[yellow]![/] {Messages.Warnings.RevocationFailed}");
+            if (CliDebug.Enabled) CliErrors.WriteDebugException(AnsiConsole.Console, ex);
         }
     }
 

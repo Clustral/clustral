@@ -48,120 +48,107 @@ internal static class UpdateCommand
         };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("clustral-cli");
 
-        try
+        // Fetch release info.
+        string apiUrl;
+        if (pre)
         {
-            // Fetch release info.
-            string apiUrl;
-            if (pre)
-            {
-                apiUrl = $"https://api.github.com/repos/{Repo}/releases";
-            }
-            else
-            {
-                apiUrl = $"https://api.github.com/repos/{Repo}/releases/latest";
-            }
-
-            var json = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.CheckingUpdates,
-                innerCt => http.GetStringAsync(apiUrl, innerCt),
-                ct);
-
-            string? tagName = null;
-            string? assetUrl = null;
-            var artifactName = GetArtifactName();
-
-            if (pre)
-            {
-                // Parse array of releases, find first with our artifact.
-                using var doc = JsonDocument.Parse(json);
-                foreach (var release in doc.RootElement.EnumerateArray())
-                {
-                    tagName = release.GetProperty("tag_name").GetString();
-                    assetUrl = FindAssetUrl(release, artifactName);
-                    if (assetUrl is not null) break;
-                }
-            }
-            else
-            {
-                using var doc = JsonDocument.Parse(json);
-                tagName = doc.RootElement.GetProperty("tag_name").GetString();
-                assetUrl = FindAssetUrl(doc.RootElement, artifactName);
-            }
-
-            if (tagName is null)
-            {
-                Console.WriteLine("No releases found.");
-                return;
-            }
-
-            var latestVersion = tagName.TrimStart('v');
-            Console.WriteLine($"Latest version:  v{latestVersion}");
-
-            if (latestVersion == currentVersion)
-            {
-                Console.WriteLine("Already up to date.");
-                return;
-            }
-
-            if (checkOnly)
-            {
-                Console.WriteLine($"Update available: v{currentVersion} → v{latestVersion}");
-                return;
-            }
-
-            if (assetUrl is null)
-            {
-                CliErrors.WriteError(Messages.Errors.NoBinary(artifactName, tagName));
-                ctx.ExitCode = 1;
-                return;
-            }
-
-            var binaryData = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
-                Messages.Spinners.Downloading(latestVersion, artifactName),
-                innerCt => http.GetByteArrayAsync(assetUrl, innerCt),
-                ct);
-
-            // Replace the current binary.
-            var currentPath = Environment.ProcessPath;
-
-            if (string.IsNullOrEmpty(currentPath))
-            {
-                CliErrors.WriteError(Messages.Errors.CannotDetermineBinaryPath);
-                ctx.ExitCode = 1;
-                return;
-            }
-
-            var tempPath = currentPath + ".new";
-            await File.WriteAllBytesAsync(tempPath, binaryData, ct);
-
-            // On Unix, set executable permission.
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                File.SetUnixFileMode(tempPath,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-            }
-
-            // Atomic replace: rename old → .old, rename new → current.
-            var oldPath = currentPath + ".old";
-            if (File.Exists(oldPath)) File.Delete(oldPath);
-            File.Move(currentPath, oldPath);
-            File.Move(tempPath, currentPath);
-            File.Delete(oldPath);
-
-            Console.WriteLine($"Updated to v{latestVersion}.");
+            apiUrl = $"https://api.github.com/repos/{Repo}/releases";
         }
-        catch (Clustral.Cli.Http.CliHttpTimeoutException)
+        else
         {
-            CliErrors.WriteError("GitHub unreachable (timed out after 30s).");
+            apiUrl = $"https://api.github.com/repos/{Repo}/releases/latest";
+        }
+
+        var json = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.CheckingUpdates,
+            innerCt => http.GetStringAsync(apiUrl, innerCt),
+            ct);
+
+        string? tagName = null;
+        string? assetUrl = null;
+        var artifactName = GetArtifactName();
+
+        if (pre)
+        {
+            // Parse array of releases, find first with our artifact.
+            using var doc = JsonDocument.Parse(json);
+            foreach (var release in doc.RootElement.EnumerateArray())
+            {
+                tagName = release.GetProperty("tag_name").GetString();
+                assetUrl = FindAssetUrl(release, artifactName);
+                if (assetUrl is not null) break;
+            }
+        }
+        else
+        {
+            using var doc = JsonDocument.Parse(json);
+            tagName = doc.RootElement.GetProperty("tag_name").GetString();
+            assetUrl = FindAssetUrl(doc.RootElement, artifactName);
+        }
+
+        if (tagName is null)
+        {
+            Console.WriteLine("No releases found.");
+            return;
+        }
+
+        var latestVersion = tagName.TrimStart('v');
+        Console.WriteLine($"Latest version:  v{latestVersion}");
+
+        if (latestVersion == currentVersion)
+        {
+            Console.WriteLine("Already up to date.");
+            return;
+        }
+
+        if (checkOnly)
+        {
+            Console.WriteLine($"Update available: v{currentVersion} → v{latestVersion}");
+            return;
+        }
+
+        if (assetUrl is null)
+        {
+            CliErrors.WriteError(Messages.Errors.NoBinary(artifactName, tagName));
             ctx.ExitCode = 1;
+            return;
         }
-        catch (Exception ex)
+
+        var binaryData = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+            Messages.Spinners.Downloading(latestVersion, artifactName),
+            innerCt => http.GetByteArrayAsync(assetUrl, innerCt),
+            ct);
+
+        // Replace the current binary.
+        var currentPath = Environment.ProcessPath;
+
+        if (string.IsNullOrEmpty(currentPath))
         {
-            CliErrors.WriteConnectionError(ex);
+            CliErrors.WriteError(Messages.Errors.CannotDetermineBinaryPath);
             ctx.ExitCode = 1;
+            return;
         }
+
+        var tempPath = currentPath + ".new";
+        await File.WriteAllBytesAsync(tempPath, binaryData, ct);
+
+        // On Unix, set executable permission.
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            File.SetUnixFileMode(tempPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        // Atomic replace: rename old → .old, rename new → current.
+        var oldPath = currentPath + ".old";
+        if (File.Exists(oldPath)) File.Delete(oldPath);
+        File.Move(currentPath, oldPath);
+        File.Move(tempPath, currentPath);
+        File.Delete(oldPath);
+
+        Console.WriteLine($"Updated to v{latestVersion}.");
     }
 
     internal static string GetArtifactName()

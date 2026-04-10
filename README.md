@@ -761,6 +761,12 @@ clustral config path              # just print file paths
 # Check version
 clustral version
 
+# --- Debugging ---
+
+# Enable verbose output: HTTP traces, full exceptions, timing
+clustral --debug clusters list
+clustral --debug kube login prod
+
 # Self-update to latest
 clustral update
 

@@ -59,6 +59,10 @@ internal static class CliErrors
         AddDimRow(table, "Exception", ex.GetType().Name);
 
         console.Write(table);
+
+        if (CliDebug.Enabled)
+            WriteDebugException(console, ex);
+
         console.WriteLine();
     }
 
@@ -116,8 +120,46 @@ internal static class CliErrors
         console.WriteLine();
     }
 
+    /// <summary>
+    /// Displays an unexpected (unclassified) exception. Used by the global
+    /// exception handler for exceptions that don't match any known type.
+    /// In normal mode, shows a "re-run with --debug" hint.
+    /// </summary>
+    internal static void WriteUnhandledException(Exception ex) =>
+        WriteUnhandledException(AnsiConsole.Console, ex);
+
+    internal static void WriteUnhandledException(IAnsiConsole console, Exception ex)
+    {
+        WriteHeader(console, "red", "Unexpected error");
+
+        var table = NewDetailTable();
+        AddDimRow(table, "Type",    ex.GetType().FullName ?? ex.GetType().Name);
+        AddDimRow(table, "Message", ex.Message);
+        if (!CliDebug.Enabled)
+            AddDimRow(table, "Hint", "Re-run with --debug for full exception details.");
+
+        console.Write(table);
+
+        if (CliDebug.Enabled)
+            WriteDebugException(console, ex);
+
+        console.WriteLine();
+    }
+
+    /// <summary>
+    /// Writes the full <c>ex.ToString()</c> (type + message + stack trace +
+    /// inner exceptions) in dimmed text. Shared by all error methods when
+    /// <see cref="CliDebug.Enabled"/> is <c>true</c>.
+    /// </summary>
+    internal static void WriteDebugException(IAnsiConsole console, Exception ex)
+    {
+        console.WriteLine();
+        console.MarkupLine("[dim]Exception details:[/]");
+        console.WriteLine(ex.ToString());
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
-    // Layout helpers — shared by all five public methods.
+    // Layout helpers — shared by all public methods.
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
