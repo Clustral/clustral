@@ -107,7 +107,7 @@ internal static class LoginCommand
         CliDebug.Log("Checking for existing valid session...");
         if (!force)
         {
-            var cache = new TokenCache();
+            var cache = new TokenCache(CliConfig.DefaultTokenPath);
             var existingToken = await cache.ReadAsync(ct);
 
             if (existingToken is not null)
@@ -164,7 +164,7 @@ internal static class LoginCommand
         var token = await flow.LoginAsync(ct);
 
         CliDebug.Log("Storing JWT in ~/.clustral/token");
-        var tokenCache = new TokenCache();
+        var tokenCache = new TokenCache(CliConfig.DefaultTokenPath);
         await tokenCache.StoreAsync(token, ct);
 
         // Fetch and display user profile.
@@ -252,7 +252,7 @@ internal static class LoginCommand
 
             // Display profile with Spectre.Console.
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"[green]✓[/] [bold]{Messages.Success.LoggedIn}[/]");
+            AnsiConsole.MarkupLine($"[green]✓[/] [bold]{Messages.Success.LoggedIn}[/]{ProfileCommand.GetProfileBadge()}");
             AnsiConsole.WriteLine();
 
             RenderProfileTable(AnsiConsole.Console, profile, cpUrl, roles, clusters, expiry);

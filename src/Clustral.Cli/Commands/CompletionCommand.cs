@@ -61,7 +61,7 @@ internal static class CompletionCommand
             cur="${COMP_WORDS[COMP_CWORD]}"
             prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-            commands="login logout kube clusters users roles access config status doctor update version completion"
+            commands="login logout kube clusters users roles access config status doctor profile update version completion"
 
             case "${prev}" in
                 clustral)
@@ -86,6 +86,10 @@ internal static class CompletionCommand
                     ;;
                 access)
                     COMPREPLY=($(compgen -W "request list ls approve deny revoke" -- "${cur}"))
+                    return 0
+                    ;;
+                profile)
+                    COMPREPLY=($(compgen -W "create use list ls current delete" -- "${cur}"))
                     return 0
                     ;;
                 completion)
@@ -127,6 +131,7 @@ internal static class CompletionCommand
                 'doctor:Diagnose connectivity issues'
                 'update:Update to latest version'
                 'version:Show CLI and ControlPlane versions'
+                'profile:Manage configuration profiles'
                 'completion:Generate shell completions'
             )
 
@@ -146,6 +151,10 @@ internal static class CompletionCommand
                     ;;
                 access)
                     subcommands=('request:Request access' 'list:List requests' 'ls:List requests' 'approve:Approve request' 'deny:Deny request' 'revoke:Revoke grant')
+                    _describe 'subcommand' subcommands
+                    ;;
+                profile)
+                    subcommands=('create:Create profile' 'use:Switch profile' 'list:List profiles' 'ls:List profiles' 'current:Show active' 'delete:Delete profile')
                     _describe 'subcommand' subcommands
                     ;;
                 completion)
@@ -175,6 +184,7 @@ internal static class CompletionCommand
         complete -c clustral -n '__fish_use_subcommand' -a doctor -d 'Diagnose connectivity issues'
         complete -c clustral -n '__fish_use_subcommand' -a update -d 'Update to latest version'
         complete -c clustral -n '__fish_use_subcommand' -a version -d 'Show versions'
+        complete -c clustral -n '__fish_use_subcommand' -a profile -d 'Manage configuration profiles'
         complete -c clustral -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
 
         # kube subcommands
@@ -194,6 +204,13 @@ internal static class CompletionCommand
         complete -c clustral -n '__fish_seen_subcommand_from access' -a approve -d 'Approve request'
         complete -c clustral -n '__fish_seen_subcommand_from access' -a deny -d 'Deny request'
         complete -c clustral -n '__fish_seen_subcommand_from access' -a revoke -d 'Revoke grant'
+
+        # profile subcommands
+        complete -c clustral -n '__fish_seen_subcommand_from profile' -a create -d 'Create profile'
+        complete -c clustral -n '__fish_seen_subcommand_from profile' -a use -d 'Switch profile'
+        complete -c clustral -n '__fish_seen_subcommand_from profile' -a 'list ls' -d 'List profiles'
+        complete -c clustral -n '__fish_seen_subcommand_from profile' -a current -d 'Show active profile'
+        complete -c clustral -n '__fish_seen_subcommand_from profile' -a delete -d 'Delete profile'
 
         # completion subcommands
         complete -c clustral -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish' -d 'Shell type'

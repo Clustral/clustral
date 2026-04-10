@@ -178,7 +178,7 @@ internal static class DoctorCommand
         }
 
         // ── 6. JWT session ───────────────────────────────────────────────
-        var tokenPath = TokenCache.DefaultTokenPath();
+        var tokenPath = CliConfig.DefaultTokenPath;
         if (File.Exists(tokenPath))
         {
             try

@@ -774,6 +774,36 @@ clustral clusters list --output json
 clustral users list -o json
 clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
 
+# --- Configuration profiles ---
+
+# Create profiles for each environment
+clustral profile create dev
+clustral profile create staging
+clustral profile create prod
+
+# Switch profiles (each has its own config + JWT)
+clustral profile use staging
+clustral login https://staging.example.com
+
+clustral profile use prod
+clustral login https://prod.example.com
+
+# List profiles (● = active, default always shown)
+clustral profile list
+#   Profile ControlPlane URL              Status
+# ● default https://192.168.88.4          active
+# ○ prod    https://prod.example.com      logged in
+# ○ staging https://staging.example.com   —
+
+# Show active profile
+clustral profile current
+
+# Switch back to default
+clustral profile use default
+
+# Delete a profile (default is protected)
+clustral profile delete staging
+
 # --- Auto-login ---
 
 # When a session expires, interactive commands prompt to re-login:

@@ -30,6 +30,15 @@ clustral
 ├── config
 │   ├── show [--json] [--remote]    ← Show CLI files, session, kubeconfig
 │   └── path                        ← Print file paths the CLI uses
+├── status                          ← Session, clusters, grants, ControlPlane health
+├── doctor                          ← Sequential connectivity diagnostics
+├── profile
+│   ├── list (alias: ls)            ← List profiles (default always first)
+│   ├── use <name>                  ← Switch active profile (or "default")
+│   ├── current                     ← Show active profile name
+│   ├── create <name>               ← Create a new profile
+│   └── delete <name>               ← Delete a profile (default protected)
+├── completion <shell>              ← Generate bash/zsh/fish completions
 ├── update                          ← Self-update from GitHub
 └── version                         ← Show CLI version
 ```
@@ -50,6 +59,10 @@ Clustral.Cli/
 │   ├── RolesCommand.cs           ← clustral roles list
 │   ├── AccessCommand.cs          ← clustral access (request, list, approve, deny, revoke)
 │   ├── ConfigCommand.cs          ← clustral config show / path (offline introspection)
+│   ├── StatusCommand.cs          ← clustral status (session, clusters, grants, health)
+│   ├── DoctorCommand.cs          ← clustral doctor (connectivity diagnostics)
+│   ├── ProfileCommand.cs         ← clustral profile (create/use/list/current/delete + path resolution)
+│   ├── CompletionCommand.cs      ← clustral completion bash/zsh/fish
 │   └── NameResolver.cs           ← Shared cluster/role name → ID resolver (name or GUID)
 │
 ├── Http/

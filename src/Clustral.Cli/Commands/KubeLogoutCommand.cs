@@ -75,7 +75,7 @@ internal static class KubeLogoutCommand
         if (match.Token is null || string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
             return;
 
-        var cache = new TokenCache();
+        var cache = new TokenCache(CliConfig.DefaultTokenPath);
         var jwt = await cache.ReadAsync(ct);
         if (jwt is null) return;
 

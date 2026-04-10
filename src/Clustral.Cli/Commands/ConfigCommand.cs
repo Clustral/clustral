@@ -51,7 +51,7 @@ internal static class ConfigCommand
     private static Task HandlePath(InvocationContext _)
     {
         AnsiConsole.WriteLine(CliConfig.DefaultPath);
-        AnsiConsole.WriteLine(TokenCache.DefaultTokenPath());
+        AnsiConsole.WriteLine(CliConfig.DefaultTokenPath);
         AnsiConsole.WriteLine(KubeconfigWriter.DefaultKubeconfigPath());
         return Task.CompletedTask;
     }
@@ -63,7 +63,7 @@ internal static class ConfigCommand
         _ = ctx.ParseResult.GetValueForOption(RemoteOption);
 
         CliDebug.Log($"Config path: {CliConfig.DefaultPath}");
-        CliDebug.Log($"Token path: {TokenCache.DefaultTokenPath()}");
+        CliDebug.Log($"Token path: {CliConfig.DefaultTokenPath}");
         var data = await CollectAsync();
 
         if (json)
@@ -86,7 +86,7 @@ internal static class ConfigCommand
         string? kubeconfigPath = null)
     {
         configPath     ??= CliConfig.DefaultPath;
-        tokenPath      ??= TokenCache.DefaultTokenPath();
+        tokenPath      ??= CliConfig.DefaultTokenPath;
         kubeconfigPath ??= KubeconfigWriter.DefaultKubeconfigPath();
 
         var config = CliConfig.LoadFrom(configPath);
@@ -241,10 +241,10 @@ internal static class ConfigCommand
         // Status line at the top — matches LoginCommand style.
         var statusLine = data.Session.Status switch
         {
-            "LoggedIn"  => "[green]✓[/] [bold]Configured[/]",
-            "Expired"   => "[yellow]![/] [bold]Session expired[/]",
-            "NotLoggedIn" => "[grey]○[/] [bold]Not logged in[/]",
-            _           => "[red]✗[/] [bold]Token unreadable[/]",
+            "LoggedIn"  => $"[green]✓[/] [bold]Configured[/]{ProfileCommand.GetProfileBadge()}",
+            "Expired"   => $"[yellow]![/] [bold]Session expired[/]{ProfileCommand.GetProfileBadge()}",
+            "NotLoggedIn" => $"[grey]○[/] [bold]Not logged in[/]{ProfileCommand.GetProfileBadge()}",
+            _           => $"[red]✗[/] [bold]Token unreadable[/]{ProfileCommand.GetProfileBadge()}",
         };
         console.MarkupLine(statusLine);
 

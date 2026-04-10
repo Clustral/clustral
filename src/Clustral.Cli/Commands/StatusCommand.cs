@@ -61,7 +61,7 @@ internal static class StatusCommand
         var output = new StatusOutput();
 
         // ── Session (local) ─────────────────────────────────────────────
-        var tokenPath = TokenCache.DefaultTokenPath();
+        var tokenPath = CliConfig.DefaultTokenPath;
         if (File.Exists(tokenPath))
         {
             try
@@ -185,7 +185,7 @@ internal static class StatusCommand
         console.WriteLine();
 
         // ── Session ─────────────────────────────────────────────────────
-        console.MarkupLine("[bold]Session[/]");
+        console.MarkupLine($"[bold]Session[/]{ProfileCommand.GetProfileBadge()}");
         var sessionTable = new Table().Border(TableBorder.None).HideHeaders()
             .AddColumn(new TableColumn("Key").PadLeft(2).PadRight(2))
             .AddColumn("Value");

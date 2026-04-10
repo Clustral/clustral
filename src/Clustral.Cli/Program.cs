@@ -31,6 +31,7 @@ root.AddCommand(AccessCommand.BuildAccessCommand());
 root.AddCommand(ConfigCommand.Build());
 root.AddCommand(StatusCommand.Build());
 root.AddCommand(DoctorCommand.Build());
+root.AddCommand(ProfileCommand.Build());
 root.AddCommand(UpdateCommand.Build());
 root.AddCommand(VersionCommand.Build());
 root.AddCommand(CompletionCommand.Build());

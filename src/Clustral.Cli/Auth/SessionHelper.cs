@@ -29,7 +29,7 @@ internal static class SessionHelper
     public static async Task<string?> EnsureValidTokenAsync(
         CliConfig config, bool insecure, CancellationToken ct)
     {
-        var cache = new TokenCache();
+        var cache = new TokenCache(CliConfig.DefaultTokenPath);
         var token = await cache.ReadAsync(ct);
 
         // ── Check if current token is still valid ────────────────────────

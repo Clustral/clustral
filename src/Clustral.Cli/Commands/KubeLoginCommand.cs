@@ -153,7 +153,7 @@ internal static class KubeLoginCommand
         writer.WriteClusterEntry(entry, setCurrentContext: !noSetContext);
         CliDebug.Log($"Wrote kubeconfig entry: context={contextName}");
 
-        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.KubeconfigUpdated}[/]");
+        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.KubeconfigUpdated}[/]{ProfileCommand.GetProfileBadge()}");
         AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");
         AnsiConsole.MarkupLine($"  [grey]Server[/]    {serverUrl.EscapeMarkup()}");
         AnsiConsole.MarkupLine($"  [grey]Expires[/]   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
