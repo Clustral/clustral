@@ -33,6 +33,7 @@ root.AddCommand(StatusCommand.Build());
 root.AddCommand(DoctorCommand.Build());
 root.AddCommand(UpdateCommand.Build());
 root.AddCommand(VersionCommand.Build());
+root.AddCommand(CompletionCommand.Build());
 
 // ── Set debug flag before invoking ───────────────────────────────────────────
 // Read from the parsed result so `--debug` works regardless of position.

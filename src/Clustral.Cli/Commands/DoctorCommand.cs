@@ -156,7 +156,10 @@ internal static class DoctorCommand
         {
             var oidcCheck = await RunTimedCheckAsync("OIDC discovery", async () =>
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var oidcHandler = new HttpClientHandler();
+                if (insecure)
+                    oidcHandler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+                using var http = new HttpClient(oidcHandler) { Timeout = TimeSpan.FromSeconds(5) };
                 var discoveryUrl = config.OidcAuthority.TrimEnd('/') + "/.well-known/openid-configuration";
                 var response = await http.GetAsync(discoveryUrl, ct);
                 response.EnsureSuccessStatusCode();

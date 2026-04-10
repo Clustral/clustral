@@ -774,6 +774,17 @@ clustral clusters list --output json
 clustral users list -o json
 clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
 
+# --- Shell completions ---
+
+# Bash
+eval "$(clustral completion bash)"          # add to ~/.bashrc
+
+# Zsh
+eval "$(clustral completion zsh)"           # add to ~/.zshrc
+
+# Fish
+clustral completion fish > ~/.config/fish/completions/clustral.fish
+
 # --- Diagnostics ---
 
 # Check connectivity: DNS, TLS, ControlPlane, OIDC, JWT, kubeconfig
