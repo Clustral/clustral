@@ -61,7 +61,7 @@ internal static class CompletionCommand
             cur="${COMP_WORDS[COMP_CWORD]}"
             prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-            commands="login logout kube clusters users roles access config status doctor profile whoami update version completion"
+            commands="login logout kube clusters users roles access config status doctor profiles accounts whoami update version completion"
 
             case "${prev}" in
                 clustral)
@@ -92,8 +92,12 @@ internal static class CompletionCommand
                     COMPREPLY=($(compgen -W "show path clean" -- "${cur}"))
                     return 0
                     ;;
-                profile)
+                profiles)
                     COMPREPLY=($(compgen -W "create use list ls current delete" -- "${cur}"))
+                    return 0
+                    ;;
+                accounts)
+                    COMPREPLY=($(compgen -W "list ls use remove" -- "${cur}"))
                     return 0
                     ;;
                 completion)
@@ -135,7 +139,8 @@ internal static class CompletionCommand
                 'doctor:Diagnose connectivity issues'
                 'update:Update to latest version'
                 'version:Show CLI and ControlPlane versions'
-                'profile:Manage configuration profiles'
+                'profiles:Manage configuration profiles'
+                'accounts:Manage logged-in accounts'
                 'whoami:Show current user and session'
                 'completion:Generate shell completions'
             )
@@ -158,8 +163,12 @@ internal static class CompletionCommand
                     subcommands=('request:Request access' 'list:List requests' 'ls:List requests' 'approve:Approve request' 'deny:Deny request' 'revoke:Revoke grant')
                     _describe 'subcommand' subcommands
                     ;;
-                profile)
+                profiles)
                     subcommands=('create:Create profile' 'use:Switch profile' 'list:List profiles' 'ls:List profiles' 'current:Show active' 'delete:Delete profile')
+                    _describe 'subcommand' subcommands
+                    ;;
+                accounts)
+                    subcommands=('list:List accounts' 'ls:List accounts' 'use:Switch account' 'remove:Remove account')
                     _describe 'subcommand' subcommands
                     ;;
                 completion)
@@ -189,7 +198,8 @@ internal static class CompletionCommand
         complete -c clustral -n '__fish_use_subcommand' -a doctor -d 'Diagnose connectivity issues'
         complete -c clustral -n '__fish_use_subcommand' -a update -d 'Update to latest version'
         complete -c clustral -n '__fish_use_subcommand' -a version -d 'Show versions'
-        complete -c clustral -n '__fish_use_subcommand' -a profile -d 'Manage configuration profiles'
+        complete -c clustral -n '__fish_use_subcommand' -a profiles -d 'Manage configuration profiles'
+        complete -c clustral -n '__fish_use_subcommand' -a accounts -d 'Manage logged-in accounts'
         complete -c clustral -n '__fish_use_subcommand' -a whoami -d 'Show current user and session'
         complete -c clustral -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
 
@@ -211,12 +221,17 @@ internal static class CompletionCommand
         complete -c clustral -n '__fish_seen_subcommand_from access' -a deny -d 'Deny request'
         complete -c clustral -n '__fish_seen_subcommand_from access' -a revoke -d 'Revoke grant'
 
-        # profile subcommands
-        complete -c clustral -n '__fish_seen_subcommand_from profile' -a create -d 'Create profile'
-        complete -c clustral -n '__fish_seen_subcommand_from profile' -a use -d 'Switch profile'
-        complete -c clustral -n '__fish_seen_subcommand_from profile' -a 'list ls' -d 'List profiles'
-        complete -c clustral -n '__fish_seen_subcommand_from profile' -a current -d 'Show active profile'
-        complete -c clustral -n '__fish_seen_subcommand_from profile' -a delete -d 'Delete profile'
+        # profiles subcommands
+        complete -c clustral -n '__fish_seen_subcommand_from profiles' -a create -d 'Create profile'
+        complete -c clustral -n '__fish_seen_subcommand_from profiles' -a use -d 'Switch profile'
+        complete -c clustral -n '__fish_seen_subcommand_from profiles' -a 'list ls' -d 'List profiles'
+        complete -c clustral -n '__fish_seen_subcommand_from profiles' -a current -d 'Show active profile'
+        complete -c clustral -n '__fish_seen_subcommand_from profiles' -a delete -d 'Delete profile'
+
+        # accounts subcommands
+        complete -c clustral -n '__fish_seen_subcommand_from accounts' -a 'list ls' -d 'List accounts'
+        complete -c clustral -n '__fish_seen_subcommand_from accounts' -a use -d 'Switch account'
+        complete -c clustral -n '__fish_seen_subcommand_from accounts' -a remove -d 'Remove account'
 
         # completion subcommands
         complete -c clustral -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish' -d 'Shell type'

@@ -33,12 +33,16 @@ clustral
 │   └── clean [--yes] [--dry-run]   ← Factory reset (delete all CLI state)
 ├── status                          ← Session, clusters, grants, ControlPlane health
 ├── doctor                          ← Sequential connectivity diagnostics
-├── profile
+├── profiles
 │   ├── list (alias: ls)            ← List profiles (default always first)
 │   ├── use <name>                  ← Switch active profile (or "default")
 │   ├── current                     ← Show active profile name
 │   ├── create <name>               ← Create a new profile
 │   └── delete <name>               ← Delete a profile (default protected)
+├── accounts
+│   ├── list (alias: ls)            ← List accounts in current profile
+│   ├── use <email>                 ← Switch active account
+│   └── remove <email>              ← Remove a stored account
 ├── whoami                          ← Quick identity + session validity check
 ├── completion <shell>              ← Generate bash/zsh/fish completions
 ├── update                          ← Self-update from GitHub
@@ -64,6 +68,7 @@ Clustral.Cli/
 │   ├── StatusCommand.cs          ← clustral status (session, clusters, grants, health)
 │   ├── DoctorCommand.cs          ← clustral doctor (connectivity diagnostics)
 │   ├── ProfileCommand.cs         ← clustral profile (create/use/list/current/delete + path resolution)
+│   ├── AccountsCommand.cs        ← clustral accounts (list/use/remove per-profile accounts)
 │   ├── WhoamiCommand.cs          ← clustral whoami (local JWT decode, no HTTP)
 │   ├── CompletionCommand.cs      ← clustral completion bash/zsh/fish
 │   └── NameResolver.cs           ← Shared cluster/role name → ID resolver (name or GUID)

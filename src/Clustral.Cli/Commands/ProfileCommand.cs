@@ -22,7 +22,7 @@ internal static class ProfileCommand
 {
     public static Command Build()
     {
-        var cmd = new Command("profile", "Manage configuration profiles for multiple environments.");
+        var cmd = new Command("profiles", "Manage configuration profiles for multiple environments.");
         cmd.AddCommand(BuildListSubcommand());
         cmd.AddCommand(BuildUseSubcommand());
         cmd.AddCommand(BuildCurrentSubcommand());
@@ -344,6 +344,12 @@ internal static class ProfileCommand
     /// </summary>
     internal static string ResolveTokenPath()
     {
+        // Check for active account first (multi-account support).
+        var accountPath = AccountsCommand.ResolveActiveAccountTokenPath();
+        if (accountPath is not null)
+            return accountPath;
+
+        // Fall back to legacy single-token path.
         var active = GetActiveProfile();
         if (active is not null)
             return Path.Combine(GetProfileDir(active), "token");

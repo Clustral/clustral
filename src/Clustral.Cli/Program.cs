@@ -32,6 +32,7 @@ root.AddCommand(ConfigCommand.Build());
 root.AddCommand(StatusCommand.Build());
 root.AddCommand(DoctorCommand.Build());
 root.AddCommand(ProfileCommand.Build());
+root.AddCommand(AccountsCommand.Build());
 root.AddCommand(WhoamiCommand.Build());
 root.AddCommand(UpdateCommand.Build());
 root.AddCommand(VersionCommand.Build());

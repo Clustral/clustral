@@ -163,9 +163,20 @@ internal static class LoginCommand
         CliDebug.Log($"Starting OIDC callback listener on 127.0.0.1:{port}");
         var token = await flow.LoginAsync(ct);
 
-        CliDebug.Log("Storing JWT in ~/.clustral/token");
-        var tokenCache = new TokenCache(CliConfig.DefaultTokenPath);
-        await tokenCache.StoreAsync(token, ct);
+        // Store token under accounts/{email}.token for multi-account support.
+        var (loginEmail, _) = WhoamiCommand.DecodeEmailAndExpiry(token);
+        if (loginEmail is not null)
+        {
+            CliDebug.Log($"Storing JWT for account {loginEmail}");
+            AccountsCommand.StoreAccountToken(loginEmail, token);
+        }
+        else
+        {
+            // Fallback: can't decode email → store as legacy single token.
+            CliDebug.Log("Storing JWT in legacy token path (no email claim)");
+            var tokenCache = new TokenCache(CliConfig.DefaultTokenPath);
+            await tokenCache.StoreAsync(token, ct);
+        }
 
         // Fetch and display user profile.
         await DisplayProfileAsync(http, effectiveCpUrl, token, ct);

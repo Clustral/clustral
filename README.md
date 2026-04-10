@@ -783,35 +783,51 @@ clustral clusters list --output json
 clustral users list -o json
 clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
 
+# --- Accounts (multiple logins per profile) ---
+
+# Login stores each OIDC identity separately
+clustral login                        # stores as accounts/{email}.token
+
+# List all accounts in the current profile
+clustral accounts list
+# ● admin@corp.com   (3h remaining)
+# ○ dev@corp.com     (expired)
+
+# Switch active account
+clustral accounts use dev@corp.com
+
+# Remove a stored account
+clustral accounts remove dev@corp.com
+
 # --- Configuration profiles ---
 
 # Create profiles for each environment
-clustral profile create dev
-clustral profile create staging
-clustral profile create prod
+clustral profiles create dev
+clustral profiles create staging
+clustral profiles create prod
 
 # Switch profiles (each has its own config + JWT)
-clustral profile use staging
+clustral profiles use staging
 clustral login https://staging.example.com
 
-clustral profile use prod
+clustral profiles use prod
 clustral login https://prod.example.com
 
 # List profiles (● = active, default always shown)
-clustral profile list
+clustral profiles list
 #   Profile ControlPlane URL              Status
 # ● default https://192.168.88.4          active
 # ○ prod    https://prod.example.com      logged in
 # ○ staging https://staging.example.com   —
 
 # Show active profile
-clustral profile current
+clustral profiles current
 
 # Switch back to default
-clustral profile use default
+clustral profiles use default
 
 # Delete a profile (default is protected)
-clustral profile delete staging
+clustral profiles delete staging
 
 # --- Auto-login ---
 

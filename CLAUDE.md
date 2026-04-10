@@ -128,8 +128,10 @@ dotnet run -- config path         # just print file paths
 dotnet run -- whoami              # quick identity + session check
 dotnet run -- status              # session, clusters, grants, health
 dotnet run -- doctor              # connectivity diagnostics
-dotnet run -- profile list        # list configuration profiles
-dotnet run -- profile use staging # switch environment
+dotnet run -- profiles list        # list configuration profiles
+dotnet run -- profiles use staging # switch environment
+dotnet run -- accounts list        # list accounts in current profile
+dotnet run -- accounts use alice@corp.com  # switch active account
 dotnet run -- completion bash     # generate shell completions
 ```
 
