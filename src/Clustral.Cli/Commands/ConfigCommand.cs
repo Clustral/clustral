@@ -135,7 +135,13 @@ internal static class ConfigCommand
                 return Task.CompletedTask;
             }
 
-            if (!AnsiConsole.Confirm("Are you sure?", defaultValue: false))
+            var confirm = AnsiConsole.Prompt(
+                new TextPrompt<bool>("Are you sure?")
+                    .AddChoice(true).AddChoice(false)
+                    .DefaultValue(false)
+                    .WithConverter(v => v ? "y" : "n")
+                    .PromptStyle(Style.Plain));
+            if (!confirm)
             {
                 AnsiConsole.MarkupLine("[dim]Cancelled.[/]");
                 return Task.CompletedTask;

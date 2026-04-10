@@ -67,7 +67,13 @@ internal static class SessionHelper
             ? "Session expired. Login again?"
             : "Not logged in. Login now?";
 
-        if (!AnsiConsole.Confirm(message, defaultValue: true))
+        var confirm = AnsiConsole.Prompt(
+            new TextPrompt<bool>(message)
+                .AddChoice(true).AddChoice(false)
+                .DefaultValue(true)
+                .WithConverter(v => v ? "y" : "n")
+                .PromptStyle(Style.Plain));
+        if (!confirm)
             return null;
 
         // ── Run OIDC PKCE flow inline ────────────────────────────────────
