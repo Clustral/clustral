@@ -109,7 +109,8 @@ internal static class ProfileCommand
             .AddColumn("")
             .AddColumn("Profile")
             .AddColumn("ControlPlane URL")
-            .AddColumn("Status");
+            .AddColumn("Status")
+            .AddColumn("Accounts");
 
         foreach (var profile in profiles)
         {
@@ -132,7 +133,14 @@ internal static class ProfileCommand
                 ? "[green]active[/]"
                 : hasToken ? "[dim]logged in[/]" : "[dim]—[/]";
 
-            table.AddRow(indicator, name, cpUrl, status);
+            var accountsDir = profile == "default"
+                ? Path.Combine(ClustralDir, "accounts")
+                : Path.Combine(GetProfileDir(profile), "accounts");
+            var accountCount = Directory.Exists(accountsDir)
+                ? Directory.GetFiles(accountsDir, "*.token").Length
+                : 0;
+
+            table.AddRow(indicator, name, cpUrl, status, accountCount > 0 ? accountCount.ToString() : "[dim]—[/]");
         }
 
         AnsiConsole.Write(table);

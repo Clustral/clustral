@@ -57,6 +57,23 @@ internal static class LogoutCommand
 
         await cache.ClearAsync(ct);
         CliDebug.Log("Cleared JWT from ~/.clustral/token");
+
+        // Clear account tokens for the current profile.
+        var profileDir = ProfileCommand.GetActiveProfile() is string ap
+            ? ProfileCommand.GetProfileDir(ap)
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clustral");
+        var accountsDir = Path.Combine(profileDir, "accounts");
+        var clearedAccounts = 0;
+        if (Directory.Exists(accountsDir))
+        {
+            clearedAccounts = Directory.GetFiles(accountsDir, "*.token").Length;
+            Directory.Delete(accountsDir, recursive: true);
+        }
+        AccountsCommand.ClearActiveAccount();
+        CliDebug.Log($"Cleared {clearedAccounts} account token(s)");
+        if (clearedAccounts > 0)
+            AnsiConsole.MarkupLine($"  [red]✗[/] Cleared {clearedAccounts} account token(s)");
+
         AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.LoggedOutLocally}[/]{ProfileCommand.GetProfileBadge()}");
 
         // ── 3. Best-effort remote revocation with spinner + 5s timeout ────

@@ -36,6 +36,10 @@ internal static class LoginCommand
         "--force",
         "Force re-authentication even if already logged in.");
 
+    private static readonly Option<string?> AccountOption = new(
+        "--account",
+        "Explicit account name to store the token under (default: decoded email from JWT).");
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public static Command Build()
@@ -48,6 +52,7 @@ internal static class LoginCommand
         cmd.AddOption(PortOption);
         cmd.AddOption(InsecureOption);
         cmd.AddOption(ForceOption);
+        cmd.AddOption(AccountOption);
 
         cmd.SetHandler(HandleAsync);
 
@@ -64,6 +69,7 @@ internal static class LoginCommand
         CliDebug.Log("Loaded config from ~/.clustral/config.json");
         var insecure = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var port     = ctx.ParseResult.GetValueForOption(PortOption)     ?? config.CallbackPort;
+        var account  = ctx.ParseResult.GetValueForOption(AccountOption);
         var force    = ctx.ParseResult.GetValueForOption(ForceOption);
 
         // ── Resolve ControlPlane URL ──────────────────────────────────────
@@ -160,19 +166,24 @@ internal static class LoginCommand
             port,
             http);
 
-        CliDebug.Log($"Starting OIDC callback listener on 127.0.0.1:{port}");
-        var token = await flow.LoginAsync(ct);
+        // Force the login prompt if --force or --account is set, so the OIDC
+        // provider shows the login screen instead of reusing the SSO session.
+        var forcePrompt = force || account is not null;
+        CliDebug.Log($"Starting OIDC callback listener on 127.0.0.1:{port} (forcePrompt: {forcePrompt})");
+        var token = await flow.LoginAsync(ct, forcePrompt);
 
-        // Store token under accounts/{email}.token for multi-account support.
+        // Store token under accounts/{name}.token for multi-account support.
+        // --account overrides the decoded email if provided.
         var (loginEmail, _) = WhoamiCommand.DecodeEmailAndExpiry(token);
-        if (loginEmail is not null)
+        var accountName = account ?? loginEmail;
+        if (accountName is not null)
         {
-            CliDebug.Log($"Storing JWT for account {loginEmail}");
-            AccountsCommand.StoreAccountToken(loginEmail, token);
+            CliDebug.Log($"Storing JWT for account {accountName}");
+            AccountsCommand.StoreAccountToken(accountName, token);
         }
         else
         {
-            // Fallback: can't decode email → store as legacy single token.
+            // Fallback: can't decode email and no --account → store as legacy single token.
             CliDebug.Log("Storing JWT in legacy token path (no email claim)");
             var tokenCache = new TokenCache(CliConfig.DefaultTokenPath);
             await tokenCache.StoreAsync(token, ct);

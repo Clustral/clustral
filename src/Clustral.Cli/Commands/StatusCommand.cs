@@ -195,6 +195,14 @@ internal static class StatusCommand
             sessionTable.AddRow("[grey]Logged in as[/]",
                 data.Session.Email?.EscapeMarkup() ?? "[dim](unknown)[/]");
 
+            var accounts = AccountsCommand.ListAccounts();
+            if (accounts.Count > 1)
+            {
+                var activeAccount = AccountsCommand.GetActiveAccount() ?? "(none)";
+                sessionTable.AddRow("[grey]Account[/]",
+                    $"{activeAccount.EscapeMarkup()} [dim]({accounts.Count} accounts available)[/]");
+            }
+
             if (data.Session.ExpiresAt.HasValue)
             {
                 var remaining = data.Session.ExpiresAt.Value - DateTimeOffset.UtcNow;

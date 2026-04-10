@@ -159,7 +159,15 @@ internal static class ConfigCommand
         if (File.Exists(tokenPath))   File.Delete(tokenPath);
         if (File.Exists(activeProfilePath)) File.Delete(activeProfilePath);
 
-        // 3. Delete all profiles.
+        // 3. Delete default profile accounts and active-account marker.
+        var defaultAccountsDir = Path.Combine(clustralDir, "accounts");
+        if (Directory.Exists(defaultAccountsDir))
+            Directory.Delete(defaultAccountsDir, recursive: true);
+        var defaultActiveAccount = Path.Combine(clustralDir, "active-account");
+        if (File.Exists(defaultActiveAccount))
+            File.Delete(defaultActiveAccount);
+
+        // 4. Delete all profiles.
         if (Directory.Exists(profilesDir))
             Directory.Delete(profilesDir, recursive: true);
 
@@ -373,6 +381,10 @@ internal static class ConfigCommand
             console.MarkupLine($"  {indicator} {label}");
         }
 
+        var activeAccount = AccountsCommand.GetActiveAccount();
+        if (activeAccount is not null)
+            console.MarkupLine($"  [grey]Account[/]  {activeAccount.EscapeMarkup()}");
+
         // ── Control plane ────────────────────────────────────────────────────
         RenderSection(console, "Control plane", section =>
         {
@@ -485,6 +497,19 @@ internal static class ConfigCommand
                     Exists = File.Exists(tokenPath),
                     SizeBytes = File.Exists(tokenPath) ? new FileInfo(tokenPath).Length : 0,
                 }));
+
+                var accountsDir = profile == "default"
+                    ? Path.Combine(clustralDir, "accounts")
+                    : Path.Combine(ProfileCommand.GetProfileDir(profile), "accounts");
+                if (Directory.Exists(accountsDir))
+                {
+                    var accounts = Directory.GetFiles(accountsDir, "*.token")
+                        .Select(Path.GetFileNameWithoutExtension)
+                        .OrderBy(n => n)
+                        .ToList();
+                    if (accounts.Count > 0)
+                        section.AddRow("  [grey]Accounts[/]", $"[dim]{string.Join(", ", accounts)}[/] [dim]({accounts.Count} account(s))[/]");
+                }
             }
         });
 

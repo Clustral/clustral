@@ -44,7 +44,12 @@ internal sealed class OidcFlowHandler
     /// <summary>
     /// Runs the full PKCE flow and returns the Keycloak access token.
     /// </summary>
-    public async Task<string> LoginAsync(CancellationToken ct)
+    /// <param name="forcePrompt">
+    /// When <c>true</c>, adds <c>prompt=login</c> to the authorization URL
+    /// so the OIDC provider shows the login screen even if an SSO session
+    /// already exists. Use this for <c>--force</c> or when switching accounts.
+    /// </param>
+    public async Task<string> LoginAsync(CancellationToken ct, bool forcePrompt = false)
     {
         // ── PKCE ──────────────────────────────────────────────────────────────
         var verifier   = GenerateCodeVerifier();
@@ -53,7 +58,7 @@ internal sealed class OidcFlowHandler
         var redirectUri = $"http://127.0.0.1:{_port}/callback";
 
         // ── Build authorization URL ───────────────────────────────────────────
-        var authUrl = BuildAuthorizationUrl(challenge, state, redirectUri);
+        var authUrl = BuildAuthorizationUrl(challenge, state, redirectUri, forcePrompt);
 
         // ── Open browser ──────────────────────────────────────────────────────
         AnsiConsole.MarkupLine("  [cyan]●[/] Opening browser for SSO login...");
@@ -163,7 +168,8 @@ internal sealed class OidcFlowHandler
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    private string BuildAuthorizationUrl(string challenge, string state, string redirectUri)
+    private string BuildAuthorizationUrl(
+        string challenge, string state, string redirectUri, bool forcePrompt)
     {
         var qs = HttpUtility.ParseQueryString(string.Empty);
         qs["response_type"]          = "code";
@@ -173,6 +179,9 @@ internal sealed class OidcFlowHandler
         qs["code_challenge"]         = challenge;
         qs["code_challenge_method"]  = "S256";
         qs["state"]                  = state;
+
+        if (forcePrompt)
+            qs["prompt"] = "login";
 
         return $"{_authority}/protocol/openid-connect/auth?{qs}";
     }
