@@ -9,13 +9,27 @@ public sealed class KubeLoginValidatorTests(ITestOutputHelper output)
     private readonly KubeLoginValidator _sut = new();
 
     [Fact]
-    public void Valid_Guid_And_No_Ttl_Passes()
+    public void Valid_Guid_Passes()
     {
         var input = new KubeLoginInput(Guid.NewGuid().ToString(), null);
         var result = _sut.Validate(input);
 
-        output.WriteLine($"ClusterId: {input.ClusterId} => IsValid: {result.IsValid}");
+        output.WriteLine($"Cluster: {input.Cluster} => IsValid: {result.IsValid}");
         result.IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("prod")]
+    [InlineData("talos-lab")]
+    [InlineData("my-cluster-123")]
+    [InlineData("PROD")]
+    public void Valid_Name_Passes(string name)
+    {
+        var input = new KubeLoginInput(name, null);
+        var result = _sut.Validate(input);
+
+        output.WriteLine($"Cluster: '{name}' => IsValid: {result.IsValid}");
+        result.IsValid.Should().BeTrue("names should be accepted; resolution happens later");
     }
 
     [Theory]
@@ -35,18 +49,16 @@ public sealed class KubeLoginValidatorTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("not-a-guid")]
     [InlineData("")]
-    [InlineData("12345")]
-    [InlineData("xyz-abc-def")]
-    public void Invalid_ClusterId_Fails(string clusterId)
+    [InlineData(null)]
+    public void Empty_Cluster_Fails(string? cluster)
     {
-        var input = new KubeLoginInput(clusterId, null);
+        var input = new KubeLoginInput(cluster!, null);
         var result = _sut.Validate(input);
 
-        output.WriteLine($"ClusterId: '{clusterId}' => Errors: {string.Join(", ", result.Errors.Select(e => e.ErrorMessage))}");
+        output.WriteLine($"Cluster: '{cluster}' => Errors: {string.Join(", ", result.Errors.Select(e => e.ErrorMessage))}");
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "ClusterId");
+        result.Errors.Should().Contain(e => e.PropertyName == "Cluster");
     }
 
     [Theory]
@@ -66,7 +78,7 @@ public sealed class KubeLoginValidatorTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Empty_ClusterId_And_Invalid_Ttl_Returns_Multiple_Errors()
+    public void Empty_Cluster_And_Invalid_Ttl_Returns_Multiple_Errors()
     {
         var input = new KubeLoginInput("", "bad");
         var result = _sut.Validate(input);

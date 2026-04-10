@@ -111,7 +111,7 @@ go run .
 cd src/Clustral.Cli
 dotnet run -- login
 dotnet run -- logout
-dotnet run -- kube login --cluster <name>
+dotnet run -- kube login <cluster-name-or-id>
 dotnet run -- kube logout <cluster>
 dotnet run -- kube list
 dotnet run -- clusters list

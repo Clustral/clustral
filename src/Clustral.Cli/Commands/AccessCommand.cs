@@ -144,44 +144,17 @@ internal static class AccessCommand
         if (!ValidationHelper.Validate(AnsiConsole.Console, new AccessRequestValidator(), input, ctx))
             return;
 
-        // Resolve role name → ID.
-        var rolesJson = await http.GetStringAsync("api/v1/roles", ct);
-        var rolesResp = JsonDocument.Parse(rolesJson).RootElement;
-        string? roleId = null;
-        if (rolesResp.TryGetProperty("roles", out var rolesArr))
-        {
-            foreach (var r in rolesArr.EnumerateArray())
-            {
-                if (r.GetProperty("name").GetString()?.Equals(roleName, StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    roleId = r.GetProperty("id").GetString();
-                    break;
-                }
-            }
-        }
-        if (roleId is null)
-        {
-            CliErrors.WriteError($"Role '{roleName}' not found.");
-            ctx.ExitCode = 1;
-            return;
-        }
+        // Resolve role and cluster names (or GUIDs) → IDs.
+        var roleId = await NameResolver.ResolveRoleIdAsync(http, roleName, ctx, ct);
+        if (roleId is null) return;
 
-        // Resolve cluster name → ID.
-        var clustersJson = await http.GetStringAsync("api/v1/clusters", ct);
-        var clustersResp = JsonSerializer.Deserialize(clustersJson, CliJsonContext.Default.ClusterListResponse);
-        var cluster = clustersResp?.Clusters.FirstOrDefault(c =>
-            c.Name.Equals(clusterName, StringComparison.OrdinalIgnoreCase) || c.Id == clusterName);
-        if (cluster is null)
-        {
-            CliErrors.WriteError($"Cluster '{clusterName}' not found.");
-            ctx.ExitCode = 1;
-            return;
-        }
+        var clusterId = await NameResolver.ResolveClusterIdAsync(http, clusterName, ctx, ct);
+        if (clusterId is null) return;
 
         var body = new AccessRequestCreateRequest
         {
             RoleId = roleId,
-            ClusterId = cluster.Id,
+            ClusterId = clusterId,
             Reason = reason,
             RequestedDuration = duration,
             SuggestedReviewerEmails = reviewers?.ToList(),

@@ -712,11 +712,12 @@ clustral logout
 # List available clusters for kubectl
 clustral kube ls
 
-# Connect to a cluster (writes kubeconfig)
+# Connect to a cluster (accepts name or GUID)
+clustral kube login prod
 clustral kube login <cluster-id>
 
 # Disconnect from a cluster (removes kubeconfig entry)
-clustral kube logout <cluster-id>
+clustral kube logout <cluster>
 
 # kubectl works transparently
 kubectl get pods -A
@@ -734,8 +735,8 @@ clustral roles list
 
 # --- Access Requests ---
 
-# Request access to a cluster
-clustral access request <cluster-id> --role <role-name>
+# Request access to a cluster (accepts names or GUIDs)
+clustral access request --cluster prod --role read-only
 
 # List access requests
 clustral access list

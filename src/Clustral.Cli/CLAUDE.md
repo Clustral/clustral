@@ -12,7 +12,7 @@ clustral
 ├── login [controlplane-url]        ← OIDC PKCE flow
 ├── logout                          ← Revoke all credentials, clear JWT
 ├── kube
-│   ├── login <cluster-id>          ← Issue kubeconfig credential
+│   ├── login <cluster>              ← Issue kubeconfig credential (name or GUID)
 │   ├── logout <cluster>            ← Revoke credential, remove context
 │   └── list (alias: ls)            ← List available clusters
 ├── clusters
@@ -49,10 +49,14 @@ Clustral.Cli/
 │   ├── UsersCommand.cs           ← clustral users list
 │   ├── RolesCommand.cs           ← clustral roles list
 │   ├── AccessCommand.cs          ← clustral access (request, list, approve, deny, revoke)
-│   └── ConfigCommand.cs          ← clustral config show / path (offline introspection)
+│   ├── ConfigCommand.cs          ← clustral config show / path (offline introspection)
+│   └── NameResolver.cs           ← Shared cluster/role name → ID resolver (name or GUID)
+│
+├── Http/
+│   └── CliHttp.cs                ← Shared HTTP client factory + spinner helper
 │
 ├── Ui/
-│   └── CliErrors.cs              ← Card-style error display via Spectre.Console panels
+│   └── CliErrors.cs              ← Flat error/warning display (● indicator + dim detail rows)
 │
 ├── Auth/
 │   ├── OidcFlowHandler.cs        ← PKCE orchestration (verifier, challenge, browser, exchange)
@@ -84,15 +88,16 @@ LoginCommand.HandleAsync
   └── TokenCache.StoreAsync                             (writes ~/.clustral/token)
 ```
 
-## kube login flow (`clustral kube login <cluster-id>`)
+## kube login flow (`clustral kube login <cluster>`)
 
 ```
 KubeLoginCommand.HandleAsync
   1. TokenCache.ReadAsync                               (reads ~/.clustral/token)
-  2. POST /api/v1/credentials/kubeconfig                (IssueCredentialRequest → IssueCredentialResponse)
-  3. KubeconfigWriter.WriteClusterEntry                 (upserts ~/.kube/config)
-     ContextName = clustral-<cluster-id>  (override with --context-name)
-     ServerUrl   = {ControlPlaneUrl}/proxy/<cluster-id>
+  2. NameResolver.ResolveClusterIdAsync                  (name → ID; GUID input skips HTTP)
+  3. POST /api/v1/auth/kubeconfig-credential             (IssueCredentialRequest → IssueCredentialResponse)
+  4. KubeconfigWriter.WriteClusterEntry                  (upserts ~/.kube/config)
+     ContextName = clustral-<cluster>  (override with --context-name)
+     ServerUrl   = {ControlPlaneUrl}/api/proxy/<resolved-cluster-id>
 ```
 
 ---
@@ -148,7 +153,7 @@ The CLI uses **FluentValidation** for all input validation. Validators live in
 Validation/
 ├── CommandInputs.cs         ← Input records: KubeLoginInput, AccessRequestInput, etc.
 ├── Iso8601Duration.cs       ← AOT-safe [GeneratedRegex] ISO 8601 validator
-├── KubeLoginValidator.cs    ← cluster-id (GUID) + ttl (ISO 8601)
+├── KubeLoginValidator.cs    ← cluster (name or GUID) + ttl (ISO 8601)
 ├── AccessRequestValidator.cs ← role + cluster (required) + duration
 ├── AccessActionValidator.cs  ← request-id (GUID) — used by approve/revoke
 ├── AccessDenyValidator.cs    ← request-id (GUID) + reason (required)

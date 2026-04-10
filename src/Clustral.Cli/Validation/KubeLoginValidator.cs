@@ -6,9 +6,8 @@ internal sealed class KubeLoginValidator : AbstractValidator<KubeLoginInput>
 {
     public KubeLoginValidator()
     {
-        RuleFor(x => x.ClusterId)
-            .NotEmpty().WithMessage("Cluster ID is required.")
-            .Must(id => Guid.TryParse(id, out _)).WithMessage("Cluster ID must be a valid GUID.");
+        RuleFor(x => x.Cluster)
+            .NotEmpty().WithMessage("Cluster name or ID is required.");
 
         RuleFor(x => x.Ttl)
             .Must(Iso8601Duration.IsValid)

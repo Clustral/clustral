@@ -25,9 +25,9 @@ namespace Clustral.Cli.Commands;
 /// </summary>
 internal static class KubeLoginCommand
 {
-    private static readonly Argument<string> ClusterIdArg = new(
-        "cluster-id",
-        "ID of the cluster to obtain credentials for.");
+    private static readonly Argument<string> ClusterArg = new(
+        "cluster",
+        "Cluster name or ID to obtain credentials for.");
 
     private static readonly Option<string?> ContextNameOption = new(
         "--context-name",
@@ -68,7 +68,7 @@ internal static class KubeLoginCommand
             "login",
             "Issue a short-lived kubeconfig credential and write it to ~/.kube/config.");
 
-        cmd.AddArgument(ClusterIdArg);
+        cmd.AddArgument(ClusterArg);
         cmd.AddOption(ContextNameOption);
         cmd.AddOption(TtlOption);
         cmd.AddOption(NoSetContextOption);
@@ -86,16 +86,16 @@ internal static class KubeLoginCommand
         var ct = ctx.GetCancellationToken();
 
         var config      = CliConfig.Load();
-        var clusterId   = ctx.ParseResult.GetValueForArgument(ClusterIdArg);
+        var cluster     = ctx.ParseResult.GetValueForArgument(ClusterArg);
         var contextName = ctx.ParseResult.GetValueForOption(ContextNameOption)
-                          ?? $"clustral-{clusterId}";
+                          ?? $"clustral-{cluster}";
         var ttl             = ctx.ParseResult.GetValueForOption(TtlOption);
         var noSetContext    = ctx.ParseResult.GetValueForOption(NoSetContextOption);
         var insecure        = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var controlPlaneUrl = config.ControlPlaneUrl;
 
         // ── Validate input ───────────────────────────────────────────────────
-        var input = new KubeLoginInput(clusterId, ttl);
+        var input = new KubeLoginInput(cluster, ttl);
         if (!ValidationHelper.Validate(AnsiConsole.Console, new KubeLoginValidator(), input, ctx))
             return;
 
@@ -116,6 +116,14 @@ internal static class KubeLoginCommand
             ctx.ExitCode = 1;
             return;
         }
+
+        // ── Resolve cluster name or GUID → cluster ID ────────────────────────
+        using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var clusterId = await NameResolver.ResolveClusterIdAsync(http, cluster, ctx, ct);
+        if (clusterId is null) return;
 
         // ── Call ControlPlane REST API (with spinner + 5s timeout) ────────────
         IssueCredentialResponse credential;
