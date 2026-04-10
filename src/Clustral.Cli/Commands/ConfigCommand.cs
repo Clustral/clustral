@@ -248,6 +248,17 @@ internal static class ConfigCommand
         };
         console.MarkupLine(statusLine);
 
+        // ── Profile ─────────────────────────────────────────────────────────
+        var activeProfile = ProfileCommand.GetActiveProfile();
+        RenderSection(console, "Profile", section =>
+        {
+            section.AddRow("[grey]Active[/]", activeProfile is not null
+                ? $"[bold]{activeProfile.EscapeMarkup()}[/]"
+                : "[bold]default[/]");
+            section.AddRow("[grey]Config[/]", $"[dim]{CliConfig.DefaultPath.EscapeMarkup()}[/]");
+            section.AddRow("[grey]Token[/]", $"[dim]{CliConfig.DefaultTokenPath.EscapeMarkup()}[/]");
+        });
+
         // ── Control plane ────────────────────────────────────────────────────
         RenderSection(console, "Control plane", section =>
         {
