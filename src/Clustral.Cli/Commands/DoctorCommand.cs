@@ -38,7 +38,14 @@ internal static class DoctorCommand
         var ct       = ctx.GetCancellationToken();
         var insecure = ctx.ParseResult.GetValueForOption(InsecureOption);
 
-        var checks = await RunChecksAsync(insecure, ct);
+        DoctorOutput checks = null!;
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("cyan"))
+            .StartAsync("The doctor is in... checking your setup", async _ =>
+            {
+                checks = await RunChecksAsync(insecure, ct);
+            });
 
         if (CliOptions.IsJson)
         {
