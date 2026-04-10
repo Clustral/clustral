@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Clustral.Cli.Commands;
 
 namespace Clustral.Cli.Config;
 
@@ -110,6 +111,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(AccessRequestRevokeRequest))]
 [JsonSerializable(typeof(RevokeByTokenRequest))]
 [JsonSerializable(typeof(ConfigShowOutput))]
+[JsonSerializable(typeof(StatusOutput))]
 internal partial class CliJsonContext : JsonSerializerContext { }
 
 // ─────────────────────────────────────────────────────────────────────────────

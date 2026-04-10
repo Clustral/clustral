@@ -750,6 +750,12 @@ clustral access deny <request-id> --reason "not authorized"
 # Revoke an active access grant
 clustral access revoke <request-id>
 
+# --- Status ---
+
+# Quick overview: session, clusters, active grants, ControlPlane health
+clustral status
+clustral status -o json
+
 # --- Utility ---
 
 # Show CLI configuration, files, session, and current kubeconfig context

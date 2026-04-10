@@ -29,6 +29,7 @@ root.AddCommand(UsersCommand.BuildUsersCommand());
 root.AddCommand(RolesCommand.BuildRolesCommand());
 root.AddCommand(AccessCommand.BuildAccessCommand());
 root.AddCommand(ConfigCommand.Build());
+root.AddCommand(StatusCommand.Build());
 root.AddCommand(UpdateCommand.Build());
 root.AddCommand(VersionCommand.Build());
 
