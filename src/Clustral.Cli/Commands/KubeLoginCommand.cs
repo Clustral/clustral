@@ -102,7 +102,7 @@ internal static class KubeLoginCommand
 
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
-            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
+            CliErrors.WriteNotConfigured(Messages.Errors.ControlPlaneNotConfigured, Messages.Hints.RunLoginWithUrl);
             ctx.ExitCode = 1;
             return;
         }
@@ -113,7 +113,7 @@ internal static class KubeLoginCommand
 
         if (token is null)
         {
-            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
+            CliErrors.WriteNotConfigured(Messages.Errors.NotLoggedIn, Messages.Hints.RunLogin);
             ctx.ExitCode = 1;
             return;
         }
@@ -131,13 +131,13 @@ internal static class KubeLoginCommand
         try
         {
             credential = await CliHttp.RunWithSpinnerAsync(
-                "Issuing kubeconfig credential...",
+                Messages.Spinners.IssuingCredential,
                 innerCt => IssueCredentialAsync(controlPlaneUrl, token, clusterId, ttl, insecure, innerCt),
                 ct);
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
             return;
         }
@@ -150,7 +150,7 @@ internal static class KubeLoginCommand
 
         if (string.IsNullOrEmpty(credential.Token))
         {
-            CliErrors.WriteError("ControlPlane returned an empty token. Your session may have expired — run 'clustral login' first.");
+            CliErrors.WriteError(Messages.Errors.EmptyToken);
             ctx.ExitCode = 1;
             return;
         }
@@ -172,12 +172,12 @@ internal static class KubeLoginCommand
         }
         catch (Exception ex)
         {
-            CliErrors.WriteError($"Writing kubeconfig failed: {ex.Message}");
+            CliErrors.WriteError(Messages.Errors.WriteFailed(ex.Message));
             ctx.ExitCode = 1;
             return;
         }
 
-        AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Kubeconfig updated[/]");
+        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.KubeconfigUpdated}[/]");
         AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");
         AnsiConsole.MarkupLine($"  [grey]Server[/]    {serverUrl.EscapeMarkup()}");
         AnsiConsole.MarkupLine($"  [grey]Expires[/]   {credential.ExpiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");

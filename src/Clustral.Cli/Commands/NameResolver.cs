@@ -36,7 +36,7 @@ internal static class NameResolver
         }
         catch (Exception ex) when (CliHttp.IsTimeout(ex))
         {
-            CliErrors.WriteError("ControlPlane unreachable while resolving cluster name.");
+            CliErrors.WriteError(Messages.Errors.ClusterResolveTimeout);
             ctx.ExitCode = 1;
             return null;
         }
@@ -53,8 +53,7 @@ internal static class NameResolver
 
         if (matches.Count == 0)
         {
-            CliErrors.WriteError(
-                $"Cluster '{nameOrId}' not found. Run 'clustral clusters list' to see available clusters.");
+            CliErrors.WriteError(Messages.Errors.ClusterNotFound(nameOrId));
             ctx.ExitCode = 1;
             return null;
         }
@@ -62,8 +61,7 @@ internal static class NameResolver
         if (matches.Count > 1)
         {
             var ids = string.Join(", ", matches.Select(c => c.Id));
-            CliErrors.WriteError(
-                $"Multiple clusters named '{nameOrId}' found ({ids}). Use the cluster ID instead.");
+            CliErrors.WriteError(Messages.Errors.AmbiguousClusters(nameOrId, ids));
             ctx.ExitCode = 1;
             return null;
         }
@@ -93,7 +91,7 @@ internal static class NameResolver
         }
         catch (Exception ex) when (CliHttp.IsTimeout(ex))
         {
-            CliErrors.WriteError("ControlPlane unreachable while resolving role name.");
+            CliErrors.WriteError(Messages.Errors.RoleResolveTimeout);
             ctx.ExitCode = 1;
             return null;
         }
@@ -110,8 +108,7 @@ internal static class NameResolver
 
         if (matches.Count == 0)
         {
-            CliErrors.WriteError(
-                $"Role '{nameOrId}' not found. Run 'clustral roles list' to see available roles.");
+            CliErrors.WriteError(Messages.Errors.RoleNotFound(nameOrId));
             ctx.ExitCode = 1;
             return null;
         }
@@ -119,8 +116,7 @@ internal static class NameResolver
         if (matches.Count > 1)
         {
             var ids = string.Join(", ", matches.Select(r => r.Id));
-            CliErrors.WriteError(
-                $"Multiple roles named '{nameOrId}' found ({ids}). Use the role ID instead.");
+            CliErrors.WriteError(Messages.Errors.AmbiguousRoles(nameOrId, ids));
             ctx.ExitCode = 1;
             return null;
         }

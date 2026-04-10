@@ -176,7 +176,7 @@ internal static class AccessCommand
         var respJson = await response.Content.ReadAsStringAsync(ct);
         var req = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
 
-        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]Access request created[/]");
+        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.AccessRequestCreated}[/]");
         AnsiConsole.MarkupLine($"  [grey]Request ID[/]  [cyan]{req!.Id[..8]}...[/]");
         AnsiConsole.MarkupLine($"  [grey]Role[/]        [yellow]{req.RoleName.EscapeMarkup()}[/]");
         AnsiConsole.MarkupLine($"  [grey]Cluster[/]     [cyan]{req.ClusterName.EscapeMarkup()}[/]");
@@ -200,7 +200,7 @@ internal static class AccessCommand
 
             if (updated?.Status == "Approved")
             {
-                AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]Access approved![/]");
+                AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.AccessApproved}[/]");
                 AnsiConsole.MarkupLine($"  [grey]Approved by[/]  {updated.ReviewerEmail ?? "unknown"}");
                 AnsiConsole.MarkupLine($"  [grey]Grant expires[/] {updated.GrantExpiresAt?.ToLocalTime():yyyy-MM-dd HH:mm:ss K}");
                 AnsiConsole.MarkupLine($"\n  Run [bold]clustral kube login {clusterName}[/] to connect.");
@@ -232,7 +232,7 @@ internal static class AccessCommand
         try
         {
             var result = await CliHttp.RunWithSpinnerAsync(
-                "Loading access requests...",
+                Messages.Spinners.LoadingAccessRequests,
                 async innerCt =>
                 {
                     var response = await http.GetAsync($"api/v1/access-requests{qs}", innerCt);
@@ -263,7 +263,7 @@ internal static class AccessCommand
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
         }
         catch (Exception ex)
@@ -290,7 +290,7 @@ internal static class AccessCommand
         try
         {
             var (statusCode, detail, req) = await CliHttp.RunWithSpinnerAsync(
-                "Approving access request...",
+                Messages.Spinners.ApprovingRequest,
                 async innerCt =>
                 {
                     var body = new AccessRequestApproveRequest();
@@ -323,7 +323,7 @@ internal static class AccessCommand
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
         }
         catch (Exception ex)
@@ -351,7 +351,7 @@ internal static class AccessCommand
         try
         {
             var (statusCode, detail) = await CliHttp.RunWithSpinnerAsync(
-                "Denying access request...",
+                Messages.Spinners.DenyingRequest,
                 async innerCt =>
                 {
                     var body = new AccessRequestDenyRequest { Reason = reason };
@@ -378,7 +378,7 @@ internal static class AccessCommand
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
         }
         catch (Exception ex)
@@ -408,7 +408,7 @@ internal static class AccessCommand
         try
         {
             var (statusCode, detail, req) = await CliHttp.RunWithSpinnerAsync(
-                "Revoking access grant...",
+                Messages.Spinners.RevokingGrant,
                 async innerCt =>
                 {
                     var body = new AccessRequestRevokeRequest { Reason = reason };
@@ -442,7 +442,7 @@ internal static class AccessCommand
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
         }
         catch (Exception ex)
@@ -508,7 +508,7 @@ internal static class AccessCommand
 
         if (string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
         {
-            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
+            CliErrors.WriteNotConfigured(Messages.Errors.ControlPlaneNotConfigured, Messages.Hints.RunLoginWithUrl);
             exitCode = 1;
             return null;
         }
@@ -517,7 +517,7 @@ internal static class AccessCommand
         var token = cache.ReadAsync().GetAwaiter().GetResult();
         if (token is null)
         {
-            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
+            CliErrors.WriteNotConfigured(Messages.Errors.NotLoggedIn, Messages.Hints.RunLogin);
             exitCode = 1;
             return null;
         }

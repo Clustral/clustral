@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
+using Clustral.Cli.Ui;
 using Spectre.Console;
 
 namespace Clustral.Cli.Commands;
@@ -37,7 +38,7 @@ internal static class VersionCommand
         try
         {
             var cpVersion = await CliHttp.RunWithSpinnerAsync(
-                "Fetching ControlPlane version...",
+                Messages.Spinners.FetchingVersion,
                 async ct =>
                 {
                     using var http = CliHttp.CreateClient(config.ControlPlaneUrl, config.InsecureTls);

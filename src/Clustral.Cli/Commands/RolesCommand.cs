@@ -44,7 +44,7 @@ internal static class RolesCommand
         var controlPlaneUrl = config.ControlPlaneUrl;
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
-            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
+            CliErrors.WriteNotConfigured(Messages.Errors.ControlPlaneNotConfigured, Messages.Hints.RunLoginWithUrl);
             ctx.ExitCode = 1;
             return;
         }
@@ -53,7 +53,7 @@ internal static class RolesCommand
         var token = await cache.ReadAsync(ct);
         if (token is null)
         {
-            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
+            CliErrors.WriteNotConfigured(Messages.Errors.NotLoggedIn, Messages.Hints.RunLogin);
             ctx.ExitCode = 1;
             return;
         }
@@ -61,7 +61,7 @@ internal static class RolesCommand
         try
         {
             var result = await CliHttp.RunWithSpinnerAsync(
-                "Loading roles...",
+                Messages.Spinners.LoadingRoles,
                 async innerCt =>
                 {
                     using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
@@ -97,7 +97,7 @@ internal static class RolesCommand
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
         }
         catch (Exception ex)

@@ -40,7 +40,7 @@ internal static class KubeLsCommand
         var controlPlaneUrl = config.ControlPlaneUrl;
         if (string.IsNullOrWhiteSpace(controlPlaneUrl))
         {
-            CliErrors.WriteNotConfigured("ControlPlane URL not configured", "clustral login <url>");
+            CliErrors.WriteNotConfigured(Messages.Errors.ControlPlaneNotConfigured, Messages.Hints.RunLoginWithUrl);
             ctx.ExitCode = 1;
             return;
         }
@@ -49,7 +49,7 @@ internal static class KubeLsCommand
         var token = await cache.ReadAsync(ct);
         if (token is null)
         {
-            CliErrors.WriteNotConfigured("Not logged in", "clustral login");
+            CliErrors.WriteNotConfigured(Messages.Errors.NotLoggedIn, Messages.Hints.RunLogin);
             ctx.ExitCode = 1;
             return;
         }
@@ -57,7 +57,7 @@ internal static class KubeLsCommand
         try
         {
             var result = await CliHttp.RunWithSpinnerAsync(
-                "Loading clusters...",
+                Messages.Spinners.LoadingClusters,
                 async innerCt =>
                 {
                     using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
@@ -94,7 +94,7 @@ internal static class KubeLsCommand
         }
         catch (CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 5s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
         }
         catch (Exception ex)

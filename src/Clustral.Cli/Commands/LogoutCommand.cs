@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -54,7 +55,7 @@ internal static class LogoutCommand
         }
 
         await cache.ClearAsync(ct);
-        AnsiConsole.MarkupLine("\n[green]✓[/] [bold]Logged out locally.[/]");
+        AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.LoggedOutLocally}[/]");
 
         // ── 3. Best-effort remote revocation with spinner + 5s timeout ────
         var tokensToRevoke = clustralContexts
@@ -70,7 +71,7 @@ internal static class LogoutCommand
         try
         {
             await CliHttp.RunWithSpinnerAsync(
-                $"Revoking {tokensToRevoke.Count} credential(s) on ControlPlane...",
+                Messages.Spinners.RevokingCredentials(tokensToRevoke.Count),
                 async innerCt =>
                 {
                     using var http = CliHttp.CreateClient(config.ControlPlaneUrl, insecure);
@@ -98,20 +99,20 @@ internal static class LogoutCommand
                 ct);
 
             if (revoked > 0)
-                AnsiConsole.MarkupLine($"[green]✓[/] Revoked {revoked} credential(s) on ControlPlane.");
+                AnsiConsole.MarkupLine($"[green]✓[/] {Messages.Success.CredentialsRevoked(revoked)}");
             else
-                AnsiConsole.MarkupLine("[yellow]![/] No credentials revoked on ControlPlane.");
+                AnsiConsole.MarkupLine($"[yellow]![/] {Messages.Warnings.NoCredentialsRevoked}");
         }
         catch (CliHttpTimeoutException)
         {
             AnsiConsole.MarkupLine(
-                "[yellow]![/] Could not reach ControlPlane — local logout complete. " +
-                "[dim]Server-side credentials will expire on their own.[/]");
+                $"[yellow]![/] {Messages.Warnings.ControlPlaneUnreachable} " +
+                $"[dim]{Messages.Warnings.CredentialsExpireNaturally}[/]");
         }
         catch (Exception)
         {
             AnsiConsole.MarkupLine(
-                "[yellow]![/] ControlPlane revocation failed — local logout complete.");
+                $"[yellow]![/] {Messages.Warnings.RevocationFailed}");
         }
     }
 

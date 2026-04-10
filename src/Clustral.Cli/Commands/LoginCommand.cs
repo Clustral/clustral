@@ -72,8 +72,8 @@ internal static class LoginCommand
 
         if (string.IsNullOrWhiteSpace(cpUrl))
         {
-            CliErrors.WriteNotConfigured("ControlPlane URL not configured",
-                "clustral login <controlplane-url>");
+            CliErrors.WriteNotConfigured(Messages.Errors.ControlPlaneNotConfigured,
+                Messages.Hints.RunLoginWithUrl);
             ctx.ExitCode = 1;
             return;
         }
@@ -120,20 +120,20 @@ internal static class LoginCommand
         try
         {
             discovered = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
-                $"Discovering ControlPlane configuration at {cpUrl}...",
+                Messages.Spinners.DiscoveringConfig(cpUrl),
                 innerCt => DiscoverConfigAsync(http, cpUrl, innerCt),
                 ct);
         }
         catch (Clustral.Cli.Http.CliHttpTimeoutException)
         {
-            CliErrors.WriteError("ControlPlane unreachable (timed out after 10s).");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
             return;
         }
 
         if (discovered is null)
         {
-            CliErrors.WriteError("Could not reach the ControlPlane.");
+            CliErrors.WriteError(Messages.Errors.Timeout);
             ctx.ExitCode = 1;
             return;
         }
@@ -171,7 +171,7 @@ internal static class LoginCommand
         }
         catch (OperationCanceledException)
         {
-            CliErrors.WriteError("Operation cancelled.");
+            CliErrors.WriteError(Messages.Errors.Cancelled);
             ctx.ExitCode = 130;
         }
         catch (Exception ex)
@@ -262,7 +262,7 @@ internal static class LoginCommand
 
             // Display profile with Spectre.Console.
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[green]✓[/] [bold]Logged in successfully[/]");
+            AnsiConsole.MarkupLine($"[green]✓[/] [bold]{Messages.Success.LoggedIn}[/]");
             AnsiConsole.WriteLine();
 
             RenderProfileTable(AnsiConsole.Console, profile, cpUrl, roles, clusters, expiry);

@@ -62,7 +62,7 @@ internal static class UpdateCommand
             }
 
             var json = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
-                "Checking for updates...",
+                Messages.Spinners.CheckingUpdates,
                 innerCt => http.GetStringAsync(apiUrl, innerCt),
                 ct);
 
@@ -111,13 +111,13 @@ internal static class UpdateCommand
 
             if (assetUrl is null)
             {
-                CliErrors.WriteError($"No binary found for {artifactName} in release {tagName}.");
+                CliErrors.WriteError(Messages.Errors.NoBinary(artifactName, tagName));
                 ctx.ExitCode = 1;
                 return;
             }
 
             var binaryData = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
-                $"Downloading v{latestVersion} for {artifactName}...",
+                Messages.Spinners.Downloading(latestVersion, artifactName),
                 innerCt => http.GetByteArrayAsync(assetUrl, innerCt),
                 ct);
 
@@ -126,7 +126,7 @@ internal static class UpdateCommand
 
             if (string.IsNullOrEmpty(currentPath))
             {
-                CliErrors.WriteError("Could not determine binary path.");
+                CliErrors.WriteError(Messages.Errors.CannotDetermineBinaryPath);
                 ctx.ExitCode = 1;
                 return;
             }

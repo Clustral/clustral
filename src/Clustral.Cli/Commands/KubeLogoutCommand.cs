@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -57,7 +58,7 @@ internal static class KubeLogoutCommand
 
         if (match.ContextName is null)
         {
-            AnsiConsole.MarkupLine($"[yellow]![/] Context [cyan]{contextName.EscapeMarkup()}[/] not found in kubeconfig.");
+            AnsiConsole.MarkupLine($"[yellow]![/] {Messages.Warnings.ContextNotFound(contextName)}");
             return;
         }
 
@@ -78,7 +79,7 @@ internal static class KubeLogoutCommand
         try
         {
             await CliHttp.RunWithSpinnerAsync(
-                "Revoking credential on ControlPlane...",
+                Messages.Spinners.RevokingGrant,
                 async innerCt =>
                 {
                     using var http = CliHttp.CreateClient(config.ControlPlaneUrl, insecure);
@@ -101,13 +102,13 @@ internal static class KubeLogoutCommand
         catch (CliHttpTimeoutException)
         {
             AnsiConsole.MarkupLine(
-                "[yellow]![/] Could not reach ControlPlane — local logout complete. " +
-                "[dim]Server-side credential will expire on its own.[/]");
+                $"[yellow]![/] {Messages.Warnings.ControlPlaneUnreachable} " +
+                $"[dim]{Messages.Warnings.CredentialsExpireNaturally}[/]");
         }
         catch (Exception)
         {
             AnsiConsole.MarkupLine(
-                "[yellow]![/] ControlPlane revocation failed — local logout complete.");
+                $"[yellow]![/] {Messages.Warnings.RevocationFailed}");
         }
     }
 }
