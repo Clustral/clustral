@@ -54,6 +54,8 @@ internal static class Messages
         public const string AccessDenied = "Access request denied.";
         public const string AccessRevoked = "Access grant revoked.";
 
+        public const string Cleaned = "Cleaned. Run 'clustral login <url>' to set up again.";
+
         public static string CredentialsRevoked(int count) =>
             $"Revoked {count} credential(s) on ControlPlane.";
     }

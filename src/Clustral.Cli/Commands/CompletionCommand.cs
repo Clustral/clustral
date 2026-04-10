@@ -88,6 +88,10 @@ internal static class CompletionCommand
                     COMPREPLY=($(compgen -W "request list ls approve deny revoke" -- "${cur}"))
                     return 0
                     ;;
+                config)
+                    COMPREPLY=($(compgen -W "show path clean" -- "${cur}"))
+                    return 0
+                    ;;
                 profile)
                     COMPREPLY=($(compgen -W "create use list ls current delete" -- "${cur}"))
                     return 0

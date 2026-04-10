@@ -763,6 +763,9 @@ clustral config
 clustral config show              # same as `config`
 clustral config show --json       # machine-readable
 clustral config path              # just print file paths
+clustral config clean             # factory reset (with confirmation)
+clustral config clean --dry-run   # preview what would be removed
+clustral config clean --yes       # skip confirmation (for scripts)
 
 # Check version
 clustral version

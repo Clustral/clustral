@@ -29,7 +29,8 @@ clustral
 │   └── revoke <id>                 ← Revoke active grant
 ├── config
 │   ├── show [--json] [--remote]    ← Show CLI files, session, kubeconfig
-│   └── path                        ← Print file paths the CLI uses
+│   ├── path                        ← Print file paths the CLI uses
+│   └── clean [--yes] [--dry-run]   ← Factory reset (delete all CLI state)
 ├── status                          ← Session, clusters, grants, ControlPlane health
 ├── doctor                          ← Sequential connectivity diagnostics
 ├── profile

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Text.Json;
 using Clustral.Cli.Config;
+using Clustral.Cli.Ui;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
@@ -40,6 +41,13 @@ internal static class ConfigCommand
         path.SetHandler(HandlePath);
         cmd.AddCommand(path);
 
+        // `clustral config clean`
+        var clean = new Command("clean", "Remove all CLI configuration and return to a fresh state.");
+        clean.AddOption(new Option<bool>(["--yes", "-y"], "Skip confirmation prompt."));
+        clean.AddOption(new Option<bool>("--dry-run", "Show what would be removed without deleting."));
+        clean.SetHandler(HandleCleanAsync);
+        cmd.AddCommand(clean);
+
         // `clustral config` (no subcommand) → show
         cmd.SetHandler(HandleShowAsync);
 
@@ -53,6 +61,104 @@ internal static class ConfigCommand
         AnsiConsole.WriteLine(CliConfig.DefaultPath);
         AnsiConsole.WriteLine(CliConfig.DefaultTokenPath);
         AnsiConsole.WriteLine(KubeconfigWriter.DefaultKubeconfigPath());
+        return Task.CompletedTask;
+    }
+
+    private static Task HandleCleanAsync(InvocationContext ctx)
+    {
+        var yes = ctx.ParseResult.GetValueForOption(
+            (Option<bool>)ctx.ParseResult.CommandResult.Command.Options.First(o => o.Name == "yes"));
+        var dryRun = ctx.ParseResult.GetValueForOption(
+            (Option<bool>)ctx.ParseResult.CommandResult.Command.Options.First(o => o.Name == "dry-run"));
+
+        var clustralDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clustral");
+
+        // ── Inventory what would be cleaned ──────────────────────────────
+        var items = new List<(string Label, string? Path, bool Exists)>();
+
+        var configPath = Path.Combine(clustralDir, "config.json");
+        items.Add(("Config", configPath, File.Exists(configPath)));
+
+        var tokenPath = Path.Combine(clustralDir, "token");
+        items.Add(("Token", tokenPath, File.Exists(tokenPath)));
+
+        var activeProfilePath = Path.Combine(clustralDir, "active-profile");
+        items.Add(("Active profile", activeProfilePath, File.Exists(activeProfilePath)));
+
+        var profilesDir = Path.Combine(clustralDir, "profiles");
+        var profiles = ProfileCommand.ListProfiles().Where(p => p != "default").ToList();
+        var hasProfiles = Directory.Exists(profilesDir) && profiles.Count > 0;
+
+        var kubeconfigPath = KubeconfigWriter.DefaultKubeconfigPath();
+        var clustralContexts = LogoutCommand.FindClustralContexts(kubeconfigPath);
+
+        // ── Display what will be removed ─────────────────────────────────
+        var header = dryRun ? "Would remove:" : "This will remove all Clustral CLI configuration:";
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine($"[bold]{header}[/]");
+        AnsiConsole.WriteLine();
+
+        foreach (var (label, path, exists) in items)
+        {
+            if (exists)
+                AnsiConsole.MarkupLine($"  [red]✗[/] {ShortenHome(path!).EscapeMarkup()}");
+            else
+                AnsiConsole.MarkupLine($"  [dim]– {ShortenHome(path!).EscapeMarkup()}  (does not exist)[/]");
+        }
+
+        if (hasProfiles)
+            AnsiConsole.MarkupLine($"  [red]✗[/] {ShortenHome(profilesDir).EscapeMarkup()}/  [dim]({profiles.Count} profiles: {string.Join(", ", profiles)})[/]");
+        else
+            AnsiConsole.MarkupLine($"  [dim]– {ShortenHome(profilesDir).EscapeMarkup()}/  (no profiles)[/]");
+
+        if (clustralContexts.Count > 0)
+            AnsiConsole.MarkupLine($"  [red]✗[/] {clustralContexts.Count} clustral-* kubeconfig context(s)");
+        else
+            AnsiConsole.MarkupLine($"  [dim]– No clustral-* kubeconfig contexts[/]");
+
+        AnsiConsole.WriteLine();
+
+        if (dryRun)
+        {
+            AnsiConsole.MarkupLine("[dim]No changes made (dry run).[/]");
+            return Task.CompletedTask;
+        }
+
+        // ── Confirm ──────────────────────────────────────────────────────
+        if (!yes)
+        {
+            if (Console.IsOutputRedirected || Console.IsInputRedirected)
+            {
+                AnsiConsole.MarkupLine("[yellow]![/] Non-interactive session. Use --yes to confirm.");
+                ctx.ExitCode = 1;
+                return Task.CompletedTask;
+            }
+
+            if (!AnsiConsole.Confirm("Are you sure?", defaultValue: false))
+            {
+                AnsiConsole.MarkupLine("[dim]Cancelled.[/]");
+                return Task.CompletedTask;
+            }
+        }
+
+        // ── Clean ────────────────────────────────────────────────────────
+        // 1. Remove kubeconfig contexts first (while we still have the list).
+        var writer = new KubeconfigWriter(kubeconfigPath);
+        foreach (var (contextName, _) in clustralContexts)
+            writer.RemoveClusterEntry(contextName);
+
+        // 2. Delete ~/.clustral/ files.
+        if (File.Exists(configPath))  File.Delete(configPath);
+        if (File.Exists(tokenPath))   File.Delete(tokenPath);
+        if (File.Exists(activeProfilePath)) File.Delete(activeProfilePath);
+
+        // 3. Delete all profiles.
+        if (Directory.Exists(profilesDir))
+            Directory.Delete(profilesDir, recursive: true);
+
+        AnsiConsole.MarkupLine($"[green]✓[/] [bold]{Messages.Success.Cleaned}[/]");
+
         return Task.CompletedTask;
     }
 
