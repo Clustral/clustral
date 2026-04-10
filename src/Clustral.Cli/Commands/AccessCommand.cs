@@ -34,7 +34,7 @@ internal static class AccessCommand
         "--reason", "Justification for the access request.");
 
     private static readonly Option<string?> DurationOption = new(
-        "--duration", "Requested access duration as ISO 8601 (e.g., PT8H). Default: PT8H.");
+        "--duration", "Requested access duration (e.g. 8H, 30M, 1D). Default: 8H.");
 
     private static readonly Option<string[]?> ReviewerOption = new(
         "--reviewer", "Reviewer email(s). Repeatable.") { AllowMultipleArgumentsPerToken = true };
@@ -136,6 +136,7 @@ internal static class AccessCommand
         var clusterName = ctx.ParseResult.GetValueForOption(ClusterOption)!;
         var reason      = ctx.ParseResult.GetValueForOption(ReasonOption);
         var duration    = ctx.ParseResult.GetValueForOption(DurationOption);
+        if (duration is not null) duration = Iso8601Duration.Normalize(duration);
         var reviewers   = ctx.ParseResult.GetValueForOption(ReviewerOption);
         var wait        = ctx.ParseResult.GetValueForOption(WaitOption);
 

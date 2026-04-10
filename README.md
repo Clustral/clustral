@@ -1090,8 +1090,10 @@ dotnet test src/Clustral.E2E.Tests
 > rotation/revocation, bootstrap token single-use) using `Grpc.Net.Client` against
 > `WebApplicationFactory`.
 >
-> The CLI uses **FluentValidation** for input validation (GUID format, ISO 8601
-> durations, required fields) with styled error cards via Spectre.Console.
+> The CLI uses **FluentValidation** for input validation and accepts shorthand
+> durations (`8H`, `30M`, `1D`) alongside full ISO 8601 (`PT8H`). Resource
+> arguments accept names or GUIDs (`clustral kube login prod`). Errors are
+> displayed as flat indicator + dim-detail rows via Spectre.Console.
 >
 > Both ControlPlane and CLI use **FluentAssertions** (`.Should().Be(...)`) in
 > all tests.

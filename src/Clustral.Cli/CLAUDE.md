@@ -152,7 +152,7 @@ The CLI uses **FluentValidation** for all input validation. Validators live in
 ```
 Validation/
 ├── CommandInputs.cs         ← Input records: KubeLoginInput, AccessRequestInput, etc.
-├── Iso8601Duration.cs       ← AOT-safe [GeneratedRegex] ISO 8601 validator
+├── Iso8601Duration.cs       ← ISO 8601 duration validator + shorthand normalizer (8H → PT8H)
 ├── KubeLoginValidator.cs    ← cluster (name or GUID) + ttl (ISO 8601)
 ├── AccessRequestValidator.cs ← role + cluster (required) + duration
 ├── AccessActionValidator.cs  ← request-id (GUID) — used by approve/revoke

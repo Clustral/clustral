@@ -35,8 +35,8 @@ internal static class KubeLoginCommand
 
     private static readonly Option<string?> TtlOption = new(
         "--ttl",
-        "Requested credential lifetime as an ISO-8601 duration (e.g. PT8H). " +
-        "The ControlPlane may cap this to its configured maximum.");
+        "Requested credential lifetime (e.g. 8H, 30M, 1D). " +
+        "ISO 8601 (PT8H) also accepted. The ControlPlane may cap this to its configured maximum.");
 
     private static readonly Option<bool> NoSetContextOption = new(
         "--no-set-context",
@@ -90,6 +90,7 @@ internal static class KubeLoginCommand
         var contextName = ctx.ParseResult.GetValueForOption(ContextNameOption)
                           ?? $"clustral-{cluster}";
         var ttl             = ctx.ParseResult.GetValueForOption(TtlOption);
+        if (ttl is not null) ttl = Iso8601Duration.Normalize(ttl);
         var noSetContext    = ctx.ParseResult.GetValueForOption(NoSetContextOption);
         var insecure        = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var controlPlaneUrl = config.ControlPlaneUrl;
