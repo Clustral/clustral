@@ -180,6 +180,7 @@ public sealed class ConfigCommandTests : IDisposable
         rendered.Should().Contain("clustral login");
         rendered.Should().Contain("Control plane");
         rendered.Should().Contain("Session");
+        rendered.Should().Contain("Profile");
         rendered.Should().Contain("Files");
         rendered.Should().Contain("CLI");
     }
@@ -302,7 +303,7 @@ public sealed class ConfigCommandTests : IDisposable
         data.Files.Kubeconfig.ClustralContexts.Should().BeEmpty();
 
         var rendered = Render(data);
-        rendered.Should().Contain("(no kubeconfig)");
+        rendered.Should().Contain("(does not exist)");
     }
 
     [Fact]

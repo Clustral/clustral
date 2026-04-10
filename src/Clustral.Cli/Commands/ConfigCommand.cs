@@ -248,16 +248,18 @@ internal static class ConfigCommand
         };
         console.MarkupLine(statusLine);
 
-        // ── Profile ─────────────────────────────────────────────────────────
-        var activeProfile = ProfileCommand.GetActiveProfile();
-        RenderSection(console, "Profile", section =>
+        // ── Profiles ─────────────────────────────────────────────────────────
+        var activeProfile = ProfileCommand.GetActiveProfile() ?? "default";
+        var allProfiles = ProfileCommand.ListProfiles();
+        console.WriteLine();
+        console.MarkupLine("[bold]Profiles[/]");
+        foreach (var profile in allProfiles)
         {
-            section.AddRow("[grey]Active[/]", activeProfile is not null
-                ? $"[bold]{activeProfile.EscapeMarkup()}[/]"
-                : "[bold]default[/]");
-            section.AddRow("[grey]Config[/]", $"[dim]{CliConfig.DefaultPath.EscapeMarkup()}[/]");
-            section.AddRow("[grey]Token[/]", $"[dim]{CliConfig.DefaultTokenPath.EscapeMarkup()}[/]");
-        });
+            var isActive = profile == activeProfile;
+            var indicator = isActive ? "[green]●[/]" : "[grey]○[/]";
+            var label = isActive ? $"[bold]{profile.EscapeMarkup()}[/]" : profile.EscapeMarkup();
+            console.MarkupLine($"  {indicator} {label}");
+        }
 
         // ── Control plane ────────────────────────────────────────────────────
         RenderSection(console, "Control plane", section =>
@@ -320,11 +322,10 @@ internal static class ConfigCommand
         // ── Kubernetes ───────────────────────────────────────────────────────
         RenderSection(console, "Kubernetes", section =>
         {
+            section.AddRow("[grey]Kubeconfig[/]", FormatKubeconfigLine(data.Files.Kubeconfig));
+
             if (!data.Files.Kubeconfig.Exists)
-            {
-                section.AddRow("[grey]Status[/]", "[dim](no kubeconfig)[/]");
                 return;
-            }
 
             section.AddRow("[grey]Current context[/]",
                 string.IsNullOrEmpty(data.Files.Kubeconfig.CurrentContext)
@@ -340,9 +341,39 @@ internal static class ConfigCommand
         // ── Files ────────────────────────────────────────────────────────────
         RenderSection(console, "Files", section =>
         {
-            section.AddRow("[grey]Config[/]", FormatFileLine(data.Files.Config));
-            section.AddRow("[grey]Token[/]", FormatFileLine(data.Files.Token));
-            section.AddRow("[grey]Kubeconfig[/]", FormatKubeconfigLine(data.Files.Kubeconfig));
+            var clustralDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clustral");
+
+            foreach (var profile in allProfiles)
+            {
+                section.AddRow(profile.EscapeMarkup(), "");
+
+                string configPath, tokenPath;
+                if (profile == "default")
+                {
+                    configPath = Path.Combine(clustralDir, "config.json");
+                    tokenPath = Path.Combine(clustralDir, "token");
+                }
+                else
+                {
+                    var dir = ProfileCommand.GetProfileDir(profile);
+                    configPath = Path.Combine(dir, "config.json");
+                    tokenPath = Path.Combine(dir, "token");
+                }
+
+                section.AddRow("  [grey]Config[/]", FormatFileLine(new ConfigFileInfo
+                {
+                    Path = configPath,
+                    Exists = File.Exists(configPath),
+                    SizeBytes = File.Exists(configPath) ? new FileInfo(configPath).Length : 0,
+                }));
+                section.AddRow("  [grey]Token[/]", FormatFileLine(new ConfigFileInfo
+                {
+                    Path = tokenPath,
+                    Exists = File.Exists(tokenPath),
+                    SizeBytes = File.Exists(tokenPath) ? new FileInfo(tokenPath).Length : 0,
+                }));
+            }
         });
 
         // ── CLI ──────────────────────────────────────────────────────────────
