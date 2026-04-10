@@ -62,6 +62,8 @@ internal static class ConfigCommand
         // --remote not yet wired (placeholder for future ControlPlane call)
         _ = ctx.ParseResult.GetValueForOption(RemoteOption);
 
+        CliDebug.Log($"Config path: {CliConfig.DefaultPath}");
+        CliDebug.Log($"Token path: {TokenCache.DefaultTokenPath()}");
         var data = await CollectAsync();
 
         if (json)

@@ -38,11 +38,16 @@ internal static class UpdateCommand
         var checkOnly = ctx.ParseResult.GetValueForOption(CheckOption);
 
         var currentVersion = VersionCommand.GetVersion();
+        CliDebug.Log($"Current version: v{currentVersion}");
 
         Console.WriteLine($"Current version: v{currentVersion}");
 
         // GitHub gets a longer timeout because the binary download is the slow path.
-        using var http = new HttpClient
+        var innerHandler = new HttpClientHandler();
+        HttpMessageHandler pipeline = CliDebug.Enabled
+            ? new Clustral.Cli.Http.DebugLoggingHandler(innerHandler)
+            : innerHandler;
+        using var http = new HttpClient(pipeline)
         {
             Timeout = TimeSpan.FromSeconds(30),
         };
@@ -93,6 +98,7 @@ internal static class UpdateCommand
         }
 
         var latestVersion = tagName.TrimStart('v');
+        CliDebug.Log($"Artifact: {artifactName}, latest: v{latestVersion}, asset: {assetUrl ?? "(not found)"}");
         Console.WriteLine($"Latest version:  v{latestVersion}");
 
         if (latestVersion == currentVersion)
@@ -148,6 +154,7 @@ internal static class UpdateCommand
         File.Move(tempPath, currentPath);
         File.Delete(oldPath);
 
+        CliDebug.Log($"Replaced binary at {currentPath}");
         Console.WriteLine($"Updated to v{latestVersion}.");
     }
 

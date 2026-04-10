@@ -148,9 +148,11 @@ internal static class AccessCommand
         // Resolve role and cluster names (or GUIDs) → IDs.
         var roleId = await NameResolver.ResolveRoleIdAsync(http, roleName, ctx, ct);
         if (roleId is null) return;
+        CliDebug.Log($"Resolved role '{roleName}' → {roleId}");
 
         var clusterId = await NameResolver.ResolveClusterIdAsync(http, clusterName, ctx, ct);
         if (clusterId is null) return;
+        CliDebug.Log($"Resolved cluster '{clusterName}' → {clusterId}");
 
         var body = new AccessRequestCreateRequest
         {
@@ -174,6 +176,7 @@ internal static class AccessCommand
         var respJson = await response.Content.ReadAsStringAsync(ct);
         var req = JsonSerializer.Deserialize(respJson, CliJsonContext.Default.AccessRequestResponse);
 
+        CliDebug.Log($"Created access request: {req!.Id}");
         AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.AccessRequestCreated}[/]");
         AnsiConsole.MarkupLine($"  [grey]Request ID[/]  [cyan]{req!.Id[..8]}...[/]");
         AnsiConsole.MarkupLine($"  [grey]Role[/]        [yellow]{req.RoleName.EscapeMarkup()}[/]");
@@ -265,6 +268,8 @@ internal static class AccessCommand
             new AccessActionInput(requestId), ctx))
             return;
 
+        CliDebug.Log($"Approving request {requestId}");
+
         using var http = CreateClient(ctx, out var exitCode);
         if (http is null) { ctx.ExitCode = exitCode; return; }
 
@@ -309,6 +314,8 @@ internal static class AccessCommand
             new AccessDenyInput(requestId, reason), ctx))
             return;
 
+        CliDebug.Log($"Denying request {requestId}");
+
         using var http = CreateClient(ctx, out var exitCode);
         if (http is null) { ctx.ExitCode = exitCode; return; }
 
@@ -345,6 +352,8 @@ internal static class AccessCommand
         if (!ValidationHelper.Validate(AnsiConsole.Console, new AccessActionValidator(),
             new AccessActionInput(requestId), ctx))
             return;
+
+        CliDebug.Log($"Revoking grant {requestId}");
 
         using var http = CreateClient(ctx, out var exitCode);
         if (http is null) { ctx.ExitCode = exitCode; return; }

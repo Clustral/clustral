@@ -25,6 +25,8 @@ internal static class NameResolver
         InvocationContext ctx,
         CancellationToken ct)
     {
+        CliDebug.Log($"Resolving cluster: input='{nameOrId}', isGuid={Guid.TryParse(nameOrId, out _)}");
+
         if (Guid.TryParse(nameOrId, out _))
             return nameOrId;
 
@@ -66,6 +68,7 @@ internal static class NameResolver
             return null;
         }
 
+        CliDebug.Log($"Resolved cluster '{nameOrId}' → {matches[0].Id} ({matches[0].Name})");
         return matches[0].Id;
     }
 
@@ -80,6 +83,8 @@ internal static class NameResolver
         InvocationContext ctx,
         CancellationToken ct)
     {
+        CliDebug.Log($"Resolving role: input='{nameOrId}', isGuid={Guid.TryParse(nameOrId, out _)}");
+
         if (Guid.TryParse(nameOrId, out _))
             return nameOrId;
 
@@ -121,6 +126,7 @@ internal static class NameResolver
             return null;
         }
 
+        CliDebug.Log($"Resolved role '{nameOrId}' → {matches[0].Id} ({matches[0].Name})");
         return matches[0].Id;
     }
 }

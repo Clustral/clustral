@@ -53,6 +53,7 @@ internal static class KubeLsCommand
             ctx.ExitCode = 1;
             return;
         }
+        CliDebug.Log("Loaded config and JWT");
 
         var result = await CliHttp.RunWithSpinnerAsync(
             Messages.Spinners.LoadingClusters,
@@ -76,6 +77,7 @@ internal static class KubeLsCommand
 
         if (result.Item1 is int status)
             throw new CliHttpErrorException(status, result.Item2 ?? "");
+        CliDebug.Log($"Fetched {result.Item3?.Clusters.Count ?? 0} cluster(s)");
 
         if (result.Item3 is null || result.Item3.Clusters.Count == 0)
         {

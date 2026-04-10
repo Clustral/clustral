@@ -52,6 +52,7 @@ internal static class KubeLogoutCommand
             : $"clustral-{cluster}";
 
         // ── 1. Find the context and its token in kubeconfig (local) ──────
+        CliDebug.Log($"Looking for context '{contextName}' in kubeconfig");
         var kubeconfigPath = KubeconfigWriter.DefaultKubeconfigPath();
         var allContexts = LogoutCommand.FindClustralContexts(kubeconfigPath);
         var match = allContexts.FirstOrDefault(c => c.ContextName == contextName);
@@ -61,10 +62,12 @@ internal static class KubeLogoutCommand
             AnsiConsole.MarkupLine($"[yellow]![/] {Messages.Warnings.ContextNotFound(contextName)}");
             return;
         }
+        CliDebug.Log($"Found context with token: {match.Token is not null}");
 
         // ── 2. Local cleanup FIRST — instant, no network ─────────────────
         var writer = new KubeconfigWriter(kubeconfigPath);
         writer.RemoveClusterEntry(contextName);
+        CliDebug.Log("Removed context from kubeconfig");
         AnsiConsole.MarkupLine($"  [red]✗[/] Removed kubeconfig context [cyan]{contextName.EscapeMarkup()}[/]");
         AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]Disconnected from {contextName.EscapeMarkup()}[/]");
 

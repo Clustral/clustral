@@ -26,6 +26,7 @@ internal static class VersionCommand
     private static async Task HandleAsync()
     {
         var cliVersion = GetVersion();
+        CliDebug.Log($"CLI version: {cliVersion}");
         AnsiConsole.MarkupLine($"[grey]CLI[/]            [bold cyan]v{cliVersion.EscapeMarkup()}[/]");
 
         var config = CliConfig.Load();

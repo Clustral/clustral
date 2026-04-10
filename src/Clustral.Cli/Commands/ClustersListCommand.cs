@@ -64,6 +64,7 @@ internal static class ClustersListCommand
             ctx.ExitCode = 1;
             return;
         }
+        CliDebug.Log("Loaded config and JWT");
 
         var qs = string.IsNullOrEmpty(status) ? "" : $"?statusFilter={status}";
 
@@ -89,6 +90,7 @@ internal static class ClustersListCommand
 
         if (result.Item1 is int code)
             throw new CliHttpErrorException(code, result.Item2 ?? "");
+        CliDebug.Log($"Fetched {result.Item3?.Clusters.Count ?? 0} cluster(s)");
 
         if (result.Item3 is null || result.Item3.Clusters.Count == 0)
         {

@@ -46,6 +46,7 @@ internal static class LogoutCommand
         var clustralContexts = FindClustralContexts(kubeconfigPath);
         var cache            = new TokenCache();
         var jwt              = await cache.ReadAsync(ct);
+        CliDebug.Log($"Found {clustralContexts.Count} clustral context(s) in kubeconfig");
 
         // ── 2. Local cleanup FIRST — instant, no network ──────────────────
         foreach (var (contextName, _) in clustralContexts)
@@ -55,6 +56,7 @@ internal static class LogoutCommand
         }
 
         await cache.ClearAsync(ct);
+        CliDebug.Log("Cleared JWT from ~/.clustral/token");
         AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.LoggedOutLocally}[/]");
 
         // ── 3. Best-effort remote revocation with spinner + 5s timeout ────
@@ -66,6 +68,7 @@ internal static class LogoutCommand
         {
             return;
         }
+        CliDebug.Log($"Revoking {tokensToRevoke.Count} credential(s)...");
 
         var revoked = 0;
         try

@@ -94,6 +94,7 @@ internal static class KubeLoginCommand
         var noSetContext    = ctx.ParseResult.GetValueForOption(NoSetContextOption);
         var insecure        = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var controlPlaneUrl = config.ControlPlaneUrl;
+        CliDebug.Log($"Cluster input: {cluster}");
 
         // ── Validate input ───────────────────────────────────────────────────
         var input = new KubeLoginInput(cluster, ttl);
@@ -117,6 +118,7 @@ internal static class KubeLoginCommand
             ctx.ExitCode = 1;
             return;
         }
+        CliDebug.Log("Read JWT from ~/.clustral/token");
 
         // ── Resolve cluster name or GUID → cluster ID ────────────────────────
         using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
@@ -125,6 +127,7 @@ internal static class KubeLoginCommand
 
         var clusterId = await NameResolver.ResolveClusterIdAsync(http, cluster, ctx, ct);
         if (clusterId is null) return;
+        CliDebug.Log($"Resolved cluster '{cluster}' → {clusterId}");
 
         // ── Call ControlPlane REST API (with spinner + 5s timeout) ────────────
         var credential = await CliHttp.RunWithSpinnerAsync(
@@ -134,6 +137,7 @@ internal static class KubeLoginCommand
 
         if (string.IsNullOrEmpty(credential.Token))
             throw new InvalidOperationException(Messages.Errors.EmptyToken);
+        CliDebug.Log($"Credential issued, expires {credential.ExpiresAt}");
 
         // ── Write kubeconfig entry ────────────────────────────────────────────
         var serverUrl = $"{controlPlaneUrl.TrimEnd('/')}/api/proxy/{clusterId}";
@@ -147,6 +151,7 @@ internal static class KubeLoginCommand
 
         var writer = new KubeconfigWriter();
         writer.WriteClusterEntry(entry, setCurrentContext: !noSetContext);
+        CliDebug.Log($"Wrote kubeconfig entry: context={contextName}");
 
         AnsiConsole.MarkupLine($"\n[green]✓[/] [bold]{Messages.Success.KubeconfigUpdated}[/]");
         AnsiConsole.MarkupLine($"  [grey]Context[/]   [cyan]{contextName.EscapeMarkup()}[/]");

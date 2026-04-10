@@ -57,6 +57,7 @@ internal static class RolesCommand
             ctx.ExitCode = 1;
             return;
         }
+        CliDebug.Log("Loaded config and JWT");
 
         var result = await CliHttp.RunWithSpinnerAsync(
             Messages.Spinners.LoadingRoles,
@@ -80,6 +81,7 @@ internal static class RolesCommand
 
         if (result.Item1 is int status)
             throw new CliHttpErrorException(status, result.Item2 ?? "");
+        CliDebug.Log($"Fetched {result.Item3?.Roles.Count ?? 0} role(s)");
 
         if (result.Item3 is null || result.Item3.Roles.Count == 0)
         {

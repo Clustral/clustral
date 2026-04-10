@@ -61,6 +61,7 @@ internal static class LoginCommand
         var ct = ctx.GetCancellationToken();
 
         var config   = CliConfig.Load();
+        CliDebug.Log("Loaded config from ~/.clustral/config.json");
         var insecure = ctx.ParseResult.GetValueForOption(InsecureOption) || config.InsecureTls;
         var port     = ctx.ParseResult.GetValueForOption(PortOption)     ?? config.CallbackPort;
         var force    = ctx.ParseResult.GetValueForOption(ForceOption);
@@ -88,16 +89,22 @@ internal static class LoginCommand
             cpUrl = isLocal ? $"http://{cpUrl}" : $"https://{cpUrl}";
         }
 
+        CliDebug.Log($"ControlPlane URL: {cpUrl}");
+
         var httpHandler = insecure
             ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
             : new HttpClientHandler();
-        using var http = new HttpClient(httpHandler)
+        HttpMessageHandler pipeline = CliDebug.Enabled
+            ? new Clustral.Cli.Http.DebugLoggingHandler(httpHandler)
+            : httpHandler;
+        using var http = new HttpClient(pipeline)
         {
             // Bound every HTTP call so an unreachable ControlPlane fails fast.
             Timeout = TimeSpan.FromSeconds(10),
         };
 
         // ── Check for existing valid session ──────────────────────────────
+        CliDebug.Log("Checking for existing valid session...");
         if (!force)
         {
             var cache = new TokenCache();
@@ -108,6 +115,7 @@ internal static class LoginCommand
                 var expiry = DecodeJwtExpiry(existingToken);
                 if (expiry.HasValue && expiry.Value > DateTimeOffset.UtcNow)
                 {
+                    CliDebug.Log($"Existing session valid until {expiry.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
                     // Session still valid — show profile and exit.
                     await DisplayProfileAsync(http, cpUrl, existingToken, ct);
                     return;
@@ -149,8 +157,10 @@ internal static class LoginCommand
             port,
             http);
 
+        CliDebug.Log($"Starting OIDC callback listener on 127.0.0.1:{port}");
         var token = await flow.LoginAsync(ct);
 
+        CliDebug.Log("Storing JWT in ~/.clustral/token");
         var tokenCache = new TokenCache();
         await tokenCache.StoreAsync(token, ct);
 
