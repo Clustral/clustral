@@ -774,6 +774,11 @@ clustral clusters list --output json
 clustral users list -o json
 clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
 
+# --- Diagnostics ---
+
+# Check connectivity: DNS, TLS, ControlPlane, OIDC, JWT, kubeconfig
+clustral doctor
+
 # --- Color control ---
 
 # Disable colors for CI/CD pipelines and log files

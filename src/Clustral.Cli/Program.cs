@@ -30,6 +30,7 @@ root.AddCommand(RolesCommand.BuildRolesCommand());
 root.AddCommand(AccessCommand.BuildAccessCommand());
 root.AddCommand(ConfigCommand.Build());
 root.AddCommand(StatusCommand.Build());
+root.AddCommand(DoctorCommand.Build());
 root.AddCommand(UpdateCommand.Build());
 root.AddCommand(VersionCommand.Build());
 

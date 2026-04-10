@@ -112,6 +112,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(RevokeByTokenRequest))]
 [JsonSerializable(typeof(ConfigShowOutput))]
 [JsonSerializable(typeof(StatusOutput))]
+[JsonSerializable(typeof(DoctorOutput))]
 internal partial class CliJsonContext : JsonSerializerContext { }
 
 // ─────────────────────────────────────────────────────────────────────────────
