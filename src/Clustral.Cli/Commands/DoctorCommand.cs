@@ -37,6 +37,7 @@ internal static class DoctorCommand
     {
         var ct       = ctx.GetCancellationToken();
         var insecure = ctx.ParseResult.GetValueForOption(InsecureOption);
+        CliDebug.Log($"Running doctor checks (insecure: {insecure})");
 
         DoctorOutput checks = null!;
         await AnsiConsole.Status()
@@ -56,7 +57,10 @@ internal static class DoctorCommand
 
         Render(AnsiConsole.Console, checks);
 
+        var passed = checks.Checks.Count(c => c.Status == "pass");
         var failed = checks.Checks.Count(c => c.Status == "fail");
+        var warned = checks.Checks.Count(c => c.Status == "warn");
+        CliDebug.Log($"Doctor complete: {passed} passed, {warned} warnings, {failed} failed");
         if (failed > 0)
             ctx.ExitCode = 1;
     }

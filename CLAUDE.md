@@ -272,6 +272,9 @@ dotnet test src/Clustral.E2E.Tests
 - **FluentAssertions everywhere.** All tests across ControlPlane, CLI, and SDK **must** use FluentAssertions (`.Should().Be(...)` style assertions). Do not use `Assert.Equal` / `Assert.True` — use `.Should().Be()` / `.Should().BeTrue()` instead.
 - **CLI input validation** uses `Validation/` folder with input records, validators, and `ValidationHelper`. Validation errors are displayed as yellow-bordered cards via `CliErrors.WriteValidationErrors()`.
 - **CLI error display** uses `CliErrors.*` card-style display for user-friendly error output.
+- **CLI debug logging is mandatory.** Every new CLI command **must** include `CliDebug.Log(...)` calls at each logical step (config read, JWT read, HTTP calls, resolution, file writes). The `--debug` flag enables these logs globally. Use the `▸` indicator pattern: `CliDebug.Log($"Resolved cluster '{name}' → {id}")`. Do not add debug lines to trivial output-only commands like `completion`.
+- **CLI global exception handler** — do not add per-command try-catch blocks for error display. Let exceptions propagate to `CliExceptionHandler` in `Program.cs`. Only keep catch blocks that do flow-control (e.g., local-first logout ordering).
+- **CLI user-facing strings** must be defined in `Ui/Messages.cs`, not as inline string literals in command files. Use `const string` for fixed text and `static string Method(args)` for interpolated messages.
 - **Command aliases**: all listing commands support both `list` and `ls` aliases.
 - **xUnit test output**: use `ITestOutputHelper` in xUnit tests, not `Console.WriteLine`.
 - **Integration tests need Docker** running for Testcontainers.

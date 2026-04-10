@@ -145,6 +145,8 @@ internal static class ProfileCommand
         var name = ctx.ParseResult.GetValueForArgument(
             (Argument<string>)ctx.ParseResult.CommandResult.Command.Arguments.First());
 
+        CliDebug.Log($"Switching to profile: {name}");
+
         // "default" clears the active profile → falls back to ~/.clustral/.
         if (name.Equals("default", StringComparison.OrdinalIgnoreCase))
         {
@@ -204,6 +206,7 @@ internal static class ProfileCommand
             return Task.CompletedTask;
         }
 
+        CliDebug.Log($"Creating profile directory: {profileDir}");
         Directory.CreateDirectory(profileDir);
 
         // Create an empty config.json so the profile is recognized.
@@ -243,6 +246,7 @@ internal static class ProfileCommand
         if (active == name)
             ClearActiveProfile();
 
+        CliDebug.Log($"Deleting profile directory: {profileDir}");
         Directory.Delete(profileDir, recursive: true);
         AnsiConsole.MarkupLine($"[red]✗[/] Deleted profile [bold]{name.EscapeMarkup()}[/]");
 

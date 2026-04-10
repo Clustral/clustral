@@ -25,9 +25,15 @@ internal static class WhoamiCommand
     {
         var ct = ctx.GetCancellationToken();
         var profile = ProfileCommand.GetActiveProfile();
+        CliDebug.Log($"Active profile: {profile ?? "default"}");
 
         var cache = new TokenCache(CliConfig.DefaultTokenPath);
         var token = await cache.ReadAsync(ct);
+
+        if (token is null)
+        {
+            CliDebug.Log("No token found");
+        }
 
         if (token is null)
         {
@@ -42,6 +48,7 @@ internal static class WhoamiCommand
 
         var (email, expiresAt) = DecodeEmailAndExpiry(token);
         var valid = expiresAt.HasValue && expiresAt.Value > DateTimeOffset.UtcNow;
+        CliDebug.Log($"Email: {email}, valid: {valid}, expires: {expiresAt}");
 
         if (CliOptions.IsJson)
         {
