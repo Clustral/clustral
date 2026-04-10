@@ -125,6 +125,7 @@ dotnet run -- access revoke <id>
 dotnet run -- config              # show CLI files, session, kubeconfig
 dotnet run -- config show --json  # machine-readable
 dotnet run -- config path         # just print file paths
+dotnet run -- whoami              # quick identity + session check
 dotnet run -- status              # session, clusters, grants, health
 dotnet run -- doctor              # connectivity diagnostics
 dotnet run -- profile list        # list configuration profiles

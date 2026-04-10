@@ -61,7 +61,7 @@ internal static class CompletionCommand
             cur="${COMP_WORDS[COMP_CWORD]}"
             prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-            commands="login logout kube clusters users roles access config status doctor profile update version completion"
+            commands="login logout kube clusters users roles access config status doctor profile whoami update version completion"
 
             case "${prev}" in
                 clustral)
@@ -136,6 +136,7 @@ internal static class CompletionCommand
                 'update:Update to latest version'
                 'version:Show CLI and ControlPlane versions'
                 'profile:Manage configuration profiles'
+                'whoami:Show current user and session'
                 'completion:Generate shell completions'
             )
 
@@ -189,6 +190,7 @@ internal static class CompletionCommand
         complete -c clustral -n '__fish_use_subcommand' -a update -d 'Update to latest version'
         complete -c clustral -n '__fish_use_subcommand' -a version -d 'Show versions'
         complete -c clustral -n '__fish_use_subcommand' -a profile -d 'Manage configuration profiles'
+        complete -c clustral -n '__fish_use_subcommand' -a whoami -d 'Show current user and session'
         complete -c clustral -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
 
         # kube subcommands

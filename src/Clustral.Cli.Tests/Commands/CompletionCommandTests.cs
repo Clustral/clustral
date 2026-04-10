@@ -13,7 +13,7 @@ public sealed class CompletionCommandTests(ITestOutputHelper output)
     private static readonly string[] ExpectedSubcommands =
     [
         "login", "logout", "kube", "clusters", "users", "roles",
-        "access", "config", "status", "doctor", "profile", "update", "version", "completion",
+        "access", "config", "status", "doctor", "profile", "whoami", "update", "version", "completion",
     ];
 
     private static readonly string[] ExpectedKubeSubcommands =

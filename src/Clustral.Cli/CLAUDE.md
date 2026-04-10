@@ -39,6 +39,7 @@ clustral
 │   ├── current                     ← Show active profile name
 │   ├── create <name>               ← Create a new profile
 │   └── delete <name>               ← Delete a profile (default protected)
+├── whoami                          ← Quick identity + session validity check
 ├── completion <shell>              ← Generate bash/zsh/fish completions
 ├── update                          ← Self-update from GitHub
 └── version                         ← Show CLI version
@@ -63,6 +64,7 @@ Clustral.Cli/
 │   ├── StatusCommand.cs          ← clustral status (session, clusters, grants, health)
 │   ├── DoctorCommand.cs          ← clustral doctor (connectivity diagnostics)
 │   ├── ProfileCommand.cs         ← clustral profile (create/use/list/current/delete + path resolution)
+│   ├── WhoamiCommand.cs          ← clustral whoami (local JWT decode, no HTTP)
 │   ├── CompletionCommand.cs      ← clustral completion bash/zsh/fish
 │   └── NameResolver.cs           ← Shared cluster/role name → ID resolver (name or GUID)
 │

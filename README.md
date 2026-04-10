@@ -750,9 +750,15 @@ clustral access deny <request-id> --reason "not authorized"
 # Revoke an active access grant
 clustral access revoke <request-id>
 
+# --- Identity ---
+
+# Quick check: who am I, is my session valid?
+clustral whoami
+# ● admin@clustral.local (3h42m remaining) (profile: staging)
+
 # --- Status ---
 
-# Quick overview: session, clusters, active grants, ControlPlane health
+# Full overview: session, clusters, active grants, ControlPlane health
 clustral status
 clustral status -o json
 
