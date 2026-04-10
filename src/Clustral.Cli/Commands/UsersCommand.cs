@@ -85,7 +85,19 @@ internal static class UsersCommand
 
         if (result.Item3 is null || result.Item3.Users.Count == 0)
         {
+            if (CliOptions.IsJson)
+            {
+                Console.WriteLine("{\"users\":[]}");
+                return;
+            }
             AnsiConsole.MarkupLine("[dim]No users found.[/]");
+            return;
+        }
+
+        if (CliOptions.IsJson)
+        {
+            var jsonStr = JsonSerializer.Serialize(result.Item3, CliJsonContext.Default.UserListResponse);
+            Console.WriteLine(jsonStr);
             return;
         }
 

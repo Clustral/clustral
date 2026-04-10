@@ -81,7 +81,19 @@ internal static class KubeLsCommand
 
         if (result.Item3 is null || result.Item3.Clusters.Count == 0)
         {
+            if (CliOptions.IsJson)
+            {
+                Console.WriteLine("{\"clusters\":[]}");
+                return;
+            }
             AnsiConsole.MarkupLine("[dim]No Kubernetes clusters found.[/]");
+            return;
+        }
+
+        if (CliOptions.IsJson)
+        {
+            var jsonStr = JsonSerializer.Serialize(result.Item3, CliJsonContext.Default.ClusterListResponse);
+            Console.WriteLine(jsonStr);
             return;
         }
 

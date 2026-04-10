@@ -761,6 +761,13 @@ clustral config path              # just print file paths
 # Check version
 clustral version
 
+# --- Output formats ---
+
+# JSON output for scripting and CI/CD pipelines
+clustral clusters list --output json
+clustral users list -o json
+clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
+
 # --- Debugging ---
 
 # Enable verbose output: HTTP traces, full exceptions, timing

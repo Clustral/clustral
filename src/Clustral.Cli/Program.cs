@@ -11,6 +11,11 @@ var debugOption = new Option<bool>("--debug",
     "Enable verbose debug output including HTTP traces and exception details.");
 root.AddGlobalOption(debugOption);
 
+var outputOption = new Option<string>("--output", () => "table",
+    "Output format: table (default) or json.");
+outputOption.AddAlias("-o");
+root.AddGlobalOption(outputOption);
+
 root.AddCommand(LoginCommand.Build());
 root.AddCommand(LogoutCommand.Build());
 root.AddCommand(KubeLoginCommand.BuildKubeCommand());
@@ -25,7 +30,9 @@ root.AddCommand(VersionCommand.Build());
 // ── Set debug flag before invoking ───────────────────────────────────────────
 // Read from the parsed result so `--debug` works regardless of position.
 
-CliDebug.Enabled = root.Parse(args).GetValueForOption(debugOption);
+var parseResult = root.Parse(args);
+CliDebug.Enabled = parseResult.GetValueForOption(debugOption);
+CliOptions.OutputFormat = parseResult.GetValueForOption(outputOption) ?? "table";
 
 // ── Global exception handler — single catch for the entire CLI ───────────────
 

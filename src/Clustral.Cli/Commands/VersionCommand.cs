@@ -27,26 +27,38 @@ internal static class VersionCommand
     {
         var cliVersion = GetVersion();
         CliDebug.Log($"CLI version: {cliVersion}");
-        AnsiConsole.MarkupLine($"[grey]CLI[/]            [bold cyan]v{cliVersion.EscapeMarkup()}[/]");
 
         var config = CliConfig.Load();
+        string? cpVersion = null;
+
+        if (!string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
+        {
+            cpVersion = await CliHttp.RunWithSpinnerAsync(
+                Messages.Spinners.FetchingVersion,
+                async ct =>
+                {
+                    using var http = CliHttp.CreateClient(config.ControlPlaneUrl, config.InsecureTls);
+                    var response = await http.GetAsync("api/v1/config", ct);
+                    response.EnsureSuccessStatusCode();
+                    var json = await response.Content.ReadAsStringAsync(ct);
+                    var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
+                    return cpConfig?.Version;
+                });
+        }
+
+        if (CliOptions.IsJson)
+        {
+            Console.WriteLine($"{{\"cli\":\"v{cliVersion}\",\"controlPlane\":{(cpVersion is not null ? $"\"v{cpVersion}\"" : "null")}}}");
+            return;
+        }
+
+        AnsiConsole.MarkupLine($"[grey]CLI[/]            [bold cyan]v{cliVersion.EscapeMarkup()}[/]");
+
         if (string.IsNullOrWhiteSpace(config.ControlPlaneUrl))
         {
             AnsiConsole.MarkupLine("[grey]ControlPlane[/]    [dim](not configured — run 'clustral login <url>')[/]");
             return;
         }
-
-        var cpVersion = await CliHttp.RunWithSpinnerAsync(
-            Messages.Spinners.FetchingVersion,
-            async ct =>
-            {
-                using var http = CliHttp.CreateClient(config.ControlPlaneUrl, config.InsecureTls);
-                var response = await http.GetAsync("api/v1/config", ct);
-                response.EnsureSuccessStatusCode();
-                var json = await response.Content.ReadAsStringAsync(ct);
-                var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
-                return cpConfig?.Version;
-            });
 
         if (!string.IsNullOrEmpty(cpVersion))
             AnsiConsole.MarkupLine($"[grey]ControlPlane[/]    [bold cyan]v{cpVersion.EscapeMarkup()}[/]");

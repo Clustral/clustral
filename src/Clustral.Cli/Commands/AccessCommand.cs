@@ -250,7 +250,19 @@ internal static class AccessCommand
 
         if (result.Item3 is null || result.Item3.Requests.Count == 0)
         {
+            if (CliOptions.IsJson)
+            {
+                Console.WriteLine("{\"requests\":[]}");
+                return;
+            }
             AnsiConsole.MarkupLine("[dim]No access requests found.[/]");
+            return;
+        }
+
+        if (CliOptions.IsJson)
+        {
+            var jsonStr = JsonSerializer.Serialize(result.Item3, CliJsonContext.Default.AccessRequestListResponse);
+            Console.WriteLine(jsonStr);
             return;
         }
 

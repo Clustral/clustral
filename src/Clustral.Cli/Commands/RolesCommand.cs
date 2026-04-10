@@ -85,7 +85,19 @@ internal static class RolesCommand
 
         if (result.Item3 is null || result.Item3.Roles.Count == 0)
         {
+            if (CliOptions.IsJson)
+            {
+                Console.WriteLine("{\"roles\":[]}");
+                return;
+            }
             AnsiConsole.MarkupLine("[dim]No roles found.[/]");
+            return;
+        }
+
+        if (CliOptions.IsJson)
+        {
+            var jsonStr = JsonSerializer.Serialize(result.Item3, CliJsonContext.Default.RoleListResponse);
+            Console.WriteLine(jsonStr);
             return;
         }
 
