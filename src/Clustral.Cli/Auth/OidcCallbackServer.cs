@@ -67,17 +67,73 @@ internal sealed class OidcCallbackServer : IDisposable
     // ─────────────────────────────────────────────────────────────────────────
 
     private static string SuccessPage() => """
-        <!doctype html><html><body style="font-family:system-ui;text-align:center;padding:3rem">
-        <h2>&#x2713; Logged in to Clustral</h2>
-        <p>You can close this tab and return to the terminal.</p>
-        </body></html>
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Clustral — Logged in</title>
+          <style>
+            *{margin:0;padding:0;box-sizing:border-box}
+            body{font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;
+                 flex-direction:column;align-items:center;justify-content:center;text-align:center;
+                 background:#fafafa;color:#18181b}
+            .icon{font-size:3.5rem;margin-bottom:1.25rem;animation:pop .4s ease-out}
+            .icon span{display:inline-block;width:72px;height:72px;line-height:72px;border-radius:50%;
+                       background:#dcfce7;color:#16a34a;font-weight:bold}
+            h1{font-size:1.25rem;font-weight:600;margin-bottom:.5rem;color:#18181b}
+            p{color:#71717a;font-size:.9rem}
+            @keyframes pop{0%{transform:scale(0);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+            @media(prefers-color-scheme:dark){
+              body{background:#0f1117;color:#e4e4e7}
+              h1{color:#e4e4e7}p{color:#a1a1aa}
+              .icon span{background:#22c55e22;color:#22c55e}
+            }
+          </style>
+        </head>
+        <body>
+          <div class="icon"><span>&#x2713;</span></div>
+          <h1>Logged in to Clustral</h1>
+          <p>You can close this tab and return to the terminal.</p>
+        </body>
+        </html>
         """;
 
-    private static string ErrorPage(string query) => $"""
-        <!doctype html><html><body style="font-family:system-ui;text-align:center;padding:3rem">
-        <h2>&#x2717; Authentication failed</h2>
-        <p>{HttpUtility.HtmlEncode(query)}</p>
-        <p>Check the terminal for details.</p>
-        </body></html>
+    private static string ErrorPage(string query) => $$$"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Clustral — Authentication failed</title>
+          <style>
+            *{margin:0;padding:0;box-sizing:border-box}
+            body{font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column;
+                 align-items:center;justify-content:center;text-align:center;
+                 background:#fafafa;color:#18181b}
+            .icon{font-size:3.5rem;margin-bottom:1.25rem;animation:pop .4s ease-out}
+            .icon span{display:inline-block;width:72px;height:72px;line-height:72px;border-radius:50%;
+                       background:#fee2e2;color:#dc2626;font-weight:bold}
+            h1{font-size:1.25rem;font-weight:600;margin-bottom:.5rem;color:#18181b}
+            p{color:#71717a;font-size:.9rem}
+            pre{margin-top:1.25rem;padding:.75rem 1rem;border-radius:8px;background:#f4f4f5;
+                color:#52525b;font-size:.75rem;text-align:left;max-width:480px;width:100%;
+                overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+            @keyframes pop{0%{transform:scale(0);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+            @media(prefers-color-scheme:dark){
+              body{background:#0f1117;color:#e4e4e7}
+              h1{color:#e4e4e7}p{color:#a1a1aa}
+              .icon span{background:#ef444422;color:#ef4444}
+              pre{background:#1a1d27;color:#a1a1aa}
+            }
+          </style>
+        </head>
+        <body>
+          <div class="icon"><span>&#x2717;</span></div>
+          <h1>Authentication failed</h1>
+          <p>Check the terminal for details.</p>
+          <pre>{{{HttpUtility.HtmlEncode(query)}}}</pre>
+        </body>
+        </html>
         """;
 }
