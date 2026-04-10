@@ -95,7 +95,7 @@ internal static class LoginCommand
             ? new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
             : new HttpClientHandler();
         HttpMessageHandler pipeline = CliDebug.Enabled
-            ? new Clustral.Cli.Http.DebugLoggingHandler(httpHandler)
+            ? new Http.DebugLoggingHandler(httpHandler)
             : httpHandler;
         using var http = new HttpClient(pipeline)
         {
@@ -124,7 +124,7 @@ internal static class LoginCommand
         }
 
         // ── Discover OIDC configuration from ControlPlane ─────────────────
-        var discovered = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+        var discovered = await Http.CliHttp.RunWithSpinnerAsync(
             Messages.Spinners.DiscoveringConfig(cpUrl),
             innerCt => DiscoverConfigAsync(http, cpUrl, innerCt),
             ct);
@@ -143,11 +143,14 @@ internal static class LoginCommand
             ? discovered.ControlPlaneUrl.TrimEnd('/')
             : cpUrl;
 
-        if (config.ControlPlaneUrl != effectiveCpUrl)
-        {
-            config.ControlPlaneUrl = effectiveCpUrl;
-            config.Save();
-        }
+        config.ControlPlaneUrl = effectiveCpUrl;
+        if (!string.IsNullOrWhiteSpace(discovered.OidcAuthority))
+            config.OidcAuthority = discovered.OidcAuthority;
+        if (!string.IsNullOrWhiteSpace(discovered.OidcClientId))
+            config.OidcClientId = discovered.OidcClientId;
+        if (!string.IsNullOrWhiteSpace(discovered.OidcScopes))
+            config.OidcScopes = discovered.OidcScopes;
+        config.Save();
 
         // ── Run OIDC PKCE flow ────────────────────────────────────────────
         var flow = new OidcFlowHandler(
