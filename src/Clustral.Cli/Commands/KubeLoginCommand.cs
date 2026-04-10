@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
@@ -109,8 +110,7 @@ internal static class KubeLoginCommand
         }
 
         // ── Read stored JWT ───────────────────────────────────────────────────
-        var cache = new TokenCache();
-        var token = await cache.ReadAsync(ct);
+        var token = await SessionHelper.EnsureValidTokenAsync(config, insecure, ct);
 
         if (token is null)
         {
@@ -123,7 +123,7 @@ internal static class KubeLoginCommand
         // ── Resolve cluster name or GUID → cluster ID ────────────────────────
         using var http = CliHttp.CreateClient(controlPlaneUrl, insecure);
         http.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            new AuthenticationHeaderValue("Bearer", token);
 
         var clusterId = await NameResolver.ResolveClusterIdAsync(http, cluster, ctx, ct);
         if (clusterId is null) return;

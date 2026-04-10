@@ -774,6 +774,12 @@ clustral clusters list --output json
 clustral users list -o json
 clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
 
+# --- Auto-login ---
+
+# When a session expires, interactive commands prompt to re-login:
+#   Session expired. Login again? [Y/n]
+# Non-interactive (CI/CD) sessions exit with an error instead.
+
 # --- Shell completions ---
 
 # Bash

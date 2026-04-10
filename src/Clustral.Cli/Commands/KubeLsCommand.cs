@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
@@ -45,8 +46,7 @@ internal static class KubeLsCommand
             return;
         }
 
-        var cache = new TokenCache();
-        var token = await cache.ReadAsync(ct);
+        var token = await SessionHelper.EnsureValidTokenAsync(config, insecure, ct);
         if (token is null)
         {
             CliErrors.WriteNotConfigured(Messages.Errors.NotLoggedIn, Messages.Hints.RunLogin);

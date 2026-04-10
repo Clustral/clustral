@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
@@ -464,8 +465,7 @@ internal static class AccessCommand
             return null;
         }
 
-        var cache = new TokenCache();
-        var token = cache.ReadAsync().GetAwaiter().GetResult();
+        var token = SessionHelper.EnsureValidTokenAsync(config, insecure, CancellationToken.None).GetAwaiter().GetResult();
         if (token is null)
         {
             CliErrors.WriteNotConfigured(Messages.Errors.NotLoggedIn, Messages.Hints.RunLogin);
