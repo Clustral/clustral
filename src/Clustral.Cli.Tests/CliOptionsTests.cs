@@ -1,10 +1,10 @@
+using System.CommandLine;
 using FluentAssertions;
 
 namespace Clustral.Cli.Tests;
 
 /// <summary>
-/// Tests for <see cref="CliOptions"/> — the global output format flag
-/// used by all list commands to switch between table and JSON rendering.
+/// Tests for <see cref="CliOptions"/> and global CLI options (--output, --no-color).
 /// </summary>
 public sealed class CliOptionsTests : IDisposable
 {
@@ -44,5 +44,33 @@ public sealed class CliOptionsTests : IDisposable
 
         CliOptions.OutputFormat = "TABLE";
         CliOptions.IsJson.Should().BeFalse();
+    }
+
+    // ── --no-color ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NoColor_ParsedAsGlobalOption()
+    {
+        // Verify the root command accepts --no-color without error.
+        var root = new RootCommand("test");
+        var noColorOption = new Option<bool>("--no-color");
+        root.AddGlobalOption(noColorOption);
+
+        var result = root.Parse(["--no-color"]);
+
+        result.GetValueForOption(noColorOption).Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void NoColor_DefaultIsFalse()
+    {
+        var root = new RootCommand("test");
+        var noColorOption = new Option<bool>("--no-color");
+        root.AddGlobalOption(noColorOption);
+
+        var result = root.Parse([]);
+
+        result.GetValueForOption(noColorOption).Should().BeFalse();
     }
 }

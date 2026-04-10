@@ -768,6 +768,12 @@ clustral clusters list --output json
 clustral users list -o json
 clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
 
+# --- Color control ---
+
+# Disable colors for CI/CD pipelines and log files
+clustral --no-color clusters list
+export NO_COLOR=1                   # also respected automatically
+
 # --- Debugging ---
 
 # Enable verbose output: HTTP traces, full exceptions, timing

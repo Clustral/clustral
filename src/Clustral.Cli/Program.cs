@@ -2,6 +2,7 @@ using System.CommandLine;
 using Clustral.Cli;
 using Clustral.Cli.Commands;
 using Clustral.Cli.Ui;
+using Spectre.Console;
 
 // ── Root command ──────────────────────────────────────────────────────────────
 
@@ -15,6 +16,10 @@ var outputOption = new Option<string>("--output", () => "table",
     "Output format: table (default) or json.");
 outputOption.AddAlias("-o");
 root.AddGlobalOption(outputOption);
+
+var noColorOption = new Option<bool>("--no-color",
+    "Disable colored output (for CI/CD pipelines and log files).");
+root.AddGlobalOption(noColorOption);
 
 root.AddCommand(LoginCommand.Build());
 root.AddCommand(LogoutCommand.Build());
@@ -33,6 +38,12 @@ root.AddCommand(VersionCommand.Build());
 var parseResult = root.Parse(args);
 CliDebug.Enabled = parseResult.GetValueForOption(debugOption);
 CliOptions.OutputFormat = parseResult.GetValueForOption(outputOption) ?? "table";
+
+if (parseResult.GetValueForOption(noColorOption) ||
+    Environment.GetEnvironmentVariable("NO_COLOR") is not null)
+{
+    AnsiConsole.Profile.Capabilities.Ansi = false;
+}
 
 // ── Global exception handler — single catch for the entire CLI ───────────────
 
