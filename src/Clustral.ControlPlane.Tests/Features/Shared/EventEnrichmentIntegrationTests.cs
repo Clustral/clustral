@@ -376,4 +376,255 @@ public sealed class EventEnrichmentIntegrationTests(MongoFixture mongo, ITestOut
         evt.ClusterId.Should().Be(cluster.Id);
         evt.ClusterName.Should().Be("unassign-cluster");
     }
+
+    // ── Access Request — remaining events ──────────────────────────────────
+
+    [Fact]
+    public async Task AccessRequestApproved_EnrichesReviewerEmailAndCluster()
+    {
+        var db = mongo.CreateDb();
+        var reviewerId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+
+        await db.Users.InsertOneAsync(new User
+        {
+            Id = reviewerId, KeycloakSubject = "sub-approve", Email = "approver@example.com",
+        });
+        await db.Clusters.InsertOneAsync(Cluster.Create("approve-cluster", "Approve", "fakehash"));
+        var cluster = await db.Clusters.Find(c => c.Name == "approve-cluster").FirstAsync();
+
+        await db.AccessRequests.InsertOneAsync(new AccessRequest
+        {
+            Id = requestId, RequesterId = Guid.NewGuid(), RoleId = Guid.NewGuid(),
+            ClusterId = cluster.Id, Status = AccessRequestStatus.Approved,
+            Reason = "test", RequestedDuration = TimeSpan.FromHours(1),
+        });
+
+        var published = new List<object>();
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        await handler.Handle(new AccessRequestApproved(
+            requestId, reviewerId, TimeSpan.FromHours(4),
+            DateTimeOffset.UtcNow.AddHours(4)), CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<AccessRequestApprovedEvent>().Subject;
+
+        output.WriteLine($"ReviewerEmail={evt.ReviewerEmail}, ClusterName={evt.ClusterName}");
+
+        evt.ReviewerEmail.Should().Be("approver@example.com");
+        evt.ClusterId.Should().Be(cluster.Id);
+        evt.ClusterName.Should().Be("approve-cluster");
+    }
+
+    [Fact]
+    public async Task AccessRequestRevoked_EnrichesRevokerEmailAndCluster()
+    {
+        var db = mongo.CreateDb();
+        var revokerId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+
+        await db.Users.InsertOneAsync(new User
+        {
+            Id = revokerId, KeycloakSubject = "sub-revoker", Email = "revoker@example.com",
+        });
+        await db.Clusters.InsertOneAsync(Cluster.Create("revoke-cluster", "Revoke", "fakehash"));
+        var cluster = await db.Clusters.Find(c => c.Name == "revoke-cluster").FirstAsync();
+
+        await db.AccessRequests.InsertOneAsync(new AccessRequest
+        {
+            Id = requestId, RequesterId = Guid.NewGuid(), RoleId = Guid.NewGuid(),
+            ClusterId = cluster.Id, Status = AccessRequestStatus.Approved,
+            Reason = "test", RequestedDuration = TimeSpan.FromHours(1),
+        });
+
+        var published = new List<object>();
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        await handler.Handle(new AccessRequestRevoked(requestId, revokerId, "Policy change"),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<AccessRequestRevokedEvent>().Subject;
+
+        evt.RevokedByEmail.Should().Be("revoker@example.com");
+        evt.ClusterId.Should().Be(cluster.Id);
+        evt.ClusterName.Should().Be("revoke-cluster");
+    }
+
+    [Fact]
+    public async Task AccessRequestExpired_EnrichesRequesterAndCluster()
+    {
+        var db = mongo.CreateDb();
+        var requesterId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+
+        await db.Users.InsertOneAsync(new User
+        {
+            Id = requesterId, KeycloakSubject = "sub-expired", Email = "expired@example.com",
+        });
+        await db.Clusters.InsertOneAsync(Cluster.Create("expire-cluster", "Expire", "fakehash"));
+        var cluster = await db.Clusters.Find(c => c.Name == "expire-cluster").FirstAsync();
+
+        await db.AccessRequests.InsertOneAsync(new AccessRequest
+        {
+            Id = requestId, RequesterId = requesterId, RoleId = Guid.NewGuid(),
+            ClusterId = cluster.Id, Status = AccessRequestStatus.Approved,
+            Reason = "test", RequestedDuration = TimeSpan.FromHours(1),
+        });
+
+        var published = new List<object>();
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        await handler.Handle(new AccessRequestExpired(requestId),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<AccessRequestExpiredEvent>().Subject;
+
+        evt.RequesterEmail.Should().Be("expired@example.com");
+        evt.ClusterId.Should().Be(cluster.Id);
+        evt.ClusterName.Should().Be("expire-cluster");
+    }
+
+    // ── Clusters — remaining events ────────────────────────────────────────
+
+    [Fact]
+    public async Task ClusterRegistered_PublishesWithName()
+    {
+        var db = mongo.CreateDb();
+        var published = new List<object>();
+        var handler = new ClusterAuditHandler(
+            NullLogger<ClusterAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        var clusterId = Guid.NewGuid();
+
+        await handler.Handle(new ClusterRegistered(clusterId, "new-cluster"),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<ClusterRegisteredEvent>().Subject;
+
+        evt.ClusterId.Should().Be(clusterId);
+        evt.Name.Should().Be("new-cluster");
+    }
+
+    [Fact]
+    public async Task ClusterDisconnected_EnrichesClusterName()
+    {
+        var db = mongo.CreateDb();
+        await db.Clusters.InsertOneAsync(Cluster.Create("dc-cluster", "DC", "fakehash"));
+        var cluster = await db.Clusters.Find(c => c.Name == "dc-cluster").FirstAsync();
+
+        var published = new List<object>();
+        var handler = new ClusterAuditHandler(
+            NullLogger<ClusterAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        await handler.Handle(new ClusterDisconnected(cluster.Id),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<ClusterDisconnectedEvent>().Subject;
+
+        evt.ClusterId.Should().Be(cluster.Id);
+        evt.ClusterName.Should().Be("dc-cluster");
+    }
+
+    [Fact]
+    public async Task ClusterDeleted_PublishesWithNameFromDomainEvent()
+    {
+        var db = mongo.CreateDb();
+        var published = new List<object>();
+        var handler = new ClusterAuditHandler(
+            NullLogger<ClusterAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        var clusterId = Guid.NewGuid();
+
+        await handler.Handle(new ClusterDeleted(clusterId, "deleted-cluster"),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<ClusterDeletedEvent>().Subject;
+
+        evt.ClusterId.Should().Be(clusterId);
+        evt.ClusterName.Should().Be("deleted-cluster");
+    }
+
+    // ── Roles — remaining events ───────────────────────────────────────────
+
+    [Fact]
+    public async Task RoleCreated_PublishesWithName()
+    {
+        var db = mongo.CreateDb();
+        var published = new List<object>();
+        var handler = new RoleAuditHandler(
+            NullLogger<RoleAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        var roleId = Guid.NewGuid();
+
+        await handler.Handle(new RoleCreated(roleId, "new-role", ["dev-team"]),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<RoleCreatedEvent>().Subject;
+
+        evt.RoleId.Should().Be(roleId);
+        evt.Name.Should().Be("new-role");
+        evt.KubernetesGroups.Should().Contain("dev-team");
+    }
+
+    [Fact]
+    public async Task RoleUpdated_PublishesWithName()
+    {
+        var db = mongo.CreateDb();
+        var published = new List<object>();
+        var handler = new RoleAuditHandler(
+            NullLogger<RoleAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        var roleId = Guid.NewGuid();
+
+        await handler.Handle(new RoleUpdated(roleId, "updated-role", "New desc", ["admins"]),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<RoleUpdatedEvent>().Subject;
+
+        evt.RoleId.Should().Be(roleId);
+        evt.Name.Should().Be("updated-role");
+    }
+
+    // ── Auth — remaining events ────────────────────────────────────────────
+
+    [Fact]
+    public async Task UserSynced_PublishesWithEmail()
+    {
+        var db = mongo.CreateDb();
+        var published = new List<object>();
+        var handler = new UserAuditHandler(
+            NullLogger<UserAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        var userId = Guid.NewGuid();
+
+        await handler.Handle(new UserSynced(userId, "sub-sync", "synced@example.com", true),
+            CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<UserSyncedEvent>().Subject;
+
+        evt.UserId.Should().Be(userId);
+        evt.Email.Should().Be("synced@example.com");
+        evt.IsNew.Should().BeTrue();
+    }
 }

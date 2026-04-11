@@ -1,9 +1,11 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.V1;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using MediatR;
 using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Protos;
@@ -18,6 +20,7 @@ public sealed class TunnelServiceImpl(
     ClustralDb db,
     TunnelSessionManager sessions,
     Infrastructure.Auth.AgentAuthInterceptor agentAuth,
+    IMediator mediator,
     ILogger<TunnelServiceImpl> logger)
     : TunnelService.TunnelServiceBase
 {
@@ -61,15 +64,19 @@ public sealed class TunnelServiceImpl(
             },
         }, context.CancellationToken);
 
-        // ── 3. Mark cluster as Connected + store agent version ────────────────
-        var connectedUpdate = Builders<Domain.Cluster>.Update
-            .Set(c => c.Status, Domain.ClusterStatus.Connected)
-            .Set(c => c.KubernetesVersion, hello.KubernetesVersion)
-            .Set(c => c.AgentVersion, hello.AgentVersion)
-            .Set(c => c.LastSeenAt, DateTimeOffset.UtcNow);
-        await db.Clusters.UpdateOneAsync(
-            c => c.Id == clusterId, connectedUpdate,
-            cancellationToken: context.CancellationToken);
+        // ── 3. Mark cluster as Connected via aggregate (raises domain event) ──
+        var cluster = await db.Clusters
+            .Find(c => c.Id == clusterId)
+            .FirstOrDefaultAsync(context.CancellationToken);
+
+        if (cluster is not null)
+        {
+            cluster.Connect(hello.KubernetesVersion, hello.AgentVersion);
+            await db.Clusters.ReplaceOneAsync(
+                c => c.Id == clusterId, cluster,
+                cancellationToken: context.CancellationToken);
+            await mediator.DispatchDomainEventsAsync(cluster, context.CancellationToken);
+        }
 
         // Version compatibility check.
         var controlPlaneVersion = Assembly.GetExecutingAssembly()
@@ -126,13 +133,20 @@ public sealed class TunnelServiceImpl(
         }
         finally
         {
-            // ── 6. Agent disconnected — mark as Disconnected ──────────────────
+            // ── 6. Agent disconnected — mark via aggregate (raises domain event) ─
             logger.LogInformation("Agent tunnel closed for cluster {ClusterId}", clusterId);
 
-            var disconnectedUpdate = Builders<Domain.Cluster>.Update
-                .Set(c => c.Status, Domain.ClusterStatus.Disconnected)
-                .Set(c => c.LastSeenAt, DateTimeOffset.UtcNow);
-            await db.Clusters.UpdateOneAsync(c => c.Id == clusterId, disconnectedUpdate);
+            var disconnectedCluster = await db.Clusters
+                .Find(c => c.Id == clusterId)
+                .FirstOrDefaultAsync();
+
+            if (disconnectedCluster is not null)
+            {
+                disconnectedCluster.Disconnect();
+                await db.Clusters.ReplaceOneAsync(
+                    c => c.Id == clusterId, disconnectedCluster);
+                await mediator.DispatchDomainEventsAsync(disconnectedCluster);
+            }
         }
     }
 
