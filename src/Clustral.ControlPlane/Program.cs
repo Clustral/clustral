@@ -1,3 +1,4 @@
+using Prometheus;
 using System.Reflection;
 using System.Text.Json;
 using Clustral.ControlPlane.Features.Shared;
@@ -318,6 +319,7 @@ var app = builder.Build();
 // Global exception handler — must be first to catch all unhandled exceptions.
 app.UseMiddleware<Clustral.ControlPlane.Api.GlobalExceptionHandlerMiddleware>();
 
+app.UseHttpMetrics();
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
@@ -343,6 +345,7 @@ app.UseAuthorization();
 
 // REST endpoints
 app.MapControllers();
+app.MapMetrics(); // GET /metrics for Prometheus scraping
 
 // gRPC endpoints
 app.MapGrpcService<ClusterServiceImpl>();

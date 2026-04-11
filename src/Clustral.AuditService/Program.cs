@@ -1,8 +1,19 @@
+using Prometheus;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Sdk.Messaging;
 using Clustral.Sdk.Telemetry;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 using Serilog;
+
+// ── MongoDB Guid serialization ───────────────────────────────────────────
+// MongoDB.Driver 3.x requires explicit GuidRepresentation. Register a
+// global serializer so Guid properties on integration events (used in
+// ToBsonDocument()) serialize as Standard UUID strings.
+try { BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard)); }
+catch (BsonSerializationException) { /* already registered */ }
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +32,7 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
 });
 builder.Services.AddSingleton<AuditDbContext>();
 builder.Services.AddScoped<Clustral.AuditService.Domain.Repositories.IAuditEventRepository,
-    Clustral.AuditService.Infrastructure.MongoAuditEventRepository>();
+    MongoAuditEventRepository>();
 
 // ── MassTransit (consume integration events from RabbitMQ) ───────────────
 builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,
@@ -55,8 +66,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseHttpMetrics();
 app.UseSerilogRequestLogging();
 app.MapControllers();
+app.MapMetrics(); // GET /metrics for Prometheus scraping
 
 app.Run();
 
