@@ -8,6 +8,7 @@
     <Project Path="src/Clustral.Cli/Clustral.Cli.csproj" />
     <Project Path="src/Clustral.AuditService.Tests/Clustral.AuditService.Tests.csproj" />
     <Project Path="src/Clustral.ApiGateway/Clustral.ApiGateway.csproj" />
+    <Project Path="src/Clustral.ApiGateway.Tests/Clustral.ApiGateway.Tests.csproj" />
     <Project Path="src/Clustral.AuditService/Clustral.AuditService.csproj" />
     <Project Path="src/Clustral.Cli.Tests/Clustral.Cli.Tests.csproj" />
     <Project Path="src/Clustral.ControlPlane/Clustral.ControlPlane.csproj" />
