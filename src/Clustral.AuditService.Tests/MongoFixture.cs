@@ -1,5 +1,8 @@
 using Clustral.AuditService.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 using Testcontainers.MongoDb;
 
@@ -15,6 +18,14 @@ public sealed class MongoFixture : IAsyncLifetime
     private readonly MongoDbContainer _container = new MongoDbBuilder()
         .WithImage("mongo:8")
         .Build();
+
+    static MongoFixture()
+    {
+        // Register the same GuidSerializer used in AuditService Program.cs.
+        // Required for ToBsonDocument() on integration events with Guid fields.
+        try { BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard)); }
+        catch (BsonSerializationException) { /* already registered */ }
+    }
 
     public string ConnectionString => _container.GetConnectionString();
 
