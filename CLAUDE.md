@@ -76,7 +76,7 @@ clustral/
 
 Key flows:
 - **clustral login** — discovers ControlPlane URL and OIDC settings via Web UI's `/.well-known/clustral-configuration` (through nginx), then runs OIDC PKCE flow, writes token to `~/.clustral/token`. All subsequent CLI calls go through nginx to the ControlPlane.
-- **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
+- **clustral kube login** — exchanges the OIDC token for a kubeconfig JWT (ES256, 8h TTL) that routes through the API Gateway → ControlPlane tunnel. The gateway validates the kubeconfig JWT alongside OIDC JWTs.
 - **Tunnel** — agent opens a persistent gRPC stream directly to Kestrel :5443 (mTLS + JWT, no nginx) to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
 

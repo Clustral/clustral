@@ -120,11 +120,12 @@ sequenceDiagram
 
     Note over Agent,CP: Persistent gRPC tunnel via GW :5443 → CP :5443 (mTLS)
 
-    kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
+    kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {kubeconfig JWT}
     NGX->>GW: proxy /api/proxy/*
-    GW->>GW: Validate JWT + rate limit
+    GW->>GW: Validate kubeconfig JWT (ES256) + rate limit
+    GW->>GW: Issue internal JWT
     GW->>CP: Forward + X-Internal-Token
-    CP->>CP: Validate internal token<br/>Look up user + role assignment
+    CP->>CP: Check revocation (jti → MongoDB)<br/>Resolve impersonation
     CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
     Agent->>Agent: Translate to k8s Impersonate-* headers
     Agent->>K8S: GET /api/v1/pods<br/>Impersonate-User: admin@clustral.local<br/>Impersonate-Group: system:masters<br/>Authorization: Bearer {SA token}
@@ -253,7 +254,7 @@ sequenceDiagram
 | External → nginx | TLS termination on :443 (HTTPS) — REST API, kubectl proxy, Web UI |
 | User → API Gateway | OIDC JWT validated at gateway, internal JWT (ES256) issued |
 | API Gateway → ControlPlane | Internal JWT (ES256, 30s TTL), forwarded via X-Internal-Token |
-| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed), via nginx → gateway |
+| kubectl → API Gateway | Kubeconfig JWT (ES256, 8h TTL, ControlPlane-signed), validated at gateway |
 | Agent → ControlPlane | mTLS client certificate (RSA 2048, 395d) + RS256 JWT (30d), direct to Kestrel :5443 |
 | Agent credential revocation | tokenVersion increment invalidates all agent JWTs instantly |
 | Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
@@ -449,10 +450,12 @@ Agent credentials (mTLS + JWT):
         JWT expiry < 7 days  → RenewToken RPC → new JWT (hot-swapped, no reconnect)
     → revocation: admin increments tokenVersion → all JWTs invalidated instantly
 
-User credentials (OIDC + kubeconfig):
+User credentials (OIDC + kubeconfig JWT):
   OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
-    → exchanged for kubeconfig credential (8 hours default, configurable)
-    → used by kubectl to authenticate proxy requests via nginx :443
+    → exchanged for kubeconfig JWT (ES256, 8 hours default, configurable)
+    → contains: sub (userId), cluster_id, jti (credentialId), exp
+    → validated by API Gateway (ES256 public key, same flow as OIDC JWTs)
+    → revocation checked by ControlPlane (jti → MongoDB lookup)
     → revoked on logout or access grant expiry
 ```
 
@@ -1576,6 +1579,32 @@ sequenceDiagram
 | `AGENT_CERT_RENEW_THRESHOLD` | No | `720h` | Renew cert if expiry within this duration |
 | `AGENT_JWT_RENEW_THRESHOLD` | No | `168h` | Renew JWT if expiry within this duration |
 | `AGENT_RENEWAL_CHECK_INTERVAL` | No | `6h` | How often to check cert/JWT expiry |
+
+## JWT Key Pair Setup
+
+The API Gateway and ControlPlane use two ES256 (ECDSA P-256) key pairs for internal service-to-service authentication and kubeconfig credential signing. Both are committed with development defaults — regenerate for production.
+
+### Internal JWT (gateway → downstream services)
+
+```bash
+mkdir -p infra/internal-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out infra/internal-jwt/private.pem
+openssl ec -in infra/internal-jwt/private.pem -pubout -out infra/internal-jwt/public.pem
+```
+
+- **Private key** → mounted into API Gateway (signs internal JWTs, 30s TTL)
+- **Public key** → mounted into ControlPlane (validates internal JWTs)
+
+### Kubeconfig JWT (kubeconfig credential signing)
+
+```bash
+mkdir -p infra/kubeconfig-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out infra/kubeconfig-jwt/private.pem
+openssl ec -in infra/kubeconfig-jwt/private.pem -pubout -out infra/kubeconfig-jwt/public.pem
+```
+
+- **Private key** → mounted into ControlPlane (signs kubeconfig JWTs, 8h TTL)
+- **Public key** → mounted into API Gateway (validates kubeconfig JWTs from kubectl)
 
 ## Certificate Authority Setup
 

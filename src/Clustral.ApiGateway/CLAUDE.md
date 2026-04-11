@@ -75,11 +75,27 @@ Uses `Clustral.Sdk.Auth.InternalJwtService`:
 
 ---
 
-## gRPC Passthrough
+## Kubeconfig JWT Validation
 
-Agent mTLS traffic on :5443 is forwarded to ControlPlane :5443 as a
-transparent HTTP/2 proxy. YARP does NOT terminate TLS — the mTLS
-handshake happens directly between the agent and ControlPlane.
+The gateway also validates **kubeconfig JWTs** (ES256, issued by the
+ControlPlane via `KubeconfigJwtService`). The kubeconfig public key is
+added as an additional `IssuerSigningKey` in the JwtBearer config.
+
+The middleware tries OIDC JWKS keys first, then the kubeconfig ES256 key.
+Both produce a valid `ClaimsPrincipal` → internal JWT is issued →
+forwarded to downstream. kubectl proxy requests now flow through the
+same auth pipeline as browser/CLI requests.
+
+- **Key pair:** `infra/kubeconfig-jwt/private.pem` (ControlPlane) + `public.pem` (gateway)
+- **Config:** `KubeconfigJwt:PublicKeyPath` env var
+
+---
+
+## gRPC Agent Traffic
+
+Agents connect directly to ControlPlane :5443 for mTLS gRPC tunnels.
+This traffic does NOT go through the gateway — mTLS is its own security
+boundary. See issue #4 for the planned TunnelService split.
 
 The `controlplane-grpc` cluster uses:
 ```json

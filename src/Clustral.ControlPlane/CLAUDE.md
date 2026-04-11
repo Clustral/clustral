@@ -65,10 +65,13 @@ not interrupted by nginx restarts. Agents connect directly to Kestrel :5443
 with mTLS client certificates + RS256 JWT authorization.
 
 ### Token storage
-Raw bearer tokens are **never stored**.  Only the SHA-256 hex digest
-(`TokenHash`) is persisted in the `access_tokens` table.  The hash is computed
-in `AuthController.HashToken` and `AuthServiceImpl.HashToken` — keep these
-in sync.  Lookup is O(1) via the unique index `ix_access_tokens_token_hash`.
+Kubeconfig credentials are **ES256-signed JWTs** issued by the ControlPlane
+via `KubeconfigJwtService`. The JWT contains `sub` (userId), `cluster_id`,
+`jti` (credentialId), and `exp`. The SHA-256 hash of the JWT is stored in
+`TokenHash` for revocation lookup. `ProxyAuthService` validates the JWT
+signature first (no DB call), then checks revocation via `jti` lookup.
+
+Agent bootstrap tokens remain random SHA-256 hashed strings (unchanged).
 
 ### TunnelSessionManager
 A `Singleton` that maps `Guid clusterId → TunnelSession`.  The session wraps
