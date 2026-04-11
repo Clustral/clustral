@@ -77,12 +77,19 @@ the live gRPC `IServerStreamWriter<TunnelServerMessage>` and a
 handler (to be built) will call `TunnelSessionManager.GetSession(clusterId)` to
 forward traffic.
 
-### OIDC Provider
+### Authentication — Internal JWT (via API Gateway)
+When deployed behind the API Gateway, the ControlPlane validates internal
+JWTs (ES256) issued by the gateway. The token arrives in the `X-Internal-Token`
+header. The public key is mounted at the path configured in
+`InternalJwt:PublicKeyPath`. Uses `Clustral.Sdk.Auth.InternalJwtService`.
+
+If no internal JWT key is configured, the ControlPlane falls back to direct
+OIDC JwtBearer validation (backward compatibility for testing without gateway).
+
+### OIDC Provider (fallback)
 JwtBearer middleware is configured with the OIDC provider authority (Keycloak,
-Auth0, Okta, etc.).  The middleware fetches the JWKS automatically at startup
-via OIDC discovery.  In dev, `RequireHttpsMetadata: false` allows plain-HTTP
-providers.  Configuration is read from the `Oidc` section in appsettings.json
-(falls back to `Keycloak` for backward compatibility).
+Auth0, Okta, etc.) as a fallback when no internal JWT key is present.
+Configuration is read from the `Oidc` section in appsettings.json.
 
 ⚠️  `AuthServiceImpl.IssueKubeconfigCredential` currently has a TODO for
 validating the inbound `OidcAccessToken` field.  Until that is implemented,

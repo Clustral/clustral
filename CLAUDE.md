@@ -9,7 +9,8 @@ Clustral is an open-source Kubernetes access proxy (Teleport alternative) built 
 ```
 clustral/
 ├── src/
-│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB, OIDC
+│   ├── Clustral.ApiGateway/      # YARP API Gateway — auth, rate limiting, routing
+│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB
 │   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
 │   ├── clustral-agent/          # Go 1.23 service — gRPC client, kubectl reverse proxy, Helm-deployed
 │   ├── Clustral.Cli/            # System.CommandLine, NativeAOT — clustral login / clustral kube login
@@ -47,11 +48,17 @@ clustral/
       │                Web UI pages → Web UI :3000
       │  (gRPC NOT proxied — agents connect directly to Kestrel :5443)
       ▼
+  API Gateway  (YARP, .NET)
+      │  :8080 HTTP   — REST routing (behind nginx)
+      │  :5443 HTTP/2 — gRPC passthrough to ControlPlane
+      │  OIDC JWT validation → issues internal JWT (ES256)
+      │  Rate limiting, CORS, correlation IDs
+      ▼
   ControlPlane  (ASP.NET Core)
-      │  REST :5100   — CLI + Web UI management calls (via nginx)
-      │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no nginx)
+      │  REST :5100   — CLI + Web UI calls (via gateway)
+      │  gRPC :5443   — mTLS + JWT — agent tunnel (via gateway passthrough)
       │  MongoDB (clusters, users, credentials)
-      │  OIDC — token introspection / JWKS validation
+      │  Validates internal JWT (ES256 public key)
       │  Publishes integration events → RabbitMQ
       ▼
   RabbitMQ → AuditService  (ASP.NET Core :5200)

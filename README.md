@@ -25,6 +25,7 @@ graph TB
     subgraph "Clustral Platform"
         NGX[nginx gateway<br/>:443 HTTPS]
         WEB[Web UI<br/>Next.js 14]
+        GW[API Gateway<br/>YARP :8080]
         CP[ControlPlane<br/>ASP.NET Core]
         RMQ[RabbitMQ]
         AUDIT[AuditService<br/>ASP.NET Core]
@@ -41,22 +42,27 @@ graph TB
     CLI -.->|".well-known discovery"| NGX
     CLI -->|REST + kubectl proxy| NGX
     KB -->|kubectl proxy| NGX
-    NGX -->|"/api/*, /healthz"| CP
+    NGX -->|"/api/*, /healthz"| GW
     NGX -->|"/*"| WEB
+    GW -->|"validate OIDC JWT<br/>issue internal JWT"| GW
+    GW -->|REST| CP
+    GW -->|audit API| AUDIT
     CLI -->|OIDC PKCE| OIDC
     WEB -->|Server-side OIDC| OIDC
-    WEB -->|"REST (SSR)"| CP
+    WEB -->|"REST (SSR)"| GW
     CP --> DB
     CP -->|integration events| RMQ
     RMQ --> AUDIT
     AUDIT --> DB
-    AGENT ==>|"gRPC mTLS :5443<br/>(direct to Kestrel)"| CP
+    AGENT ==>|"gRPC mTLS :5443<br/>(passthrough via GW)"| GW
+    GW ==>|"gRPC passthrough"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
 | Component        | Stack                                       | Description                                     |
 |------------------|---------------------------------------------|-------------------------------------------------|
-| **nginx**        | nginx 1.27                                  | Unified gateway — TLS termination, routing      |
+| **nginx**        | nginx 1.27                                  | TLS termination, routes API → Gateway, UI → Web |
+| **API Gateway**  | YARP, .NET 10                               | Auth, rate limiting, CORS, routes to services   |
 | **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | Dashboard, server-side OIDC via NextAuth        |
 | **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
 | **AuditService** | ASP.NET Core, MongoDB                       | Consumes audit events, queryable REST API       |
@@ -75,6 +81,7 @@ sequenceDiagram
     participant User
     participant CLI as clustral CLI
     participant NGX as nginx :443
+    participant GW as API Gateway
     participant WEB as Web UI
     participant CP as ControlPlane
     participant OIDC as OIDC Provider
@@ -92,7 +99,9 @@ sequenceDiagram
     OIDC-->>CLI: JWT access token
     CLI->>CLI: Store JWT in ~/.clustral/token
     CLI->>NGX: GET /api/v1/users/me
-    NGX->>CP: proxy /api/v1/*
+    NGX->>GW: proxy /api/v1/*
+    GW->>GW: Validate OIDC JWT + issue internal JWT
+    GW->>CP: Forward + X-Internal-Token
     CP-->>CLI: User profile
     Note over CP: CUA001I user.synced
     CLI-->>User: "Logged in successfully"
@@ -104,15 +113,18 @@ sequenceDiagram
 sequenceDiagram
     participant kubectl
     participant NGX as nginx :443
+    participant GW as API Gateway
     participant CP as ControlPlane
     participant Agent as Agent (Go)
     participant K8S as k8s API
 
-    Note over Agent,CP: Persistent gRPC tunnel direct to Kestrel :5443 (mTLS)
+    Note over Agent,CP: Persistent gRPC tunnel via GW :5443 → CP :5443 (mTLS)
 
     kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
-    NGX->>CP: proxy /api/proxy/*
-    CP->>CP: Validate credential<br/>Look up user + role assignment
+    NGX->>GW: proxy /api/proxy/*
+    GW->>GW: Validate JWT + rate limit
+    GW->>CP: Forward + X-Internal-Token
+    CP->>CP: Validate internal token<br/>Look up user + role assignment
     CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
     Agent->>Agent: Translate to k8s Impersonate-* headers
     Agent->>K8S: GET /api/v1/pods<br/>Impersonate-User: admin@clustral.local<br/>Impersonate-Group: system:masters<br/>Authorization: Bearer {SA token}
@@ -128,10 +140,11 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Agent as Agent (Go)
+    participant GW as API Gateway :5443
     participant CP as ControlPlane :5443
     participant DB as MongoDB
 
-    Note over Agent,CP: Agent connects directly to Kestrel :5443 (mTLS)
+    Note over Agent,GW: Agent connects to Gateway :5443 (gRPC passthrough → CP :5443 mTLS)
 
     Agent->>CP: ClusterService.RegisterAgent (bootstrap token)
     CP->>CP: Verify token, issue cert + JWT
@@ -238,8 +251,9 @@ sequenceDiagram
 | Layer | Mechanism |
 |---|---|
 | External → nginx | TLS termination on :443 (HTTPS) — REST API, kubectl proxy, Web UI |
-| User → ControlPlane | OIDC JWT (from any provider), routed through nginx :443 |
-| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw), via nginx :443 |
+| User → API Gateway | OIDC JWT validated at gateway, internal JWT (ES256) issued |
+| API Gateway → ControlPlane | Internal JWT (ES256, 30s TTL), forwarded via X-Internal-Token |
+| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed), via nginx → gateway |
 | Agent → ControlPlane | mTLS client certificate (RSA 2048, 395d) + RS256 JWT (30d), direct to Kestrel :5443 |
 | Agent credential revocation | tokenVersion increment invalidates all agent JWTs instantly |
 | Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
@@ -264,6 +278,7 @@ flowchart TB
         NGX["nginx gateway\n:443 HTTPS"]
 
         subgraph app ["Application Zone"]
+            GW["API Gateway (YARP)\n:8080 | :5443"]
             WEB["Web UI\n:3000"]
             CP["ControlPlane\nREST :5100 | gRPC mTLS :5443"]
             RMQ["RabbitMQ\n:5672"]
@@ -285,9 +300,11 @@ flowchart TB
     BROWSER -- "HTTPS :443" --> NGX
     CLI -- "HTTPS :443" --> NGX
     KUBECTL -- "HTTPS :443" --> NGX
-    NGX -- "/api/*, /healthz" --> CP
+    NGX -- "/api/*, /healthz" --> GW
     NGX -- "/* (pages)" --> WEB
-    WEB -- "REST (SSR)" --> CP
+    GW -- "REST" --> CP
+    GW -- "audit API" --> AUDIT
+    WEB -- "REST (SSR)" --> GW
     CP --> DB
     CP -- "integration events" --> RMQ
     RMQ -- "consume" --> AUDIT
@@ -295,10 +312,11 @@ flowchart TB
 
     CLI -. "OIDC PKCE" .-> OIDC
     WEB -. "Server OIDC" .-> OIDC
-    CP -. "JWKS" .-> OIDC
+    GW -. "OIDC JWKS" .-> OIDC
 
-    AGENT_A == "gRPC mTLS :5443\n(outbound, direct)" ==> CP
-    AGENT_B == "gRPC mTLS :5443\n(outbound, direct)" ==> CP
+    AGENT_A == "gRPC mTLS :5443\n(via Gateway)" ==> GW
+    AGENT_B == "gRPC mTLS :5443\n(via Gateway)" ==> GW
+    GW == "gRPC passthrough" ==> CP
     AGENT_A --> K8S_A
     AGENT_B --> K8S_B
 
@@ -314,6 +332,7 @@ flowchart TB
     style BROWSER fill:#fff,stroke:#666,color:#000
     style CLI fill:#fff,stroke:#666,color:#000
     style KUBECTL fill:#fff,stroke:#666,color:#000
+    style GW fill:#b39ddb,stroke:#4527a0,color:#000
     style RMQ fill:#ffab91,stroke:#d84315,color:#000
     style AUDIT fill:#90caf9,stroke:#1565c0,color:#000
 ```
@@ -323,8 +342,10 @@ flowchart TB
 | Component | Port | Protocol | Direction | Description |
 |---|---|---|---|---|
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
-| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Direct** | Agent tunnel — mTLS + JWT, no nginx |
-| **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
+| **API Gateway REST** | 8080 | HTTP/1.1 | Internal | YARP routes API + audit (proxied by nginx) |
+| **API Gateway gRPC** | 5443 | gRPC/HTTP2 | **Inbound** | Agent gRPC passthrough → ControlPlane |
+| **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by gateway) |
+| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | Internal | Agent tunnel — mTLS + JWT (via gateway) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **RabbitMQ** | 5672 | AMQP | Internal | Message broker — audit event pipeline |
 | **AuditService REST** | 5200 | HTTP/1.1 | Internal | Audit event queries (proxied by Web UI) |
@@ -337,9 +358,9 @@ flowchart TB
 
 | Port | Path | Destination | Purpose |
 |---|---|---|---|
-| `:443` | `/api/v1/*` | ControlPlane `:5100` | REST API (CLI, browser) |
-| `:443` | `/api/proxy/*` | ControlPlane `:5100` | kubectl tunnel proxy |
-| `:443` | `/healthz*` | ControlPlane `:5100` | Health checks |
+| `:443` | `/api/*` | API Gateway `:8080` | REST API + kubectl proxy |
+| `:443` | `/healthz*` | API Gateway `:8080` | Health checks |
+| `:443` | `/audit-api/*` | API Gateway `:8080` | Audit event queries |
 | `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
 
 > gRPC traffic (`:5443`) is **not** routed through nginx. Agents connect directly to Kestrel to avoid tunnel drops caused by nginx restarts.
@@ -381,6 +402,41 @@ The kubectl proxy is configurable via the `Proxy` section in `appsettings.json`:
 | `RateLimiting:QueueSize` | `50` | Queued requests before 429 |
 
 Rate limiting protects the ControlPlane and tunnel from abuse. Request body size and API timeouts are left to the k8s API server.
+
+### API Gateway
+
+All API traffic flows through the YARP-based API Gateway, which provides centralized authentication, rate limiting, and routing. The gateway sits behind nginx (TLS termination) and forwards requests to ControlPlane and AuditService.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant NGX as nginx :443
+    participant GW as API Gateway :8080
+    participant CP as ControlPlane :5100
+
+    Client->>NGX: HTTPS /api/v1/clusters
+    NGX->>GW: HTTP /api/v1/clusters
+    GW->>GW: Validate OIDC JWT (any provider)
+    GW->>GW: Rate limit check (token bucket)
+    GW->>GW: Issue internal JWT (ES256, 30s TTL)
+    GW->>GW: Add X-Correlation-Id
+    GW->>CP: Forward + X-Internal-Token + X-Correlation-Id
+    CP->>CP: Validate internal JWT (ES256 public key)
+    CP-->>GW: 200 OK
+    GW-->>NGX: 200 OK
+    NGX-->>Client: 200 OK
+```
+
+| Capability | Description |
+|---|---|
+| **Authentication** | OIDC JWT validation (any provider), issues ES256 internal JWT for downstream |
+| **Internal JWT** | Asymmetric ES256 — gateway holds private key, downstream validates with public key |
+| **Rate Limiting** | Per-user token bucket (100 burst, 50 tokens/10s replenish, 429 on exceed) |
+| **Correlation IDs** | `X-Correlation-Id` generated or preserved, forwarded to all downstream services |
+| **CORS** | Configurable origins per environment |
+| **Request Size** | 10 MB max request body |
+| **Health Checks** | Active health probes on downstream clusters (10s interval) |
+| **gRPC Passthrough** | Agent mTLS traffic on :5443 forwarded to ControlPlane (no TLS termination) |
 
 ### Credential Lifecycle
 
@@ -1209,6 +1265,7 @@ graph TB
 ```
 Clustral/clustral (monorepo)
 ├── src/
+│   ├── Clustral.ApiGateway/      # YARP API Gateway — auth, rate limiting, routing
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
 │   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
 │   ├── clustral-agent/          # Go — gRPC tunnel + kubectl proxy (16MB binary)
@@ -1243,6 +1300,7 @@ Clustral/homebrew-tap (separate repo)
 
 | Image | Stack | Size |
 |---|---|---|
+| `ghcr.io/clustral/clustral-api-gateway` | .NET 10, YARP | ~80MB |
 | `ghcr.io/clustral/clustral-controlplane` | .NET 10 | ~80MB |
 | `ghcr.io/clustral/clustral-audit-service` | .NET 10 | ~80MB |
 | `ghcr.io/clustral/clustral-agent` | Go 1.23 | ~16MB |
