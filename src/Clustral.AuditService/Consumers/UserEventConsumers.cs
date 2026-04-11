@@ -1,98 +1,86 @@
 using MongoDB.Bson;
 using Clustral.AuditService.Domain;
-using Clustral.AuditService.Infrastructure;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.Contracts.IntegrationEvents;
 using MassTransit;
 
 namespace Clustral.AuditService.Consumers;
 
 public sealed class UserSyncedConsumer(
-    AuditDbContext db, ILogger<UserSyncedConsumer> logger)
+    IAuditEventRepository repository, ILogger<UserSyncedConsumer> logger)
     : IConsumer<UserSyncedEvent>
 {
     public async Task Consume(ConsumeContext<UserSyncedEvent> context)
     {
         var evt = context.Message;
-        var auditEvent = new AuditEvent
-        {
-            Uid = Guid.NewGuid(),
-            Event = "user.synced",
-            Code = EventCodes.UserSynced,
-            Category = "auth",
-            Severity = Severity.Info,
-            Success = true,
-            User = evt.Email ?? evt.Subject,
-            UserId = evt.UserId,
-            ResourceType = "User",
-            ResourceId = evt.UserId,
-            Time = evt.OccurredAt,
-            ReceivedAt = DateTimeOffset.UtcNow,
-            Message = evt.IsNew
+        var auditEvent = AuditEvent.Create(
+            @event: "user.synced",
+            code: EventCodes.UserSynced,
+            category: "auth",
+            severity: Severity.Info,
+            success: true,
+            time: evt.OccurredAt,
+            user: evt.Email ?? evt.Subject,
+            userId: evt.UserId,
+            resourceType: "User",
+            resourceId: evt.UserId,
+            message: evt.IsNew
                 ? $"New user {evt.Email ?? evt.Subject} created from OIDC"
                 : $"User {evt.Email ?? evt.Subject} synced",
-            Metadata = evt.ToBsonDocument(),
-        };
-        await db.AuditEvents.InsertOneAsync(auditEvent);
+            metadata: evt.ToBsonDocument());
+        await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
             auditEvent.Code, auditEvent.Event, auditEvent.Message);
     }
 }
 
 public sealed class RoleAssignedConsumer(
-    AuditDbContext db, ILogger<RoleAssignedConsumer> logger)
+    IAuditEventRepository repository, ILogger<RoleAssignedConsumer> logger)
     : IConsumer<RoleAssignedEvent>
 {
     public async Task Consume(ConsumeContext<RoleAssignedEvent> context)
     {
         var evt = context.Message;
-        var auditEvent = new AuditEvent
-        {
-            Uid = Guid.NewGuid(),
-            Event = "user.role_assigned",
-            Code = EventCodes.RoleAssigned,
-            Category = "auth",
-            Severity = Severity.Info,
-            Success = true,
-            User = evt.AssignedBy,
-            UserId = evt.UserId,
-            ResourceType = "User",
-            ResourceId = evt.UserId,
-            ClusterId = evt.ClusterId,
-            ClusterName = evt.ClusterName,
-            Time = evt.OccurredAt,
-            ReceivedAt = DateTimeOffset.UtcNow,
-            Message = $"Role {evt.RoleName ?? evt.RoleId.ToString()} assigned to user {evt.UserEmail ?? evt.UserId.ToString()} on cluster {evt.ClusterName ?? evt.ClusterId.ToString()} by {evt.AssignedBy}",
-            Metadata = evt.ToBsonDocument(),
-        };
-        await db.AuditEvents.InsertOneAsync(auditEvent);
+        var auditEvent = AuditEvent.Create(
+            @event: "user.role_assigned",
+            code: EventCodes.RoleAssigned,
+            category: "auth",
+            severity: Severity.Info,
+            success: true,
+            time: evt.OccurredAt,
+            user: evt.AssignedBy,
+            userId: evt.UserId,
+            resourceType: "User",
+            resourceId: evt.UserId,
+            clusterId: evt.ClusterId,
+            clusterName: evt.ClusterName,
+            message: $"Role {evt.RoleName ?? evt.RoleId.ToString()} assigned to user {evt.UserEmail ?? evt.UserId.ToString()} on cluster {evt.ClusterName ?? evt.ClusterId.ToString()} by {evt.AssignedBy}",
+            metadata: evt.ToBsonDocument());
+        await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
             auditEvent.Code, auditEvent.Event, auditEvent.Message);
     }
 }
 
 public sealed class RoleUnassignedConsumer(
-    AuditDbContext db, ILogger<RoleUnassignedConsumer> logger)
+    IAuditEventRepository repository, ILogger<RoleUnassignedConsumer> logger)
     : IConsumer<RoleUnassignedEvent>
 {
     public async Task Consume(ConsumeContext<RoleUnassignedEvent> context)
     {
         var evt = context.Message;
-        var auditEvent = new AuditEvent
-        {
-            Uid = Guid.NewGuid(),
-            Event = "user.role_unassigned",
-            Code = EventCodes.RoleUnassigned,
-            Category = "auth",
-            Severity = Severity.Info,
-            Success = true,
-            ResourceType = "RoleAssignment",
-            ResourceId = evt.AssignmentId,
-            Time = evt.OccurredAt,
-            ReceivedAt = DateTimeOffset.UtcNow,
-            Message = $"Role assignment {evt.AssignmentId} removed",
-            Metadata = evt.ToBsonDocument(),
-        };
-        await db.AuditEvents.InsertOneAsync(auditEvent);
+        var auditEvent = AuditEvent.Create(
+            @event: "user.role_unassigned",
+            code: EventCodes.RoleUnassigned,
+            category: "auth",
+            severity: Severity.Info,
+            success: true,
+            time: evt.OccurredAt,
+            resourceType: "RoleAssignment",
+            resourceId: evt.AssignmentId,
+            message: $"Role assignment {evt.AssignmentId} removed",
+            metadata: evt.ToBsonDocument());
+        await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
             auditEvent.Code, auditEvent.Event, auditEvent.Message);
     }

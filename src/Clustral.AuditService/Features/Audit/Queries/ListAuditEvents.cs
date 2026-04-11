@@ -1,10 +1,9 @@
 using Clustral.AuditService.Api.Controllers;
 using Clustral.AuditService.Domain;
-using Clustral.AuditService.Infrastructure;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.Sdk.Cqs;
 using Clustral.Sdk.Results;
 using MediatR;
-using MongoDB.Driver;
 
 namespace Clustral.AuditService.Features.Audit.Queries;
 
@@ -20,42 +19,23 @@ public sealed record ListAuditEventsQuery(
     int Page,
     int PageSize) : IQuery<Result<AuditListResponse>>;
 
-public sealed class ListAuditEventsHandler(AuditDbContext db)
+public sealed class ListAuditEventsHandler(IAuditEventRepository repository)
     : IRequestHandler<ListAuditEventsQuery, Result<AuditListResponse>>
 {
     public async Task<Result<AuditListResponse>> Handle(
         ListAuditEventsQuery request, CancellationToken ct)
     {
-        var filterBuilder = Builders<AuditEvent>.Filter;
-        var filters = new List<FilterDefinition<AuditEvent>>();
-
-        if (!string.IsNullOrEmpty(request.Category))
-            filters.Add(filterBuilder.Eq(e => e.Category, request.Category));
-        if (!string.IsNullOrEmpty(request.Code))
-            filters.Add(filterBuilder.Eq(e => e.Code, request.Code));
+        Severity? severity = null;
         if (!string.IsNullOrEmpty(request.SeverityFilter) &&
             Enum.TryParse<Severity>(request.SeverityFilter, ignoreCase: true, out var sev))
-            filters.Add(filterBuilder.Eq(e => e.Severity, sev));
-        if (!string.IsNullOrEmpty(request.User))
-            filters.Add(filterBuilder.Eq(e => e.User, request.User));
-        if (request.ClusterId.HasValue)
-            filters.Add(filterBuilder.Eq(e => e.ClusterId, request.ClusterId.Value));
-        if (request.ResourceId.HasValue)
-            filters.Add(filterBuilder.Eq(e => e.ResourceId, request.ResourceId.Value));
-        if (request.From.HasValue)
-            filters.Add(filterBuilder.Gte(e => e.Time, request.From.Value));
-        if (request.To.HasValue)
-            filters.Add(filterBuilder.Lte(e => e.Time, request.To.Value));
+            severity = sev;
 
-        var filter = filters.Count > 0 ? filterBuilder.And(filters) : filterBuilder.Empty;
-        var totalCount = await db.AuditEvents.CountDocumentsAsync(filter, cancellationToken: ct);
+        var filter = new AuditEventFilter(
+            request.Category, request.Code, severity, request.User,
+            request.ClusterId, request.ResourceId, request.From, request.To);
 
-        var events = await db.AuditEvents
-            .Find(filter)
-            .SortByDescending(e => e.Time)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Limit(request.PageSize)
-            .ToListAsync(ct);
+        var (events, totalCount) = await repository.ListAsync(
+            filter, request.Page, request.PageSize, ct);
 
         return new AuditListResponse
         {

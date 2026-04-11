@@ -1,39 +1,35 @@
 using MongoDB.Bson;
 using Clustral.AuditService.Domain;
-using Clustral.AuditService.Infrastructure;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.Contracts.IntegrationEvents;
 using MassTransit;
 
 namespace Clustral.AuditService.Consumers;
 
 public sealed class CredentialIssuedConsumer(
-    AuditDbContext db,
+    IAuditEventRepository repository,
     ILogger<CredentialIssuedConsumer> logger)
     : IConsumer<CredentialIssuedEvent>
 {
     public async Task Consume(ConsumeContext<CredentialIssuedEvent> context)
     {
         var evt = context.Message;
-        var auditEvent = new AuditEvent
-        {
-            Uid = Guid.NewGuid(),
-            Event = "credential.issued",
-            Code = EventCodes.CredentialIssued,
-            Category = "credentials",
-            Severity = Severity.Info,
-            Success = true,
-            User = evt.UserEmail,
-            UserId = evt.UserId,
-            ResourceType = "Credential",
-            ResourceId = evt.CredentialId,
-            ClusterId = evt.ClusterId,
-            ClusterName = evt.ClusterName,
-            Time = evt.OccurredAt,
-            ReceivedAt = DateTimeOffset.UtcNow,
-            Message = $"Credential {evt.CredentialId} issued for user {evt.UserEmail ?? evt.UserId.ToString()}, expires {evt.ExpiresAt}",
-            Metadata = evt.ToBsonDocument(),
-        };
-        await db.AuditEvents.InsertOneAsync(auditEvent);
+        var auditEvent = AuditEvent.Create(
+            @event: "credential.issued",
+            code: EventCodes.CredentialIssued,
+            category: "credentials",
+            severity: Severity.Info,
+            success: true,
+            time: evt.OccurredAt,
+            user: evt.UserEmail,
+            userId: evt.UserId,
+            resourceType: "Credential",
+            resourceId: evt.CredentialId,
+            clusterId: evt.ClusterId,
+            clusterName: evt.ClusterName,
+            message: $"Credential {evt.CredentialId} issued for user {evt.UserEmail ?? evt.UserId.ToString()}, expires {evt.ExpiresAt}",
+            metadata: evt.ToBsonDocument());
+        await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
             auditEvent.Code, auditEvent.Event, auditEvent.Message);
     }

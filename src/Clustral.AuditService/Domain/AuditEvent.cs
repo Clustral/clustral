@@ -4,104 +4,136 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Clustral.AuditService.Domain;
 
 /// <summary>
-/// Persistent audit log entry stored in MongoDB. Follows Teleport's
-/// enterprise audit event conventions: structured event codes with
-/// severity suffixes, category grouping, and actor/resource fields.
+/// Aggregate root for audit log entries. Append-only — once created,
+/// audit events are immutable. Follows Teleport's enterprise audit
+/// event conventions: structured event codes with severity suffixes,
+/// category grouping, and actor/resource fields.
+///
+/// Use <see cref="Create"/> factory method instead of direct construction.
 /// </summary>
 public sealed class AuditEvent
 {
     /// <summary>Unique event ID (like Teleport's "uid").</summary>
     [BsonId]
     [BsonRepresentation(BsonType.String)]
-    public Guid Uid { get; set; }
+    public Guid Uid { get; init; }
 
     // ── Event identity ───────────────────────────────────────────────────
 
-    /// <summary>
-    /// Dotted event type descriptor (e.g. <c>access_request.approved</c>,
-    /// <c>credential.issued</c>, <c>proxy.request</c>).
-    /// </summary>
-    public string Event { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Unique event code with format <c>[PREFIX][NUMBER][SEVERITY]</c>
-    /// (e.g. <c>CAR002I</c>). Prefix identifies the category, number is
-    /// sequential, suffix is <c>I</c> (Info), <c>W</c> (Warning), or
-    /// <c>E</c> (Error).
-    /// </summary>
-    public string Code { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Category for grouping and filtering (e.g. <c>access_requests</c>,
-    /// <c>credentials</c>, <c>clusters</c>, <c>proxy</c>, <c>auth</c>).
-    /// </summary>
-    public string Category { get; set; } = string.Empty;
+    public string Event { get; init; } = string.Empty;
+    public string Code { get; init; } = string.Empty;
+    public string Category { get; init; } = string.Empty;
 
     [BsonRepresentation(BsonType.String)]
-    public Severity Severity { get; set; } = Severity.Info;
+    public Severity Severity { get; init; } = Severity.Info;
 
-    public bool Success { get; set; } = true;
+    public bool Success { get; init; } = true;
 
     // ── Who ──────────────────────────────────────────────────────────────
 
-    /// <summary>Email or subject of the actor who performed the action.</summary>
-    public string? User { get; set; }
+    public string? User { get; init; }
 
     [BsonIgnoreIfNull]
     [BsonRepresentation(BsonType.String)]
-    public Guid? UserId { get; set; }
+    public Guid? UserId { get; init; }
 
-    /// <summary>Source identifier (e.g. <c>clustral-cli/v1.0</c>, <c>web-ui</c>).</summary>
     [BsonIgnoreIfNull]
-    public string? UserAgent { get; set; }
+    public string? UserAgent { get; init; }
 
     // ── What ─────────────────────────────────────────────────────────────
 
-    /// <summary>Type of the affected resource (e.g. <c>AccessRequest</c>, <c>Cluster</c>).</summary>
     [BsonIgnoreIfNull]
-    public string? ResourceType { get; set; }
+    public string? ResourceType { get; init; }
 
     [BsonIgnoreIfNull]
     [BsonRepresentation(BsonType.String)]
-    public Guid? ResourceId { get; set; }
+    public Guid? ResourceId { get; init; }
 
-    /// <summary>Human-readable name of the resource (cluster name, role name).</summary>
     [BsonIgnoreIfNull]
-    public string? ResourceName { get; set; }
+    public string? ResourceName { get; init; }
 
     // ── Where ────────────────────────────────────────────────────────────
 
     [BsonIgnoreIfNull]
-    public string? ClusterName { get; set; }
+    public string? ClusterName { get; init; }
 
     [BsonIgnoreIfNull]
     [BsonRepresentation(BsonType.String)]
-    public Guid? ClusterId { get; set; }
+    public Guid? ClusterId { get; init; }
 
     [BsonIgnoreIfNull]
-    public string? ClientIp { get; set; }
+    public string? ClientIp { get; init; }
 
     // ── When ─────────────────────────────────────────────────────────────
 
-    /// <summary>When the event occurred at the source service.</summary>
-    public DateTimeOffset Time { get; set; }
-
-    /// <summary>When the audit service received and persisted the event.</summary>
-    public DateTimeOffset ReceivedAt { get; set; }
+    public DateTimeOffset Time { get; init; }
+    public DateTimeOffset ReceivedAt { get; init; }
 
     // ── Details ──────────────────────────────────────────────────────────
 
-    /// <summary>Human-readable description of what happened.</summary>
     [BsonIgnoreIfNull]
-    public string? Message { get; set; }
+    public string? Message { get; init; }
 
-    /// <summary>Error detail (populated when <see cref="Success"/> is <c>false</c>).</summary>
     [BsonIgnoreIfNull]
-    public string? Error { get; set; }
+    public string? Error { get; init; }
 
-    /// <summary>Full event-specific payload stored as BSON for queryability.</summary>
     [BsonIgnoreIfNull]
-    public BsonDocument? Metadata { get; set; }
+    public BsonDocument? Metadata { get; init; }
+
+    // ── Factory ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a new audit event. All invariants are enforced here:
+    /// non-empty event/code/category, severity suffix matches code.
+    /// </summary>
+    public static AuditEvent Create(
+        string @event,
+        string code,
+        string category,
+        Severity severity,
+        bool success,
+        DateTimeOffset time,
+        string? user = null,
+        Guid? userId = null,
+        string? userAgent = null,
+        string? resourceType = null,
+        Guid? resourceId = null,
+        string? resourceName = null,
+        string? clusterName = null,
+        Guid? clusterId = null,
+        string? clientIp = null,
+        string? message = null,
+        string? error = null,
+        BsonDocument? metadata = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(@event);
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        ArgumentException.ThrowIfNullOrWhiteSpace(category);
+
+        return new AuditEvent
+        {
+            Uid = Guid.NewGuid(),
+            Event = @event,
+            Code = code,
+            Category = category,
+            Severity = severity,
+            Success = success,
+            User = user,
+            UserId = userId,
+            UserAgent = userAgent,
+            ResourceType = resourceType,
+            ResourceId = resourceId,
+            ResourceName = resourceName,
+            ClusterName = clusterName,
+            ClusterId = clusterId,
+            ClientIp = clientIp,
+            Time = time,
+            ReceivedAt = DateTimeOffset.UtcNow,
+            Message = message,
+            Error = error,
+            Metadata = metadata,
+        };
+    }
 }
 
 public enum Severity

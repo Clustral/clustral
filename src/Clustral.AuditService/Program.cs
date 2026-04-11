@@ -20,6 +20,8 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
     return new MongoClient(connectionString);
 });
 builder.Services.AddSingleton<AuditDbContext>();
+builder.Services.AddScoped<Clustral.AuditService.Domain.Repositories.IAuditEventRepository,
+    Clustral.AuditService.Infrastructure.MongoAuditEventRepository>();
 
 // ── MassTransit (consume integration events from RabbitMQ) ───────────────
 builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,

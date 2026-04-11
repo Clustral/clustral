@@ -1,13 +1,13 @@
 using MongoDB.Bson;
 using Clustral.AuditService.Domain;
-using Clustral.AuditService.Infrastructure;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.Contracts.IntegrationEvents;
 using MassTransit;
 
 namespace Clustral.AuditService.Consumers;
 
 public sealed class ProxyRequestCompletedConsumer(
-    AuditDbContext db,
+    IAuditEventRepository repository,
     ILogger<ProxyRequestCompletedConsumer> logger)
     : IConsumer<ProxyRequestCompletedEvent>
 {
@@ -17,26 +17,22 @@ public sealed class ProxyRequestCompletedConsumer(
         var severity = evt.StatusCode >= 400 ? Severity.Warning : Severity.Info;
         var success = evt.StatusCode < 400;
 
-        var auditEvent = new AuditEvent
-        {
-            Uid = Guid.NewGuid(),
-            Event = "proxy.request",
-            Code = EventCodes.ProxyRequestCompleted,
-            Category = "proxy",
-            Severity = severity,
-            Success = success,
-            User = evt.UserEmail,
-            UserId = evt.UserId,
-            ResourceType = "Credential",
-            ResourceId = evt.CredentialId,
-            ClusterId = evt.ClusterId,
-            ClusterName = evt.ClusterName,
-            Time = evt.OccurredAt,
-            ReceivedAt = DateTimeOffset.UtcNow,
-            Message = $"{evt.Method} {evt.Path} → {evt.StatusCode} ({evt.DurationMs:F0}ms)",
-            Metadata = evt.ToBsonDocument(),
-        };
-        await db.AuditEvents.InsertOneAsync(auditEvent);
+        var auditEvent = AuditEvent.Create(
+            @event: "proxy.request",
+            code: EventCodes.ProxyRequestCompleted,
+            category: "proxy",
+            severity: severity,
+            success: success,
+            time: evt.OccurredAt,
+            user: evt.UserEmail,
+            userId: evt.UserId,
+            resourceType: "Credential",
+            resourceId: evt.CredentialId,
+            clusterId: evt.ClusterId,
+            clusterName: evt.ClusterName,
+            message: $"{evt.Method} {evt.Path} → {evt.StatusCode} ({evt.DurationMs:F0}ms)",
+            metadata: evt.ToBsonDocument());
+        await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
             auditEvent.Code, auditEvent.Event, auditEvent.Message);
     }
