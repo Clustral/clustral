@@ -127,8 +127,7 @@ services:
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
-    ports:
-      - "5200:5200"
+    # No ports exposed — gateway routes audit API traffic internally.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5200/swagger || exit 1"]
       interval: 10s
