@@ -133,7 +133,7 @@ services:
   # ──────────────────────────────────────────────────────────────────────────
 
   prometheus:
-    image: prom/prometheus:v3.4
+    image: prom/prometheus:v3.2.1
     restart: unless-stopped
     ports:
       - "9090:9090"
