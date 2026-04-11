@@ -85,10 +85,13 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
             body = ms.ToArray();
         }
 
+        // ── Extract internal token (if request came through gateway) ──────
+        var internalToken = httpContext.Request.Headers["X-Internal-Token"].FirstOrDefault();
+
         // ── Send CQS command ──────────────────────────────────────────────
         var result = await mediator.Send(new ProxyKubectlRequestCommand(
             clusterId, bearerToken, httpContext.Request.Method,
-            k8sPath, headers, body), ct);
+            k8sPath, headers, body, internalToken), ct);
 
         // ── Write result to HTTP response ──────────────────────────────────
         if (result.IsFailure)

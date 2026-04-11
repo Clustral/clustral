@@ -8,22 +8,20 @@ namespace Clustral.ControlPlane.Domain.Services;
 
 /// <summary>
 /// Validates proxy bearer tokens and returns the authenticated identity.
-/// Supports both kubeconfig JWTs (ES256, validated cryptographically)
-/// and legacy random tokens (SHA-256 hash lookup in MongoDB).
+/// Supports kubeconfig JWTs (ES256), gateway-authenticated requests
+/// (internal JWT), and legacy random tokens (SHA-256 hash lookup).
 /// </summary>
 public sealed class ProxyAuthService(
     IAccessTokenRepository accessTokens,
     TokenHashingService tokenHasher,
+    IUserRepository users,
     KubeconfigJwtService? kubeconfigJwt = null)
 {
-    /// <summary>
-    /// Authenticates a bearer token for a specific cluster.
-    /// Returns the user identity or a descriptive error.
-    /// </summary>
     public async Task<Result<ProxyIdentity>> AuthenticateAsync(
-        string bearerToken, Guid clusterId, CancellationToken ct = default)
+        string bearerToken, Guid clusterId, CancellationToken ct = default,
+        string? internalToken = null)
     {
-        // Try kubeconfig JWT validation first (if service is available)
+        // 1. Try kubeconfig JWT validation (kubectl requests with ES256-signed token)
         if (kubeconfigJwt is not null && IsJwt(bearerToken))
         {
             var principal = kubeconfigJwt.Validate(bearerToken);
@@ -31,14 +29,37 @@ public sealed class ProxyAuthService(
                 return await ValidateKubeconfigJwt(principal, clusterId, ct);
         }
 
-        // Fallback: legacy random token (SHA-256 hash lookup)
+        // 2. If request came through gateway with an internal JWT,
+        //    the bearer token is an OIDC JWT (from Web UI or CLI).
+        //    The gateway already validated it. Extract userId from the
+        //    internal token's sub claim and find the user.
+        if (!string.IsNullOrEmpty(internalToken) && IsJwt(internalToken))
+        {
+            var handler = new JwtSecurityTokenHandler();
+            if (handler.CanReadToken(internalToken))
+            {
+                var jwt = handler.ReadJwtToken(internalToken);
+                var sub = jwt.Subject
+                    ?? jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+
+                if (!string.IsNullOrEmpty(sub))
+                {
+                    // The internal JWT sub is the OIDC subject (a string, not a GUID).
+                    // Look up the user by their Keycloak subject.
+                    var user = await users.GetBySubjectAsync(sub, ct);
+                    if (user is not null)
+                        return new ProxyIdentity(user.Id, clusterId, Guid.Empty);
+                }
+            }
+        }
+
+        // 3. Fallback: legacy random token (SHA-256 hash lookup)
         return await ValidateLegacyToken(bearerToken, clusterId, ct);
     }
 
     private async Task<Result<ProxyIdentity>> ValidateKubeconfigJwt(
         System.Security.Claims.ClaimsPrincipal principal, Guid clusterId, CancellationToken ct)
     {
-        // Extract claims from JWT
         var subClaim = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
             ?? principal.FindFirst("sub")?.Value;
         var jtiClaim = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value
@@ -54,7 +75,6 @@ public sealed class ProxyAuthService(
         if (tokenClusterId != clusterId)
             return ResultError.Forbidden("Credential is not valid for this cluster.");
 
-        // Check revocation in MongoDB (by credential ID / jti)
         if (!string.IsNullOrEmpty(jtiClaim) && Guid.TryParse(jtiClaim, out var credentialId))
         {
             var credential = await accessTokens.GetByIdAsync(credentialId, ct);
@@ -84,9 +104,6 @@ public sealed class ProxyAuthService(
         return new ProxyIdentity(credential.UserId.Value, clusterId, credential.Id);
     }
 
-    /// <summary>
-    /// Quick check if a string looks like a JWT (three dot-separated base64 segments).
-    /// </summary>
     private static bool IsJwt(string token) =>
         token.Count(c => c == '.') == 2 && token.Length > 50;
 }
