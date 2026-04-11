@@ -25,13 +25,31 @@ builder.Services.AddReverseProxy()
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = builder.Configuration["Oidc:Authority"];
+        var metadataAddress = builder.Configuration["Oidc:MetadataAddress"];
+        if (!string.IsNullOrEmpty(metadataAddress))
+        {
+            // Use internal Docker hostname for JWKS fetch, skip issuer validation
+            // since the token issuer varies by access URL (LAN IP vs localhost).
+            options.Authority = null;
+            options.MetadataAddress = metadataAddress;
+        }
+        else
+        {
+            options.Authority = builder.Configuration["Oidc:Authority"];
+        }
+
         options.Audience = builder.Configuration["Oidc:Audience"];
         options.RequireHttpsMetadata =
             bool.TryParse(builder.Configuration["Oidc:RequireHttpsMetadata"], out var v) && v;
 
-        // Support OIDC tokens with both "sub" and "oid" claims
-        options.TokenValidationParameters.NameClaimType = "preferred_username";
+        options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        {
+            ValidateIssuer = false,    // issuer varies by access URL
+            ValidateAudience = false,  // tokens come from multiple clients (CLI, Web UI)
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true, // JWKS key check proves token authenticity
+            NameClaimType = "preferred_username",
+        };
     });
 builder.Services.AddAuthorization();
 

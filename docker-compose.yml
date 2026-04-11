@@ -26,6 +26,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       Oidc__Authority: "${OIDC_AUTHORITY}"
+      Oidc__MetadataAddress: "${OIDC_METADATA_ADDRESS}"
       Oidc__Audience: "${OIDC_AUDIENCE}"
       Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
       InternalJwt__PrivateKeyPath: "/etc/clustral/jwt/private.pem"
