@@ -152,7 +152,7 @@ services:
       - clustral
 
   tempo:
-    image: grafana/tempo:2.7
+    image: grafana/tempo:2.6.1
     restart: unless-stopped
     ports:
       - "4317:4317"
