@@ -66,6 +66,7 @@ services:
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
       AUTH_SECRET: "lXBA6UgneVKkAZSlKqDqLTuXigHVoScA"
+      AUDIT_SERVICE_URL: "http://audit-service:5200"
       NODE_ENV: "production"
     # No ports exposed — nginx handles all external traffic.
     # Uncomment for direct access during local dev without nginx:

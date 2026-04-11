@@ -11,6 +11,7 @@ const navItems = [
   { href: "/users", label: "Users" },
   { href: "/roles", label: "Roles" },
   { href: "/access-requests", label: "Access Requests" },
+  { href: "/audit", label: "Audit" },
 ];
 
 export function NavHeader() {
