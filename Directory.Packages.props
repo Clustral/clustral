@@ -25,6 +25,8 @@
     <!-- Messaging -->
     <PackageVersion Include="MassTransit" Version="8.2.5" />
     <PackageVersion Include="MassTransit.RabbitMQ" Version="8.2.5" />
+    <!-- API Gateway -->
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
     <!-- OpenAPI -->
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.3.1" />
     <!-- YAML -->

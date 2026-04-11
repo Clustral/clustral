@@ -12,6 +12,38 @@
 services:
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Clustral API Gateway (YARP — routes API + gRPC to downstream services)
+  # ──────────────────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: src/Clustral.ApiGateway/Dockerfile
+    restart: unless-stopped
+    labels:
+      - "service=api-gateway"
+    networks:
+      - clustral
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Oidc__Authority: "${OIDC_AUTHORITY}"
+      Oidc__Audience: "${OIDC_AUDIENCE}"
+      Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
+      InternalJwt__PrivateKeyPath: "/etc/clustral/jwt/private.pem"
+      Cors__AllowedOrigins__0: "https://${HOST_IP}"
+      Cors__AllowedOrigins__1: "http://localhost:5173"
+    ports:
+      # gRPC mTLS passthrough — agents connect here, forwarded to ControlPlane
+      - "5443:5443"
+    volumes:
+      - ./infra/internal-jwt/private.pem:/etc/clustral/jwt/private.pem:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/healthz || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Clustral ControlPlane (ASP.NET Core — REST + gRPC)
   # ──────────────────────────────────────────────────────────────────────────
   controlplane:
@@ -34,16 +66,16 @@ services:
       Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
       CertificateAuthority__CaCertPath: "${CA_CERT_PATH}"
       CertificateAuthority__CaKeyPath: "${CA_KEY_PATH}"
+      InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"
       RabbitMQ__Host: "${RABBITMQ_HOST}"
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
-    ports:
-      # gRPC mTLS — agents connect directly (not through nginx)
-      - "5443:5443"
+    # No external ports — gateway handles all external traffic.
+    # gRPC :5443 is internal — gateway proxies to it.
     volumes:
       - ./infra/ca:/etc/clustral/ca:ro
-    # REST :5100 and legacy gRPC :5101 are internal — nginx handles REST via :443.
+      - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:5100/healthz/ready || exit 1" ]
       interval: 10s
@@ -72,9 +104,6 @@ services:
       AUDIT_SERVICE_URL: "${AUDIT_SERVICE_URL}"
       NODE_ENV: "production"
     # No ports exposed — nginx handles all external traffic.
-    # Uncomment for direct access during local dev without nginx:
-    # ports:
-    #   - "3000:3000"
 
   # ──────────────────────────────────────────────────────────────────────────
   # Clustral Audit Service (ASP.NET Core — event consumer + REST API)
@@ -98,8 +127,6 @@ services:
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
     ports:
       - "5200:5200"
-    # RabbitMQ runs in infra/docker-compose.yml on the same network.
-    # MassTransit retries connection automatically if RabbitMQ isn't ready yet.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5200/swagger || exit 1"]
       interval: 10s
