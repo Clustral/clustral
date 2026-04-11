@@ -11,13 +11,13 @@ public record DeleteClusterCommand(Guid Id) : ICommand;
 public sealed class DeleteClusterHandler(
     IClusterRepository clusters,
     IAccessTokenRepository tokens,
+    ICurrentUserProvider currentUser,
     IMediator mediator,
     ILogger<DeleteClusterHandler> logger)
     : IRequestHandler<DeleteClusterCommand, Result>
 {
     public async Task<Result> Handle(DeleteClusterCommand request, CancellationToken ct)
     {
-        // Read before delete so the domain event carries the cluster name.
         var cluster = await clusters.GetByIdAsync(request.Id, ct);
         if (cluster is null)
             return ResultErrors.ClusterNotFound(request.Id.ToString());
@@ -26,12 +26,11 @@ public sealed class DeleteClusterHandler(
         if (!deleted)
             return ResultErrors.ClusterNotFound(request.Id.ToString());
 
-        // Cascade: delete all access tokens for this cluster.
         await tokens.DeleteByClusterIdAsync(request.Id, ct);
-        await mediator.Publish(new ClusterDeleted(request.Id, cluster.Name), ct);
+        await mediator.Publish(new ClusterDeleted(request.Id, cluster.Name, currentUser.Email), ct);
 
-        logger.LogInformation("Cluster {ClusterId} ({Name}) deregistered",
-            request.Id, cluster.Name);
+        logger.LogInformation("Cluster {ClusterId} ({Name}) deleted by {Email}",
+            request.Id, cluster.Name, currentUser.Email);
 
         return Result.Success();
     }

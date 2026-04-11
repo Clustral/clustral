@@ -11,7 +11,11 @@ namespace Clustral.ControlPlane.Features.Roles.Commands;
 public record CreateRoleCommand(string Name, string Description, List<string>? KubernetesGroups)
     : ICommand<Result<RoleResponse>>;
 
-public sealed class CreateRoleHandler(IRoleRepository roles, IMediator mediator, ILogger<CreateRoleHandler> logger)
+public sealed class CreateRoleHandler(
+    IRoleRepository roles,
+    ICurrentUserProvider currentUser,
+    IMediator mediator,
+    ILogger<CreateRoleHandler> logger)
     : IRequestHandler<CreateRoleCommand, Result<RoleResponse>>
 {
     public async Task<Result<RoleResponse>> Handle(CreateRoleCommand request, CancellationToken ct)
@@ -20,11 +24,12 @@ public sealed class CreateRoleHandler(IRoleRepository roles, IMediator mediator,
         if (exists)
             return ResultErrors.DuplicateRoleName(request.Name);
 
-        var role = Role.Create(request.Name, request.Description, request.KubernetesGroups);
+        var role = Role.Create(request.Name, request.Description,
+            request.KubernetesGroups, currentUser.Email);
 
         await roles.InsertAsync(role, ct);
         await mediator.DispatchDomainEventsAsync(role, ct);
-        logger.LogInformation("Role {Name} created with id {Id}", role.Name, role.Id);
+        logger.LogInformation("Role {Name} created by {Email}", role.Name, currentUser.Email);
 
         return new RoleResponse(role.Id, role.Name, role.Description, role.KubernetesGroups, role.CreatedAt);
     }

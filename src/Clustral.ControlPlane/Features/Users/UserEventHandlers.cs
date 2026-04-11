@@ -72,6 +72,7 @@ public sealed class UserAuditHandler(
             RoleName = role?.Name,
             ClusterId = e.ClusterId,
             ClusterName = cluster?.Name,
+            RemovedByEmail = e.ActorEmail,
             OccurredAt = e.OccurredAt
         }, ct);
     }

@@ -61,13 +61,14 @@ public sealed class ClusterAuditHandler(
 
     public async Task Handle(ClusterDeleted e, CancellationToken ct)
     {
-        logger.LogInformation("[Audit] Cluster {ClusterId} ({Name}) deleted",
-            e.ClusterId, e.ClusterName ?? "unknown");
+        logger.LogInformation("[Audit] Cluster {ClusterId} ({Name}) deleted by {Actor}",
+            e.ClusterId, e.ClusterName ?? "unknown", e.ActorEmail ?? "unknown");
 
         await publisher.Publish(new ClusterDeletedEvent
         {
             ClusterId = e.ClusterId,
             ClusterName = e.ClusterName,
+            DeletedByEmail = e.ActorEmail,
             OccurredAt = e.OccurredAt
         }, ct);
     }

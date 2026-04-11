@@ -54,6 +54,7 @@ public sealed class CredentialAuditHandler(
             UserEmail = user?.Email,
             ClusterId = credential?.ClusterId ?? default,
             ClusterName = cluster?.Name,
+            RevokedByEmail = e.ActorEmail,
             Reason = e.Reason,
             OccurredAt = e.OccurredAt
         }, ct);

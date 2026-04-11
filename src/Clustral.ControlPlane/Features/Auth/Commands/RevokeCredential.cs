@@ -23,9 +23,6 @@ public sealed class RevokeCredentialHandler(
     public async Task<Result<RevokeCredentialResponse>> Handle(
         RevokeCredentialCommand request, CancellationToken ct)
     {
-        // Note: AccessToken doesn't have a GetByIdAsync on the repository yet.
-        // Using ClustralDb directly for this lookup until IAccessTokenRepository
-        // is extended with GetByIdAsync.
         var credential = await db.AccessTokens
             .Find(t => t.Id == request.CredentialId)
             .FirstOrDefaultAsync(ct);
@@ -33,7 +30,6 @@ public sealed class RevokeCredentialHandler(
         if (credential is null)
             return ResultErrors.CredentialNotFound();
 
-        // Ownership check.
         if (credential.UserId.HasValue)
         {
             var owner = await users.GetByIdAsync(credential.UserId.Value, ct);
@@ -45,10 +41,10 @@ public sealed class RevokeCredentialHandler(
         credential.RevokedAt = now;
         credential.RevokedReason = request.Reason;
         await db.AccessTokens.ReplaceOneAsync(t => t.Id == credential.Id, credential, cancellationToken: ct);
-        await mediator.Publish(new CredentialRevoked(request.CredentialId, request.Reason), ct);
+        await mediator.Publish(new CredentialRevoked(request.CredentialId, request.Reason, currentUser.Email), ct);
 
-        logger.LogInformation("Credential {CredentialId} revoked by {Subject}",
-            request.CredentialId, currentUser.Subject);
+        logger.LogInformation("Credential {CredentialId} revoked by {Email}",
+            request.CredentialId, currentUser.Email);
 
         return new RevokeCredentialResponse(Revoked: true, RevokedAt: now);
     }

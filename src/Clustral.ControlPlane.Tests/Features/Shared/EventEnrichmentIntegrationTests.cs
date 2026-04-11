@@ -281,7 +281,7 @@ public sealed class EventEnrichmentIntegrationTests(MongoFixture mongo, ITestOut
         var published = new List<object>();
         var handler = new RoleAuditHandler(
             NullLogger<RoleAuditHandler>.Instance,
-            new FakePublishEndpoint(published), db);
+            new FakePublishEndpoint(published));
 
         await handler.Handle(new RoleDeleted(roleId, "obsolete-role"), CancellationToken.None);
 
@@ -568,7 +568,7 @@ public sealed class EventEnrichmentIntegrationTests(MongoFixture mongo, ITestOut
         var published = new List<object>();
         var handler = new RoleAuditHandler(
             NullLogger<RoleAuditHandler>.Instance,
-            new FakePublishEndpoint(published), db);
+            new FakePublishEndpoint(published));
 
         var roleId = Guid.NewGuid();
 
@@ -590,7 +590,7 @@ public sealed class EventEnrichmentIntegrationTests(MongoFixture mongo, ITestOut
         var published = new List<object>();
         var handler = new RoleAuditHandler(
             NullLogger<RoleAuditHandler>.Instance,
-            new FakePublishEndpoint(published), db);
+            new FakePublishEndpoint(published));
 
         var roleId = Guid.NewGuid();
 

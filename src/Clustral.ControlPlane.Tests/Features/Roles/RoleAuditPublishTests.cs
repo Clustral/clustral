@@ -17,7 +17,7 @@ public sealed class RoleAuditPublishTests(MongoFixture mongo, ITestOutputHelper 
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
         var handler = new RoleAuditHandler(
-            NullLogger<RoleAuditHandler>.Instance, publisher, mongo.CreateDb());
+            NullLogger<RoleAuditHandler>.Instance, publisher);
 
         var roleId = Guid.NewGuid();
         var roleName = "admin";
@@ -48,7 +48,7 @@ public sealed class RoleAuditPublishTests(MongoFixture mongo, ITestOutputHelper 
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
         var handler = new RoleAuditHandler(
-            NullLogger<RoleAuditHandler>.Instance, publisher, mongo.CreateDb());
+            NullLogger<RoleAuditHandler>.Instance, publisher);
 
         var roleId = Guid.NewGuid();
         var occurredAt = DateTimeOffset.UtcNow;

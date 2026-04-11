@@ -32,7 +32,8 @@ public sealed class Role : HasDomainEvents
     /// <summary>
     /// Creates a new role with the given Kubernetes groups.
     /// </summary>
-    public static Role Create(string name, string description, List<string>? kubernetesGroups = null)
+    public static Role Create(string name, string description,
+        List<string>? kubernetesGroups = null, string? actorEmail = null)
     {
         var groups = kubernetesGroups ?? [];
         var role = new Role
@@ -42,18 +43,19 @@ public sealed class Role : HasDomainEvents
             Description = description,
             KubernetesGroups = groups,
         };
-        role.RaiseDomainEvent(new RoleCreated(role.Id, name, groups));
+        role.RaiseDomainEvent(new RoleCreated(role.Id, name, groups, actorEmail));
         return role;
     }
 
     /// <summary>
     /// Applies partial updates to the role. Null values are skipped.
     /// </summary>
-    public void Update(string? name, string? description, List<string>? kubernetesGroups)
+    public void Update(string? name, string? description,
+        List<string>? kubernetesGroups, string? actorEmail = null)
     {
         if (name is not null) Name = name;
         if (description is not null) Description = description;
         if (kubernetesGroups is not null) KubernetesGroups = kubernetesGroups;
-        RaiseDomainEvent(new RoleUpdated(Id, name, description, kubernetesGroups));
+        RaiseDomainEvent(new RoleUpdated(Id, name, description, kubernetesGroups, actorEmail));
     }
 }

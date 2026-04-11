@@ -8,7 +8,8 @@ public sealed record CredentialIssued(
 }
 
 public sealed record CredentialRevoked(
-    Guid CredentialId, string? Reason) : IDomainEvent
+    Guid CredentialId, string? Reason,
+    string? ActorEmail = null) : IDomainEvent
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
