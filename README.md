@@ -26,6 +26,8 @@ graph TB
         NGX[nginx gateway<br/>:443 HTTPS]
         WEB[Web UI<br/>Next.js 14]
         CP[ControlPlane<br/>ASP.NET Core]
+        RMQ[RabbitMQ]
+        AUDIT[AuditService<br/>ASP.NET Core]
         DB[(MongoDB)]
     end
 
@@ -45,6 +47,9 @@ graph TB
     WEB -->|Server-side OIDC| OIDC
     WEB -->|"REST (SSR)"| CP
     CP --> DB
+    CP -->|integration events| RMQ
+    RMQ --> AUDIT
+    AUDIT --> DB
     AGENT ==>|"gRPC mTLS :5443<br/>(direct to Kestrel)"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
@@ -54,6 +59,8 @@ graph TB
 | **nginx**        | nginx 1.27                                  | Unified gateway — TLS termination, routing      |
 | **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | Dashboard, server-side OIDC via NextAuth        |
 | **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
+| **AuditService** | ASP.NET Core, MongoDB                       | Consumes audit events, queryable REST API       |
+| **RabbitMQ**     | RabbitMQ 4                                  | Message broker — audit event pipeline           |
 | **Agent**        | Go 1.23, gRPC, 16MB static binary           | Deployed per cluster, tunnels kubectl traffic   |
 | **CLI**          | .NET NativeAOT, System.CommandLine          | `clustral login` / `clustral kube login`        |
 
@@ -87,6 +94,7 @@ sequenceDiagram
     CLI->>NGX: GET /api/v1/users/me
     NGX->>CP: proxy /api/v1/*
     CP-->>CLI: User profile
+    Note over CP: CUA001I user.synced
     CLI-->>User: "Logged in successfully"
 ```
 
@@ -112,6 +120,7 @@ sequenceDiagram
     Agent-->>CP: HttpResponseFrame via gRPC tunnel
     CP-->>NGX: Pod list (JSON)
     NGX-->>kubectl: Pod list (JSON)
+    Note over CP: CPR001I proxy.request
 ```
 
 ### Agent Tunnel Lifecycle
@@ -136,6 +145,7 @@ sequenceDiagram
         Agent->>CP: AgentHello (cluster ID, agent version, k8s version)
         CP-->>Agent: TunnelHello (ack)
         CP->>DB: Set cluster status = Connected
+        Note over CP: CCL002I cluster.connected
 
         par Frame dispatch
             CP->>Agent: HttpRequestFrame
@@ -150,6 +160,7 @@ sequenceDiagram
 
         Note over Agent,CP: On disconnect
         CP->>DB: Set cluster status = Disconnected
+        Note over CP: CCL003W cluster.disconnected
         Agent->>Agent: Backoff + jitter, retry
     end
 ```
@@ -170,11 +181,13 @@ sequenceDiagram
     NGX->>WebUI: proxy (pages)
     WebUI->>CP: POST /api/v1/roles
     CP->>DB: Store role
+    Note over CP: CRL001I role.created
 
     Admin->>NGX: Assign "k8s-admin" to user
     NGX->>WebUI: proxy (pages)
     WebUI->>CP: POST /api/v1/users/{id}/assignments
     CP->>DB: Store assignment
+    Note over CP: CUA002I user.role_assigned
 
     Note over CP: Later, user runs kubectl via nginx...
 
@@ -252,6 +265,8 @@ flowchart TB
         subgraph app ["Application Zone"]
             WEB["Web UI\n:3000"]
             CP["ControlPlane\nREST :5100 | gRPC mTLS :5443"]
+            RMQ["RabbitMQ\n:5672"]
+            AUDIT["AuditService\n:5200"]
             DB[("MongoDB\n:27017")]
         end
     end
@@ -273,6 +288,9 @@ flowchart TB
     NGX -- "/* (pages)" --> WEB
     WEB -- "REST (SSR)" --> CP
     CP --> DB
+    CP -- "integration events" --> RMQ
+    RMQ -- "consume" --> AUDIT
+    AUDIT --> DB
 
     CLI -. "OIDC PKCE" .-> OIDC
     WEB -. "Server OIDC" .-> OIDC
@@ -295,6 +313,8 @@ flowchart TB
     style BROWSER fill:#fff,stroke:#666,color:#000
     style CLI fill:#fff,stroke:#666,color:#000
     style KUBECTL fill:#fff,stroke:#666,color:#000
+    style RMQ fill:#ffab91,stroke:#d84315,color:#000
+    style AUDIT fill:#90caf9,stroke:#1565c0,color:#000
 ```
 
 #### Port Reference
@@ -305,6 +325,8 @@ flowchart TB
 | **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Direct** | Agent tunnel — mTLS + JWT, no nginx |
 | **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
+| **RabbitMQ** | 5672 | AMQP | Internal | Message broker — audit event pipeline |
+| **AuditService REST** | 5200 | HTTP/1.1 | Internal | Audit event queries (proxied by Web UI) |
 | **MongoDB** | 27017 | TCP | Internal | Database (never exposed publicly) |
 | **OIDC Provider** | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta — browser + server flows |
 | **Agent → ControlPlane** | 5443 | gRPC/mTLS | **Outbound only** | Direct to Kestrel, no inbound rules needed |
@@ -481,6 +503,7 @@ sequenceDiagram
     CLI->>NGX: POST /api/v1/access-requests
     NGX->>CP: proxy
     CP->>DB: Create AccessRequest (status=Pending)
+    Note over CP: CAR001I access_request.created
     CP-->>CLI: Request ID + status
 
     Note over Admin: Admin reviews...
@@ -489,6 +512,7 @@ sequenceDiagram
     NGX->>CP: POST /api/v1/access-requests/{id}/approve
     CP->>CP: request.Approve(duration: 4h)
     CP->>DB: Status=Approved, grant expires in 4h
+    Note over CP: CAR002I access_request.approved
     CP-->>Admin: Approved
 
     Dev->>CLI: clustral kube login prod
@@ -750,6 +774,20 @@ clustral access deny <request-id> --reason "not authorized"
 # Revoke an active access grant
 clustral access revoke <request-id>
 
+# --- Audit ---
+
+# Query audit events
+clustral audit
+
+# Filter by category
+clustral audit --category access_requests
+
+# Filter by event code and severity
+clustral audit --code CAR003W --severity Warning
+
+# JSON output for scripting
+clustral audit -o json
+
 # --- Identity ---
 
 # Quick check: who am I, is my session valid?
@@ -956,6 +994,122 @@ When a user runs `kubectl`, the ControlPlane looks up their role assignment for 
 
 Users without a role assignment for a cluster receive `403: No role assigned for this cluster`.
 
+## Audit Logging
+
+Every security-relevant action in Clustral produces a structured audit event. Events flow through an asynchronous pipeline: the ControlPlane raises domain events after each mutation, enriches them with user emails and cluster names via database lookups, and publishes integration events to RabbitMQ via MassTransit. The AuditService consumes these events and persists them to MongoDB as immutable, append-only records.
+
+Audit events follow [Teleport's enterprise convention](https://goteleport.com/docs/reference/audit/) — structured event codes with severity suffixes, category grouping, and actor/resource/cluster context.
+
+### Event Pipeline
+
+```mermaid
+sequenceDiagram
+    participant CP as ControlPlane
+    participant DB as MongoDB
+    participant RMQ as RabbitMQ
+    participant AS as AuditService
+    participant ADB as MongoDB (audit)
+
+    Note over CP: Action occurs (e.g. access request approved)
+    CP->>CP: Domain event raised (MediatR)
+    CP->>DB: Enrich: look up user email, cluster name, role name
+    CP->>RMQ: Publish integration event (MassTransit)
+    RMQ->>AS: Deliver to consumer queue (quorum, durable)
+    AS->>AS: Map to AuditEvent (code, category, severity)
+    AS->>ADB: Insert immutable audit record
+    Note over ADB: Indexed by time, category, user, cluster, code
+```
+
+### Event Codes
+
+Event codes follow the format `[PREFIX][NUMBER][SEVERITY]` where the prefix identifies the subsystem, the number identifies the specific event, and the suffix indicates severity (`I` = Info, `W` = Warning, `E` = Error).
+
+| Code | Event | Category | Severity | Description |
+|---|---|---|---|---|
+| `CAR001I` | `access_request.created` | `access_requests` | Info | User submitted an access request |
+| `CAR002I` | `access_request.approved` | `access_requests` | Info | Admin approved an access request |
+| `CAR003W` | `access_request.denied` | `access_requests` | Warning | Admin denied an access request |
+| `CAR004I` | `access_request.revoked` | `access_requests` | Info | Active access grant was revoked |
+| `CAR005I` | `access_request.expired` | `access_requests` | Info | Access grant expired naturally |
+| `CCR001I` | `credential.issued` | `credentials` | Info | Kubeconfig credential issued |
+| `CCR002I` | `credential.revoked` | `credentials` | Info | Credential revoked (logout or admin action) |
+| `CCL001I` | `cluster.registered` | `clusters` | Info | New cluster registered |
+| `CCL002I` | `cluster.connected` | `clusters` | Info | Agent established tunnel connection |
+| `CCL003W` | `cluster.disconnected` | `clusters` | Warning | Agent tunnel dropped |
+| `CCL004I` | `cluster.deleted` | `clusters` | Info | Cluster removed from the system |
+| `CRL001I` | `role.created` | `roles` | Info | New role created |
+| `CRL002I` | `role.updated` | `roles` | Info | Role definition updated |
+| `CRL003I` | `role.deleted` | `roles` | Info | Role removed |
+| `CUA001I` | `user.synced` | `auth` | Info | User synced from OIDC provider on login |
+| `CUA002I` | `user.role_assigned` | `auth` | Info | Role assigned to user for a cluster |
+| `CUA003I` | `user.role_unassigned` | `auth` | Info | Role assignment removed |
+| `CPR001I` | `proxy.request` | `proxy` | Info* | kubectl proxy request completed |
+
+> \*`CPR001I` severity is elevated to Warning when the HTTP response status code is >= 400.
+
+### Severity Levels
+
+| Suffix | Level | Usage |
+|---|---|---|
+| `I` | Info | Normal operations — successful actions, state transitions |
+| `W` | Warning | Noteworthy events — denied requests, disconnections, proxy errors (4xx/5xx) |
+| `E` | Error | Reserved for future use — system-level failures |
+
+### Categories
+
+| Category | Prefix | Subsystem |
+|---|---|---|
+| `access_requests` | `CAR` | JIT access request lifecycle |
+| `credentials` | `CCR` | Kubeconfig credential issuance and revocation |
+| `clusters` | `CCL` | Cluster registration and agent connectivity |
+| `roles` | `CRL` | Role CRUD operations |
+| `auth` | `CUA` | User sync and role assignment changes |
+| `proxy` | `CPR` | kubectl proxy request completions |
+
+### Querying Audit Logs
+
+Audit events are queryable through three interfaces.
+
+#### REST API
+
+```
+GET /api/v1/audit?category=access_requests&severity=Warning&page=1&pageSize=50
+GET /api/v1/audit/{uid}
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `category` | string | Filter by category (`access_requests`, `credentials`, `clusters`, `roles`, `auth`, `proxy`) |
+| `code` | string | Filter by event code (e.g. `CAR003W`) |
+| `severity` | string | `Info`, `Warning`, or `Error` |
+| `user` | string | Filter by actor email |
+| `clusterId` | GUID | Filter by cluster |
+| `resourceId` | GUID | Filter by resource |
+| `from` | ISO 8601 | Start of time range |
+| `to` | ISO 8601 | End of time range |
+| `page` | int | Page number (default: 1) |
+| `pageSize` | int | Results per page (1-200, default: 50) |
+
+#### CLI
+
+```bash
+# List recent audit events
+clustral audit
+
+# Filter by category and severity
+clustral audit --category access_requests --severity Warning
+
+# Filter by user and time range
+clustral audit --user admin@corp.com --from 2026-04-01 --to 2026-04-11
+
+# JSON output for scripting
+clustral audit --category proxy -o json | jq '.events[] | select(.success == false)'
+```
+
+#### Web UI
+
+Navigate to **/audit** in the dashboard. The audit log viewer provides inline filters (category, severity, user, event code, date range) with 30-second auto-refresh and a detail dialog for each event showing full metadata including request bodies for proxy events.
+
 ## Project Structure
 
 ### Monorepo map
@@ -965,6 +1119,7 @@ graph LR
     subgraph "Clustral/clustral (monorepo)"
         subgraph "src/"
             CP["Clustral.ControlPlane<br/>.NET / ASP.NET Core"]
+            AUDIT["Clustral.AuditService<br/>.NET / ASP.NET Core"]
             CLI["Clustral.Cli<br/>.NET NativeAOT"]
             WEB["Clustral.Web<br/>Next.js 14"]
             AGENT["clustral-agent<br/>Go 1.23"]
@@ -972,6 +1127,7 @@ graph LR
 
         subgraph "packages/"
             SDK["Clustral.Sdk<br/>Shared .NET library"]
+            CONTRACTS["Clustral.Contracts<br/>Integration events"]
             PROTO["proto/<br/>.proto contracts"]
         end
 
@@ -990,9 +1146,13 @@ graph LR
 
     SDK -->|"referenced by"| CP
     SDK -->|"referenced by"| CLI
+    SDK -->|"referenced by"| AUDIT
+    CONTRACTS -->|"referenced by"| CP
+    CONTRACTS -->|"referenced by"| AUDIT
     PROTO -->|".NET stubs"| SDK
     PROTO -->|"Go stubs"| AGENT
     CI -->|"builds images"| CP
+    CI -->|"builds images"| AUDIT
     CI -->|"builds images"| WEB
     CI -->|"builds images"| AGENT
     CI -->|"builds binaries<br/>on git tag"| CLI
@@ -1012,8 +1172,12 @@ graph TB
 
     subgraph ".NET projects"
         SDK_GEN --> SDK[Clustral.Sdk]
+        CONTRACTS[Clustral.Contracts]
         SDK --> CP[Clustral.ControlPlane]
         SDK --> CLI[Clustral.Cli]
+        SDK --> AUDIT[Clustral.AuditService]
+        CONTRACTS --> CP
+        CONTRACTS --> AUDIT
     end
 
     subgraph "Standalone"
@@ -1023,6 +1187,7 @@ graph TB
 
     subgraph "CI outputs"
         CP -->|Docker| CP_IMG[ghcr.io/.../controlplane]
+        AUDIT -->|Docker| AUDIT_IMG[ghcr.io/.../audit-service]
         AGENT -->|Docker| AGENT_IMG[ghcr.io/.../agent]
         WEB -->|Docker| WEB_IMG[ghcr.io/.../web]
         CLI -->|NativeAOT| CLI_BIN[GitHub Release binaries]
@@ -1036,11 +1201,13 @@ graph TB
 Clustral/clustral (monorepo)
 ├── src/
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
+│   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
 │   ├── clustral-agent/          # Go — gRPC tunnel + kubectl proxy (16MB binary)
 │   ├── Clustral.Cli/            # .NET NativeAOT — login, kubeconfig, self-update
 │   └── Clustral.Web/            # Next.js 14 — dashboard, OIDC, access management
 ├── packages/
 │   ├── Clustral.Sdk/            # Shared .NET: TokenCache, KubeconfigWriter
+│   ├── Clustral.Contracts/      # Shared integration event records (MassTransit)
 │   └── proto/                   # Protobuf contracts (shared between .NET + Go)
 ├── infra/
 │   ├── keycloak/                # Realm export with pre-configured clients
@@ -1067,6 +1234,7 @@ Clustral/homebrew-tap (separate repo)
 | Image | Stack | Size |
 |---|---|---|
 | `ghcr.io/clustral/clustral-controlplane` | .NET 10 | ~80MB |
+| `ghcr.io/clustral/clustral-audit-service` | .NET 10 | ~80MB |
 | `ghcr.io/clustral/clustral-agent` | Go 1.23 | ~16MB |
 | `ghcr.io/clustral/clustral-web` | Node.js 20 | ~50MB |
 
@@ -1159,7 +1327,7 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET unit + integration tests (713 tests — fast, no Docker network required)
+# .NET unit + integration tests (796 tests — fast, no Docker network required)
 dotnet test Clustral.slnx --filter "Category!=E2E"
 
 # Go Agent (with race detector)
@@ -1169,7 +1337,7 @@ cd src/clustral-agent && go test -race ./...
 dotnet test src/Clustral.E2E.Tests
 ```
 
-> **737+ total tests** across .NET and Go, in three layers:
+> **820+ total tests** across .NET and Go, in three layers:
 >
 > 1. **Unit tests** — pure logic, no external dependencies.
 > 2. **Integration tests** — `WebApplicationFactory` + Testcontainers MongoDB, exercising
