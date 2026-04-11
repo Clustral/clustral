@@ -102,9 +102,94 @@ services:
     networks:
       - clustral
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # RabbitMQ 4 (message broker for integration events)
+  #
+  # Management UI: http://localhost:15672 (clustral/clustral)
+  # AMQP: localhost:5672
+  # ──────────────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:4-management
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: clustral
+      RABBITMQ_DEFAULT_PASS: clustral
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - clustral
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Observability stack (Prometheus + Loki + Tempo + Grafana)
+  #
+  # Grafana: http://localhost:3001 (admin/clustral)
+  # Prometheus: http://localhost:9090
+  # ──────────────────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v3.4
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - clustral
+
+  loki:
+    image: grafana/loki:3.4
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - clustral
+
+  tempo:
+    image: grafana/tempo:2.7
+    restart: unless-stopped
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    command: -config.file=/etc/tempo/tempo.yaml
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo/traces
+    networks:
+      - clustral
+
+  grafana:
+    image: grafana/grafana:12.0.0
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: clustral
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - clustral
+
 volumes:
   mongo_data:
   certs:
+  tempo_data:
+  grafana_data:
 
 networks:
   clustral:

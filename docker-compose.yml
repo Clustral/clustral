@@ -22,13 +22,19 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       MongoDB__ConnectionString: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Oidc__Authority: "http://192.168.88.6:8080/realms/clustral"
-      Oidc__MetadataAddress: "http://192.168.88.6:8080/realms/clustral/.well-known/openid-configuration"
+      Oidc__Authority: "http://192.168.88.4:8080/realms/clustral"
+      Oidc__MetadataAddress: "http://192.168.88.4:8080/realms/clustral/.well-known/openid-configuration"
       Oidc__ClientId: "clustral-control-plane"
       Oidc__Audience: "clustral-control-plane"
       Oidc__RequireHttpsMetadata: "false"
       CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
       CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__User: "clustral"
+      RabbitMQ__Pass: "clustral"
+      OpenTelemetry__ServiceName: "clustral-controlplane"
+      OpenTelemetry__OtlpEndpoint: "http://tempo:4317"
     ports:
       # gRPC mTLS — agents connect directly (not through nginx)
       - "5443:5443"
@@ -53,10 +59,10 @@ services:
     networks:
       - clustral
     environment:
-      NEXTAUTH_URL: "https://192.168.88.6"
+      NEXTAUTH_URL: "https://192.168.88.4"
       CONTROLPLANE_URL: "http://controlplane:5100"
-      CONTROLPLANE_PUBLIC_URL: "https://192.168.88.6"
-      OIDC_ISSUER: "http://192.168.88.6:8080/realms/clustral"
+      CONTROLPLANE_PUBLIC_URL: "https://192.168.88.4"
+      OIDC_ISSUER: "http://192.168.88.4:8080/realms/clustral"
       OIDC_CLIENT_ID: "clustral-web"
       OIDC_CLIENT_SECRET: "clustral-web-secret"
       AUTH_SECRET: "lXBA6UgneVKkAZSlKqDqLTuXigHVoScA"
@@ -65,6 +71,38 @@ services:
     # Uncomment for direct access during local dev without nginx:
     # ports:
     #   - "3000:3000"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Clustral Audit Service (ASP.NET Core — event consumer + REST API)
+  # ──────────────────────────────────────────────────────────────────────────
+  audit-service:
+    build:
+      context: .
+      dockerfile: src/Clustral.AuditService/Dockerfile
+    restart: unless-stopped
+    networks:
+      - clustral
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      MongoDB__ConnectionString: "mongodb://mongo:27017"
+      MongoDB__DatabaseName: "clustral-audit"
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__User: "clustral"
+      RabbitMQ__Pass: "clustral"
+      OpenTelemetry__ServiceName: "clustral-audit-service"
+      OpenTelemetry__OtlpEndpoint: "http://tempo:4317"
+    ports:
+      - "5200:5200"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5200/swagger || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
 networks:
   clustral:

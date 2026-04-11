@@ -1,0 +1,60 @@
+{
+  "dashboard": {
+    "title": "ControlPlane Health",
+    "uid": "clustral-controlplane-health",
+    "tags": ["clustral", "controlplane"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "HTTP Request Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "targets": [
+          {
+            "expr": "rate(http_server_request_duration_seconds_count{job=\"controlplane\"}[1m]) * 60",
+            "legendFormat": "{{http_request_method}} {{http_route}}"
+          }
+        ]
+      },
+      {
+        "title": "HTTP Latency (p95)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_server_request_duration_seconds_bucket{job=\"controlplane\"}[5m]))",
+            "legendFormat": "p95"
+          }
+        ]
+      },
+      {
+        "title": "HTTP Error Rate (4xx + 5xx)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "targets": [
+          {
+            "expr": "rate(http_server_request_duration_seconds_count{job=\"controlplane\",http_response_status_code=~\"4..|5..\"}[1m]) * 60",
+            "legendFormat": "{{http_response_status_code}}"
+          }
+        ]
+      },
+      {
+        "title": "MassTransit Publish Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "targets": [
+          {
+            "expr": "rate(masstransit_send_total{job=\"controlplane\"}[1m]) * 60",
+            "legendFormat": "{{message_type}}"
+          }
+        ]
+      }
+    ],
+    "time": { "from": "now-1h", "to": "now" },
+    "refresh": "30s"
+  }
+}
