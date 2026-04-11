@@ -33,12 +33,8 @@ services:
       # Override Development appsettings — use Docker DNS names
       ReverseProxy__Clusters__controlplane__Destinations__default__Address: "http://controlplane:5100"
       ReverseProxy__Clusters__audit-service__Destinations__default__Address: "http://audit-service:5200"
-      ReverseProxy__Clusters__controlplane-grpc__Destinations__default__Address: "https://controlplane:5443"
       Cors__AllowedOrigins__0: "https://${HOST_IP}"
       Cors__AllowedOrigins__1: "http://localhost:5173"
-    ports:
-      # gRPC mTLS passthrough — agents connect here, forwarded to ControlPlane
-      - "5443:5443"
     volumes:
       - ./infra/internal-jwt/private.pem:/etc/clustral/jwt/private.pem:ro
     healthcheck:
@@ -76,8 +72,9 @@ services:
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
-    # No external ports — gateway handles all external traffic.
-    # gRPC :5443 is internal — gateway proxies to it.
+    ports:
+      # gRPC mTLS — agents connect directly (not through gateway)
+      - "5443:5443"
     volumes:
       - ./infra/ca:/etc/clustral/ca:ro
       - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro
