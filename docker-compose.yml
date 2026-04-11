@@ -94,9 +94,8 @@ services:
       OpenTelemetry__OtlpEndpoint: "http://tempo:4317"
     ports:
       - "5200:5200"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+    # RabbitMQ runs in infra/docker-compose.yml on the same network.
+    # MassTransit retries connection automatically if RabbitMQ isn't ready yet.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5200/swagger || exit 1"]
       interval: 10s
