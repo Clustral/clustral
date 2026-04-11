@@ -70,7 +70,8 @@ public sealed class InternalJwtService
                 c.Type is ClaimTypes.NameIdentifier or "sub"
                     or ClaimTypes.Email or "email"
                     or ClaimTypes.Name or "name"
-                    or "preferred_username"),
+                    or "preferred_username"
+                    or "cluster_id" or "jti" or "kind"),
             notBefore: now,
             expires: now.Add(_tokenLifetime),
             signingCredentials: credentials);
