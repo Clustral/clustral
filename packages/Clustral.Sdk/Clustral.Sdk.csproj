@@ -21,6 +21,9 @@
     <PackageReference Include="YamlDotNet" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" />
+    <!-- CQS -->
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="FluentValidation" />
     <!-- Messaging -->
     <PackageReference Include="MassTransit" />
     <PackageReference Include="MassTransit.RabbitMQ" />

@@ -28,6 +28,10 @@ builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,
 // ── OpenTelemetry (metrics + distributed tracing → Grafana) ──────────────
 builder.Services.AddApplicationOpenTelemetry(builder.Configuration);
 
+// ── CQS + MediatR ───────────────────────────────────────────────────────
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
+
 // ── ASP.NET Core ─────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
