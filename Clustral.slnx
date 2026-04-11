@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/packages/">
+    <Project Path="packages/Clustral.Contracts/Clustral.Contracts.csproj" />
     <Project Path="packages/Clustral.Sdk.Tests/Clustral.Sdk.Tests.csproj" />
     <Project Path="packages/Clustral.Sdk/Clustral.Sdk.csproj" />
   </Folder>
