@@ -1,7 +1,5 @@
-using Prometheus;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Sdk.Messaging;
-using Clustral.Sdk.Telemetry;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
@@ -18,23 +16,10 @@ catch (BsonSerializationException) { /* already registered */ }
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Logging ──────────────────────────────────────────────────────────────
-builder.Host.UseSerilog((ctx, lc) =>
-{
-    lc.ReadFrom.Configuration(ctx.Configuration)
-        .Enrich.FromLogContext()
-        .WriteTo.Console();
-
-    var otlpEndpoint = ctx.Configuration["OpenTelemetry:LogsEndpoint"];
-    var serviceName = ctx.Configuration["OpenTelemetry:ServiceName"];
-    if (!string.IsNullOrEmpty(otlpEndpoint))
-    {
-        lc.WriteTo.OpenTelemetry(sinkOptions =>
-        {
-            sinkOptions.Endpoint = otlpEndpoint;
-            sinkOptions.ResourceAttributes.Add("service.name", serviceName ?? "clustral-audit-service");
-        });
-    }
-});
+builder.Host.UseSerilog((ctx, lc) => lc
+    .ReadFrom.Configuration(ctx.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
 
 // ── MongoDB ──────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<IMongoClient>(sp =>
@@ -50,9 +35,6 @@ builder.Services.AddScoped<Clustral.AuditService.Domain.Repositories.IAuditEvent
 // ── MassTransit (consume integration events from RabbitMQ) ───────────────
 builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,
     consumersAssembly: typeof(Program).Assembly);
-
-// ── OpenTelemetry (metrics + distributed tracing → Grafana) ──────────────
-builder.Services.AddApplicationOpenTelemetry(builder.Configuration);
 
 // ── CQS + MediatR ───────────────────────────────────────────────────────
 builder.Services.AddMediatR(cfg =>
@@ -79,10 +61,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpMetrics();
 app.UseSerilogRequestLogging();
 app.MapControllers();
-app.MapMetrics(); // GET /metrics for Prometheus scraping
 
 app.Run();
 

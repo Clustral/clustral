@@ -1,4 +1,3 @@
-using Prometheus;
 using System.Reflection;
 using System.Text.Json;
 using Clustral.ControlPlane.Features.Proxy;
@@ -6,7 +5,6 @@ using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Clustral.Sdk.Messaging;
-using Clustral.Sdk.Telemetry;
 using Clustral.ControlPlane.Protos;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -23,25 +21,11 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, services, configuration) =>
-{
-    configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .WriteTo.Console();
-
-    var otlpEndpoint = context.Configuration["OpenTelemetry:LogsEndpoint"];
-    var serviceName = context.Configuration["OpenTelemetry:ServiceName"];
-    if (!string.IsNullOrEmpty(otlpEndpoint))
-    {
-        configuration.WriteTo.OpenTelemetry(sinkOptions =>
-        {
-            sinkOptions.Endpoint = otlpEndpoint;
-            sinkOptions.ResourceAttributes.Add("service.name", serviceName ?? "clustral-controlplane");
-        });
-    }
-});
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Options — validated at startup via FluentValidation + ValidateOnStart().
@@ -291,8 +275,6 @@ if (proxyOpts.RateLimiting.Enabled)
 // ── MassTransit (publish integration events to RabbitMQ) ──────────────────
 builder.Services.AddMassTransitWithRabbitMq(builder.Configuration);
 
-// ── OpenTelemetry (metrics + distributed tracing → Grafana) ──────────────
-builder.Services.AddApplicationOpenTelemetry(builder.Configuration);
 
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
@@ -334,7 +316,6 @@ var app = builder.Build();
 // Global exception handler — must be first to catch all unhandled exceptions.
 app.UseMiddleware<Clustral.ControlPlane.Api.GlobalExceptionHandlerMiddleware>();
 
-app.UseHttpMetrics();
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
@@ -360,7 +341,6 @@ app.UseAuthorization();
 
 // REST endpoints
 app.MapControllers();
-app.MapMetrics(); // GET /metrics for Prometheus scraping
 
 // gRPC endpoints
 app.MapGrpcService<ClusterServiceImpl>();
