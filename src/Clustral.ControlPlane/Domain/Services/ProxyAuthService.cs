@@ -14,8 +14,7 @@ public sealed class ProxyAuthService(
     IAccessTokenRepository accessTokens)
 {
     public async Task<Result<ProxyIdentity>> AuthenticateAsync(
-        string bearerToken, Guid clusterId, CancellationToken ct = default,
-        string? internalToken = null)
+        Guid clusterId, string? internalToken, CancellationToken ct = default)
     {
         // The gateway validates all tokens (OIDC + kubeconfig JWT) and issues
         // an internal JWT with the extracted claims. Read identity from it.

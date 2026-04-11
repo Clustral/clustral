@@ -21,7 +21,6 @@ namespace Clustral.ControlPlane.Features.Proxy.Commands;
 /// </summary>
 public sealed record ProxyKubectlRequestCommand(
     Guid ClusterId,
-    string BearerToken,
     string Method,
     string K8sPath,
     IReadOnlyList<ProxyHeader> ForwardHeaders,
@@ -60,7 +59,7 @@ public sealed class ProxyKubectlRequestHandler(
 
         // ── 1. Authenticate ────────────────────────────────────────────────
         var authResult = await proxyAuth.AuthenticateAsync(
-            request.BearerToken, request.ClusterId, ct, request.InternalToken);
+            request.ClusterId, request.InternalToken, ct);
         if (authResult.IsFailure)
         {
             PublishAccessDeniedEvent(request, null, authResult.Error!.Message);
