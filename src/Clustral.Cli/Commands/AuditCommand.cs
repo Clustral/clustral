@@ -76,7 +76,7 @@ internal static class AuditCommand
         {
             CliErrors.WriteNotConfigured(
                 "Audit Service URL not configured",
-                "Set auditServiceUrl in ~/.clustral/config.json");
+                "Run 'clustral login' to auto-discover, or set auditServiceUrl in ~/.clustral/config.json");
             ctx.ExitCode = 1;
             return;
         }

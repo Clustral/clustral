@@ -8,9 +8,11 @@ export const dynamic = "force-dynamic";
  * After discovery, the CLI talks directly to the ControlPlane.
  */
 export async function GET() {
+  const controlPlaneUrl =
+    process.env.CONTROLPLANE_PUBLIC_URL || process.env.CONTROLPLANE_URL;
   return NextResponse.json({
-    controlPlaneUrl:
-      process.env.CONTROLPLANE_PUBLIC_URL || process.env.CONTROLPLANE_URL,
+    controlPlaneUrl,
+    auditServiceUrl: process.env.AUDIT_SERVICE_PUBLIC_URL || controlPlaneUrl,
     oidcAuthority: process.env.OIDC_ISSUER,
     oidcClientId: "clustral-cli",
     oidcScopes: "openid email profile",

@@ -150,6 +150,8 @@ internal static class LoginCommand
             : cpUrl;
 
         config.ControlPlaneUrl = effectiveCpUrl;
+        if (!string.IsNullOrWhiteSpace(discovered.AuditServiceUrl))
+            config.AuditServiceUrl = discovered.AuditServiceUrl;
         if (!string.IsNullOrWhiteSpace(discovered.OidcAuthority))
             config.OidcAuthority = discovered.OidcAuthority;
         if (!string.IsNullOrWhiteSpace(discovered.OidcClientId))
@@ -157,6 +159,8 @@ internal static class LoginCommand
         if (!string.IsNullOrWhiteSpace(discovered.OidcScopes))
             config.OidcScopes = discovered.OidcScopes;
         config.Save();
+
+        CliDebug.Log($"Discovered audit service URL: {config.AuditServiceUrl}");
 
         // ── Run OIDC PKCE flow ────────────────────────────────────────────
         var flow = new OidcFlowHandler(

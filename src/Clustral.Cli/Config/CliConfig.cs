@@ -199,6 +199,7 @@ internal sealed class ControlPlaneConfig
 {
     [JsonPropertyName("version")]          public string Version         { get; set; } = string.Empty;
     [JsonPropertyName("controlPlaneUrl")]  public string ControlPlaneUrl { get; set; } = string.Empty;
+    [JsonPropertyName("auditServiceUrl")]  public string AuditServiceUrl { get; set; } = string.Empty;
     [JsonPropertyName("oidcAuthority")]    public string OidcAuthority   { get; set; } = string.Empty;
     [JsonPropertyName("oidcClientId")]     public string OidcClientId    { get; set; } = string.Empty;
     [JsonPropertyName("oidcScopes")]       public string OidcScopes      { get; set; } = string.Empty;
