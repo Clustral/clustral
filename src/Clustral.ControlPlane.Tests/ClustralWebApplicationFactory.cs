@@ -81,6 +81,12 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
                 opts.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             });
 
+            // Register KubeconfigJwtService with a test key pair.
+            using var testKey = System.Security.Cryptography.ECDsa.Create(
+                System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+            services.AddSingleton(Clustral.Sdk.Auth.KubeconfigJwtService.ForSigning(
+                testKey.ExportECPrivateKeyPem()));
+
             // Remove MassTransit's hosted service so bus startup doesn't
             // block waiting for a RabbitMQ connection that doesn't exist.
             var mtHostedServices = services

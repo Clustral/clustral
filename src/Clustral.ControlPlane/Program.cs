@@ -148,6 +148,14 @@ else
 
 builder.Services.AddAuthorization();
 
+// ── Kubeconfig JWT service (ES256 — signs kubeconfig credential JWTs) ────────
+var kubeconfigJwtPrivateKeyPath = builder.Configuration["KubeconfigJwt:PrivateKeyPath"];
+if (!string.IsNullOrEmpty(kubeconfigJwtPrivateKeyPath) && File.Exists(kubeconfigJwtPrivateKeyPath))
+{
+    var privateKeyPem = File.ReadAllText(kubeconfigJwtPrivateKeyPath);
+    builder.Services.AddSingleton(KubeconfigJwtService.ForSigning(privateKeyPem));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MVC Controllers + OpenAPI
 // ─────────────────────────────────────────────────────────────────────────────

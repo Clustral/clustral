@@ -44,12 +44,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
         {
-            ValidateIssuer = false,    // issuer varies by access URL
-            ValidateAudience = false,  // tokens come from multiple clients (CLI, Web UI)
+            ValidateIssuer = false,    // issuer varies (OIDC provider, clustral-controlplane)
+            ValidateAudience = false,  // tokens come from multiple clients (CLI, Web UI, kubeconfig)
             ValidateLifetime = true,
-            ValidateIssuerSigningKey = true, // JWKS key check proves token authenticity
+            ValidateIssuerSigningKey = true, // JWKS or ES256 key check proves authenticity
             NameClaimType = "preferred_username",
         };
+
+        // Add kubeconfig JWT public key as additional valid signing key.
+        // The middleware tries OIDC JWKS keys first, then this ES256 key.
+        var kubeconfigPublicKeyPath = builder.Configuration["KubeconfigJwt:PublicKeyPath"];
+        if (!string.IsNullOrEmpty(kubeconfigPublicKeyPath) && File.Exists(kubeconfigPublicKeyPath))
+        {
+            var publicKeyPem = File.ReadAllText(kubeconfigPublicKeyPath);
+            var kubeconfigJwt = KubeconfigJwtService.ForValidation(publicKeyPem);
+            options.TokenValidationParameters.IssuerSigningKeys =
+                [kubeconfigJwt.GetSecurityKey()];
+        }
     });
 builder.Services.AddAuthorization();
 

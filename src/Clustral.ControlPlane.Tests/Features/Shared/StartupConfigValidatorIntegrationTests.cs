@@ -33,12 +33,15 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
 
                 builder.ConfigureServices(services =>
                 {
-                    // Replace IMongoClient with one that has a very short
-                    // timeout so EnsureIndexesAsync doesn't hang for 30s
-                    // when no real MongoDB is running.
                     services.RemoveAll<IMongoClient>();
                     services.AddSingleton<IMongoClient>(
                         new MongoClient("mongodb://localhost:27017/?serverSelectionTimeout=1s&connectTimeout=1s"));
+
+                    // Register KubeconfigJwtService with a test key.
+                    using var k = System.Security.Cryptography.ECDsa.Create(
+                        System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+                    services.AddSingleton(Clustral.Sdk.Auth.KubeconfigJwtService.ForSigning(
+                        k.ExportECPrivateKeyPem()));
                 });
             });
     }

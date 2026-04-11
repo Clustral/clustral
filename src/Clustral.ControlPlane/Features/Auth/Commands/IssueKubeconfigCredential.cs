@@ -1,5 +1,6 @@
 using Clustral.ControlPlane.Api.Models;
 using Clustral.ControlPlane.Domain;
+using Clustral.Sdk.Auth;
 using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Repositories;
 using Clustral.ControlPlane.Domain.Services;
@@ -24,6 +25,7 @@ public sealed class IssueKubeconfigCredentialHandler(
     UserSyncService userSync,
     AccessSpecifications specs,
     TokenHashingService tokens,
+    KubeconfigJwtService kubeconfigJwtService,
     ILogger<IssueKubeconfigCredentialHandler> logger)
     : IRequestHandler<IssueKubeconfigCredentialCommand, Result<IssueKubeconfigCredentialResponse>>
 {
@@ -57,9 +59,7 @@ public sealed class IssueKubeconfigCredentialHandler(
         var user = await userSync.SyncFromOidcClaimsAsync(
             subject, currentUser.Email, currentUser.DisplayName, ct);
 
-        // 4. Generate token.
-        var rawToken = tokens.GenerateToken();
-        var tokenHash = tokens.HashToken(rawToken);
+        // 4. Calculate expiry.
         var now = DateTimeOffset.UtcNow;
         var expiresAt = now + ttl;
 
@@ -71,9 +71,14 @@ public sealed class IssueKubeconfigCredentialHandler(
                 expiresAt = activeGrant.GrantExpiresAt.Value;
         }
 
+        // 6. Issue kubeconfig JWT (ES256) instead of random token.
+        var credentialId = Guid.NewGuid();
+        var kubeconfigJwt = kubeconfigJwtService.Issue(credentialId, user.Id, cluster.Id, expiresAt);
+        var tokenHash = tokens.HashToken(kubeconfigJwt);
+
         var credential = new AccessToken
         {
-            Id        = Guid.NewGuid(),
+            Id        = credentialId,
             Kind      = CredentialKind.UserKubeconfig,
             TokenHash = tokenHash,
             ClusterId = cluster.Id,
@@ -85,11 +90,11 @@ public sealed class IssueKubeconfigCredentialHandler(
         await mediator.Publish(new CredentialIssued(credential.Id, user.Id, cluster.Id, expiresAt), ct);
 
         logger.LogInformation(
-            "Issued kubeconfig credential {CredentialId} for user {Subject} on cluster {ClusterName}",
+            "Issued kubeconfig JWT credential {CredentialId} for user {Subject} on cluster {ClusterName}",
             credential.Id, subject, cluster.Name);
 
         return new IssueKubeconfigCredentialResponse(
-            credential.Id, rawToken, credential.IssuedAt, credential.ExpiresAt,
+            credential.Id, kubeconfigJwt, credential.IssuedAt, credential.ExpiresAt,
             subject, currentUser.DisplayName);
     }
 }
