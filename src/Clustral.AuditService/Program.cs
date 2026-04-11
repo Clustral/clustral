@@ -1,5 +1,7 @@
 using Clustral.AuditService.Infrastructure;
+using Clustral.Sdk.Auth;
 using Clustral.Sdk.Messaging;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
@@ -62,6 +64,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();

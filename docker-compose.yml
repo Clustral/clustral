@@ -131,7 +131,10 @@ services:
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
+      InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"
     # No ports exposed — gateway routes audit API traffic internally.
+    volumes:
+      - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5200/swagger || exit 1"]
       interval: 10s

@@ -49,6 +49,16 @@ public sealed class AuditControllerTests(MongoFixture mongo, ITestOutputHelper o
                     // Replace MongoDB client to point at Testcontainers.
                     services.RemoveAll<IMongoClient>();
                     services.AddSingleton<IMongoClient>(_ => new MongoClient(mongo.ConnectionString));
+
+                    // Replace auth with a test scheme that accepts all requests.
+                    services.AddAuthentication("Test")
+                        .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
+                            TestAuthHandler>("Test", _ => { });
+                    services.PostConfigure<Microsoft.AspNetCore.Authentication.AuthenticationOptions>(opts =>
+                    {
+                        opts.DefaultAuthenticateScheme = "Test";
+                        opts.DefaultChallengeScheme = "Test";
+                    });
                 });
             });
 

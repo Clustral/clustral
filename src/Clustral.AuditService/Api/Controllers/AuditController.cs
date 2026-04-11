@@ -1,6 +1,7 @@
 using Clustral.AuditService.Features.Audit.Queries;
 using Clustral.Sdk.Results;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Clustral.AuditService.Api.Controllers;
@@ -11,6 +12,7 @@ namespace Clustral.AuditService.Api.Controllers;
 /// <c>Features/Audit/Queries/</c>.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/v1/audit")]
 public sealed class AuditController(IMediator mediator) : ControllerBase
 {
