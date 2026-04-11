@@ -28,6 +28,7 @@ root.AddCommand(ClustersListCommand.BuildClustersCommand());
 root.AddCommand(UsersCommand.BuildUsersCommand());
 root.AddCommand(RolesCommand.BuildRolesCommand());
 root.AddCommand(AccessCommand.BuildAccessCommand());
+root.AddCommand(AuditCommand.Build());
 root.AddCommand(ConfigCommand.Build());
 root.AddCommand(StatusCommand.Build());
 root.AddCommand(DoctorCommand.Build());

@@ -39,6 +39,11 @@ public sealed class CliConfig
     public int CallbackPort { get; set; } = 7777;
 
     /// <summary>
+    /// Clustral Audit Service base URL (e.g. <c>http://localhost:5200</c>).
+    /// </summary>
+    public string AuditServiceUrl { get; set; } = string.Empty;
+
+    /// <summary>
     /// Skip TLS verification for all outbound HTTPS calls.
     /// Must be <c>false</c> in production.
     /// </summary>
@@ -116,6 +121,7 @@ public sealed class CliConfig
 [JsonSerializable(typeof(AccessRequestApproveRequest))]
 [JsonSerializable(typeof(AccessRequestDenyRequest))]
 [JsonSerializable(typeof(AccessRequestRevokeRequest))]
+[JsonSerializable(typeof(AuditListResponse))]
 [JsonSerializable(typeof(RevokeByTokenRequest))]
 [JsonSerializable(typeof(ConfigShowOutput))]
 [JsonSerializable(typeof(StatusOutput))]

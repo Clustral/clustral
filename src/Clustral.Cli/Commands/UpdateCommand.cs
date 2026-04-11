@@ -45,7 +45,7 @@ internal static class UpdateCommand
         // GitHub gets a longer timeout because the binary download is the slow path.
         var innerHandler = new HttpClientHandler();
         HttpMessageHandler pipeline = CliDebug.Enabled
-            ? new Clustral.Cli.Http.DebugLoggingHandler(innerHandler)
+            ? new Http.DebugLoggingHandler(innerHandler)
             : innerHandler;
         using var http = new HttpClient(pipeline)
         {
@@ -64,7 +64,7 @@ internal static class UpdateCommand
             apiUrl = $"https://api.github.com/repos/{Repo}/releases/latest";
         }
 
-        var json = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+        var json = await Http.CliHttp.RunWithSpinnerAsync(
             Messages.Spinners.CheckingUpdates,
             innerCt => http.GetStringAsync(apiUrl, innerCt),
             ct);
@@ -120,7 +120,7 @@ internal static class UpdateCommand
             return;
         }
 
-        var binaryData = await Clustral.Cli.Http.CliHttp.RunWithSpinnerAsync(
+        var binaryData = await Http.CliHttp.RunWithSpinnerAsync(
             Messages.Spinners.Downloading(latestVersion, artifactName),
             innerCt => http.GetByteArrayAsync(assetUrl, innerCt),
             ct);
