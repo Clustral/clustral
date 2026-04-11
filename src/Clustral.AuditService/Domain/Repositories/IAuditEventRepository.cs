@@ -7,7 +7,7 @@ namespace Clustral.AuditService.Domain.Repositories;
 public interface IAuditEventRepository
 {
     Task InsertAsync(AuditEvent auditEvent, CancellationToken ct = default);
-    Task<AuditEvent?> GetByUidAsync(Guid uid, CancellationToken ct = default);
+    Task<AuditEvent?> GetByIdAsync(Guid uid, CancellationToken ct = default);
     Task<(List<AuditEvent> Events, long TotalCount)> ListAsync(
         AuditEventFilter filter, int page, int pageSize, CancellationToken ct = default);
 }

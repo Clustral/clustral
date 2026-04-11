@@ -14,7 +14,7 @@ public sealed class GetAuditEventHandler(IAuditEventRepository repository)
     public async Task<Result<AuditEventResponse>> Handle(
         GetAuditEventQuery request, CancellationToken ct)
     {
-        var auditEvent = await repository.GetByUidAsync(request.Uid, ct);
+        var auditEvent = await repository.GetByIdAsync(request.Uid, ct);
 
         if (auditEvent is null)
             return ResultError.NotFound("AUDIT_EVENT_NOT_FOUND",

@@ -205,6 +205,10 @@ Services:
 | Proto message names | PascalCase, no namespace prefix (proto package provides namespacing) |
 | Result error codes | SCREAMING_SNAKE_CASE (e.g. `ROLE_NOT_FOUND`) via `ResultErrors.*` catalog |
 | Controller result mapping | Private methods return `Result<T>`, mapped to HTTP via `ToActionResult()` |
+| Repository methods | `GetByIdAsync`, `InsertAsync`, `ReplaceAsync`, `DeleteByXxxAsync`, `ListAsync` — use `ById` not `ByUid`/`ByGuid`. Async suffix on all async methods. |
+| Domain factory methods | Static `Create(...)` for aggregate roots (e.g. `AuditEvent.Create(...)`, `AccessRequest.Create(...)`). Never use raw constructors with public setters. |
+| Event handler methods | `Handle(TNotification, CancellationToken)` — MediatR convention. Keep handlers thin, delegate to domain methods. |
+| MassTransit consumers | `Consume(ConsumeContext<TEvent>)` — one consumer class per integration event. Named `{EventName}Consumer`. |
 
 ---
 

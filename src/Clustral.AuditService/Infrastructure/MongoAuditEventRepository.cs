@@ -9,7 +9,7 @@ public sealed class MongoAuditEventRepository(AuditDbContext db) : IAuditEventRe
     public async Task InsertAsync(AuditEvent auditEvent, CancellationToken ct) =>
         await db.AuditEvents.InsertOneAsync(auditEvent, cancellationToken: ct);
 
-    public async Task<AuditEvent?> GetByUidAsync(Guid uid, CancellationToken ct) =>
+    public async Task<AuditEvent?> GetByIdAsync(Guid uid, CancellationToken ct) =>
         await db.AuditEvents.Find(e => e.Uid == uid).FirstOrDefaultAsync(ct);
 
     public async Task<(List<AuditEvent> Events, long TotalCount)> ListAsync(
