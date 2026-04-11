@@ -35,7 +35,13 @@ public sealed class ProxyAuthService(
     private async Task<Result<ProxyIdentity>> ValidateFromInternalJwt(
         JwtSecurityToken jwt, Guid clusterId, CancellationToken ct)
     {
-        var sub = jwt.Subject ?? jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+        // DEBUG: log all claims in the internal JWT
+        var claimsList = string.Join(", ", jwt.Claims.Select(c => $"{c.Type}={c.Value[..Math.Min(20, c.Value.Length)]}"));
+        Console.WriteLine($"[ProxyAuth DEBUG] Internal JWT claims: {claimsList}");
+
+        var sub = jwt.Subject
+            ?? jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
+            ?? jwt.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(sub))
             return ResultErrors.InvalidCredential();
 
