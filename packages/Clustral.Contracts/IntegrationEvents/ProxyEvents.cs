@@ -14,3 +14,15 @@ public record ProxyRequestCompletedEvent
     public string? RequestBody { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }
+
+public record ProxyAccessDeniedEvent
+{
+    public Guid ClusterId { get; init; }
+    public string? ClusterName { get; init; }
+    public Guid? UserId { get; init; }
+    public string? UserEmail { get; init; }
+    public string Method { get; init; } = string.Empty;
+    public string Path { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+    public DateTimeOffset OccurredAt { get; init; }
+}

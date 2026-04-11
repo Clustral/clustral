@@ -88,6 +88,61 @@ public sealed class EventEnrichmentIntegrationTests(MongoFixture mongo, ITestOut
         evt.ClusterName.Should().BeNull();
     }
 
+    [Fact]
+    public async Task ProxyAccessDenied_EnrichesUserEmailAndClusterName()
+    {
+        var db = mongo.CreateDb();
+        var userId = Guid.NewGuid();
+
+        await db.Users.InsertOneAsync(new User
+        {
+            Id = userId, KeycloakSubject = "sub-denied", Email = "denied@example.com",
+        });
+        await db.Clusters.InsertOneAsync(Cluster.Create("denied-cluster", "Denied", "fakehash"));
+        var cluster = await db.Clusters.Find(c => c.Name == "denied-cluster").FirstAsync();
+
+        var published = new List<object>();
+        var handler = new ProxyAuditHandler(
+            NullLogger<ProxyAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        await handler.Handle(new ProxyAccessDenied(
+            cluster.Id, userId, "GET", "/api/v1/pods",
+            "No role assigned for this cluster."), CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<ProxyAccessDeniedEvent>().Subject;
+
+        output.WriteLine($"UserEmail={evt.UserEmail}, ClusterName={evt.ClusterName}, Reason={evt.Reason}");
+
+        evt.UserEmail.Should().Be("denied@example.com");
+        evt.ClusterName.Should().Be("denied-cluster");
+        evt.Reason.Should().Contain("No role assigned");
+        evt.Method.Should().Be("GET");
+        evt.Path.Should().Be("/api/v1/pods");
+    }
+
+    [Fact]
+    public async Task ProxyAccessDenied_WithNullUserId_PublishesWithNullEmail()
+    {
+        var db = mongo.CreateDb();
+
+        var published = new List<object>();
+        var handler = new ProxyAuditHandler(
+            NullLogger<ProxyAuditHandler>.Instance,
+            new FakePublishEndpoint(published), db);
+
+        await handler.Handle(new ProxyAccessDenied(
+            Guid.NewGuid(), null, "GET", "/api/v1/nodes",
+            "Invalid credential"), CancellationToken.None);
+
+        var evt = published.Should().ContainSingle()
+            .Which.Should().BeOfType<ProxyAccessDeniedEvent>().Subject;
+
+        evt.UserEmail.Should().BeNull();
+        evt.UserId.Should().BeNull();
+    }
+
     // ── Access Requests ────────────────────────────────────────────────────
 
     [Fact]

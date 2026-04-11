@@ -47,6 +47,7 @@ public static class EventCodes
 
     // ── Proxy ───────────────────────────────────────────────────────────
     public const string ProxyRequestCompleted = "CPR001I";
+    public const string ProxyAccessDenied     = "CPR002W";
 
     /// <summary>All event codes for validation and uniqueness checks.</summary>
     public static readonly string[] All =
@@ -57,6 +58,6 @@ public static class EventCodes
         ClusterRegistered, ClusterConnected, ClusterDisconnected, ClusterDeleted,
         RoleCreated, RoleUpdated, RoleDeleted,
         UserSynced, RoleAssigned, RoleUnassigned,
-        ProxyRequestCompleted,
+        ProxyRequestCompleted, ProxyAccessDenied,
     ];
 }

@@ -67,9 +67,9 @@ public sealed class EventCodeTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void CodeCount_Is18()
+    public void CodeCount_Is19()
     {
         output.WriteLine($"Event codes: {string.Join(", ", EventCodes.All)}");
-        EventCodes.All.Should().HaveCount(18);
+        EventCodes.All.Should().HaveCount(19);
     }
 }

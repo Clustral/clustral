@@ -61,7 +61,10 @@ public sealed class ProxyKubectlRequestHandler(
         var authResult = await proxyAuth.AuthenticateAsync(
             request.BearerToken, request.ClusterId, ct);
         if (authResult.IsFailure)
+        {
+            await PublishAccessDeniedEvent(request, null, authResult.Error!.Message);
             return authResult.Error!;
+        }
 
         var identity = authResult.Value;
 
@@ -69,7 +72,10 @@ public sealed class ProxyKubectlRequestHandler(
         var impResult = await impersonation.ResolveAsync(
             identity.UserId, request.ClusterId, ct);
         if (impResult.IsFailure)
+        {
+            await PublishAccessDeniedEvent(request, identity.UserId, impResult.Error!.Message);
             return impResult.Error!;
+        }
 
         var imp = impResult.Value;
 
@@ -202,6 +208,21 @@ public sealed class ProxyKubectlRequestHandler(
         return string.Concat(
             System.Text.Encoding.UTF8.GetString(body, 0, MaxAuditBodyBytes),
             $"... (truncated, {body.Length} bytes total)");
+    }
+
+    private async Task PublishAccessDeniedEvent(
+        ProxyKubectlRequestCommand request, Guid? userId, string reason)
+    {
+        try
+        {
+            await mediator.Publish(new ProxyAccessDenied(
+                request.ClusterId, userId,
+                request.Method, request.K8sPath, reason));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to publish proxy access denied event");
+        }
     }
 
     private static readonly HashSet<string> HopByHopHeaders =

@@ -7,3 +7,10 @@ public sealed record ProxyRequestCompleted(
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
+
+public sealed record ProxyAccessDenied(
+    Guid ClusterId, Guid? UserId,
+    string Method, string Path, string Reason) : IDomainEvent
+{
+    public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
+}

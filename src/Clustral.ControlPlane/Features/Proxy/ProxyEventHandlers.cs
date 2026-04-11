@@ -11,7 +11,8 @@ public sealed class ProxyAuditHandler(
     ILogger<ProxyAuditHandler> logger,
     IPublishEndpoint publisher,
     ClustralDb db)
-    : INotificationHandler<ProxyRequestCompleted>
+    : INotificationHandler<ProxyRequestCompleted>,
+      INotificationHandler<ProxyAccessDenied>
 {
     public async Task Handle(ProxyRequestCompleted e, CancellationToken ct)
     {
@@ -36,6 +37,32 @@ public sealed class ProxyAuditHandler(
             StatusCode = e.StatusCode,
             DurationMs = e.DurationMs,
             RequestBody = e.RequestBody,
+            OccurredAt = e.OccurredAt
+        }, ct);
+    }
+
+    public async Task Handle(ProxyAccessDenied e, CancellationToken ct)
+    {
+        var user = e.UserId.HasValue
+            ? await db.Users.Find(u => u.Id == e.UserId).FirstOrDefaultAsync(ct)
+            : null;
+        var cluster = await db.Clusters.Find(c => c.Id == e.ClusterId).FirstOrDefaultAsync(ct);
+
+        logger.LogWarning(
+            "[Audit] Proxy DENIED {Method} cluster={ClusterName} path={Path} " +
+            "[user={UserEmail}]: {Reason}",
+            e.Method, cluster?.Name ?? e.ClusterId.ToString(), e.Path,
+            user?.Email ?? e.UserId?.ToString() ?? "unknown", e.Reason);
+
+        await publisher.Publish(new ProxyAccessDeniedEvent
+        {
+            ClusterId = e.ClusterId,
+            ClusterName = cluster?.Name,
+            UserId = e.UserId,
+            UserEmail = user?.Email,
+            Method = e.Method,
+            Path = e.Path,
+            Reason = e.Reason,
             OccurredAt = e.OccurredAt
         }, ct);
     }
