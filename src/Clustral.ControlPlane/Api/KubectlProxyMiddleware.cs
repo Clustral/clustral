@@ -88,6 +88,14 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
         // ── Extract internal token (if request came through gateway) ──────
         var internalToken = httpContext.Request.Headers["X-Internal-Token"].FirstOrDefault();
 
+        // DEBUG: log what we received
+        var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ProxyDebug");
+        logger.LogWarning("Proxy debug: bearer={BearerPrefix}, internalToken={HasInternal}, headers={Headers}",
+            bearerToken?[..Math.Min(20, bearerToken.Length)] ?? "null",
+            internalToken is not null ? "YES" : "NO",
+            string.Join(", ", httpContext.Request.Headers.Keys));
+
         // ── Send CQS command ──────────────────────────────────────────────
         var result = await mediator.Send(new ProxyKubectlRequestCommand(
             clusterId, bearerToken, httpContext.Request.Method,
