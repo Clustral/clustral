@@ -1,0 +1,128 @@
+---
+title: Quickstart
+description: Step-by-step guide to authenticate, connect to a cluster, and run kubectl
+---
+
+This guide walks you through authenticating with Clustral and running your first `kubectl` command.
+
+## 1. Log in
+
+Authenticate against your Clustral instance. The CLI opens a browser for the OIDC login flow:
+
+```bash
+clustral login app.clustral.example
+```
+
+On success, you will see your session details:
+
+```
+> Profile URL:        http://app.example.com
+  Logged in as:       Admin User
+  Email:              admin@clustral.local
+  Kubernetes:         enabled
+  CLI version:        v0.1.0
+  Roles:              k8s-admin
+  Clusters:           production, staging
+  Access:
+    production               → k8s-admin
+    staging                  → k8s-viewer
+  Valid until:        2026-04-06 03:41:32 +0200 [valid for 3h16m]
+```
+
+To force re-authentication (e.g., after changing roles):
+
+```bash
+clustral login --force
+```
+
+## 2. List available clusters
+
+See which clusters you can connect to:
+
+```bash
+clustral kube ls
+```
+
+## 3. Connect to a cluster
+
+Generate a kubeconfig entry for a specific cluster. You can use either the cluster name or its GUID:
+
+```bash
+clustral kube login prod
+clustral kube login <cluster-id>
+```
+
+## 4. Use kubectl
+
+Once connected, `kubectl` works transparently -- traffic is proxied through the Clustral tunnel:
+
+```bash
+kubectl get pods -A
+kubectl get nodes
+kubectl get namespaces
+```
+
+## 5. Request access (JIT)
+
+If you need access to a cluster you are not currently assigned to, create a just-in-time access request:
+
+```bash
+clustral access request --cluster prod --role read-only
+```
+
+An admin can approve the request via the CLI or Web UI:
+
+```bash
+# Approve
+clustral access approve <request-id>
+
+# Deny
+clustral access deny <request-id> --reason "not authorized"
+```
+
+Once approved, run `clustral kube login` to get a time-limited credential.
+
+## 6. Disconnect
+
+Remove a kubeconfig entry for a specific cluster:
+
+```bash
+clustral kube logout prod
+```
+
+Sign out entirely (revokes credentials and removes all kubeconfig contexts):
+
+```bash
+clustral logout
+```
+
+## Common commands
+
+```bash
+# Identity
+clustral whoami                           # who am I, is my session valid?
+
+# Status overview
+clustral status                           # session, clusters, grants, health
+clustral status -o json                   # machine-readable
+
+# Management
+clustral clusters list                    # list registered clusters
+clustral users list                       # list users
+clustral roles list                       # list roles
+
+# Access requests
+clustral access list                      # list all access requests
+clustral access approve <id>              # approve a request
+clustral access deny <id> --reason "..."  # deny a request
+clustral access revoke <id>               # revoke an active grant
+
+# JSON output (for scripting)
+clustral clusters list --output json
+clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
+
+# Diagnostics
+clustral doctor                           # connectivity checks
+clustral version                          # CLI + ControlPlane versions
+clustral --debug kube login prod          # verbose output for troubleshooting
+```

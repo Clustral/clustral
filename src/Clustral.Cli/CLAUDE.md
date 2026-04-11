@@ -261,3 +261,12 @@ The output binary is at:
 | 1 | Token refresh / expiry detection before `kube login` | `OidcFlowHandler` or new `RefreshCommand` |
 | 2 | `clustral configure` — interactive wizard that writes `~/.clustral/config.json` | new `Commands/ConfigureCommand.cs` |
 | 3 | Credential rotation detection — warn when agent credential is near expiry | `KubeLoginCommand` + SDK |
+
+---
+
+## Documentation
+
+Every new CLI command or feature change **must** include a corresponding
+documentation update in `docs/content/docs/cli/`. When adding a new command,
+create or update the relevant MDX file. When modifying an existing command's
+behavior, update its documentation page. Do not ship a CLI feature without docs.

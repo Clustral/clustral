@@ -1,0 +1,122 @@
+---
+title: Contributing
+description: Development setup, coding standards, and conventions for the Clustral codebase
+---
+
+## Development setup
+
+See the [Installation](/docs/getting-started/installation) guide for prerequisites and local environment setup.
+
+## Repository layout
+
+```
+clustral/
+├── src/
+│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB, OIDC
+│   ├── clustral-agent/          # Go 1.23 — gRPC client, kubectl reverse proxy
+│   ├── Clustral.Cli/            # System.CommandLine, NativeAOT
+│   └── Clustral.Web/            # Next.js 14, React 18, TypeScript
+├── packages/
+│   ├── Clustral.Sdk/            # Shared .NET library: TokenCache, KubeconfigWriter
+│   └── proto/                   # .proto contracts: ClusterService, TunnelService, AuthService
+├── infra/
+│   ├── helm/                    # Agent Helm chart
+│   ├── nginx/                   # nginx gateway config
+│   └── k8s/                     # Local kind cluster manifests
+├── Directory.Packages.props     # Central package version management
+└── docker-compose.yml
+```
+
+## Naming conventions
+
+| Scope | Convention |
+|---|---|
+| C# namespaces | `Clustral.<Project>.<Feature>` (e.g. `Clustral.ControlPlane.Clusters`) |
+| C# types | PascalCase; no `I` prefix on interfaces except service contracts |
+| gRPC service methods | PascalCase verbs: `GetCluster`, `RegisterAgent`, `OpenTunnel` |
+| REST routes | kebab-case, versioned: `/api/v1/clusters/{id}` |
+| EF Core entities | Singular noun, no `Entity` suffix (e.g. `Cluster`, `AuditLog`) |
+| EF Core tables | Plural snake_case via `UseSnakeCaseNamingConvention()` |
+| React components | PascalCase files under `src/components/` |
+| Zustand stores | camelCase, file named `use<Store>Store.ts` |
+| TanStack Query keys | Array of strings, colocated with the hook |
+| Helm values | camelCase |
+| Proto message names | PascalCase, no namespace prefix |
+| Result error codes | SCREAMING_SNAKE_CASE (e.g. `ROLE_NOT_FOUND`) via `ResultErrors.*` |
+| Controller result mapping | Private methods return `Result<T>`, mapped to HTTP via `ToActionResult()` |
+
+## Architecture principles
+
+### Domain-Driven Design
+
+The ControlPlane uses DDD with aggregate roots, domain services, specifications, repositories, and domain events. `AccessRequest` is an aggregate root with state transition methods. Business logic lives in the domain layer, not in handlers.
+
+### Vertical slicing
+
+Every new feature goes in `Features/<FeatureName>/Commands/` and `Features/<FeatureName>/Queries/` with a handler and validator. Controllers are thin MediatR dispatchers with no business logic.
+
+### Command-Query Separation (CQS)
+
+Commands (writes) and queries (reads) are explicitly separated via `ICommand<T>` and `IQuery<T>` marker interfaces. Validation only runs for commands. All queries return `Result<T>`.
+
+### Result pattern
+
+Use `Result<T>` in handlers instead of throwing exceptions. Use the `ResultErrors.*` catalog for consistent error codes across the codebase. Controllers map results to HTTP responses via `ToActionResult()`.
+
+## Validation
+
+### FluentValidation (required)
+
+Every new feature must use FluentValidation for input validation:
+
+- **ControlPlane**: validators run automatically via the `ValidationBehavior` MediatR pipeline
+- **CLI**: validators are instantiated directly via `ValidationHelper.Validate()`
+
+Do not use `[Required]` or other data annotation attributes on DTOs. Do not use manual `string.IsNullOrWhiteSpace` checks -- always use a FluentValidation validator.
+
+### FluentAssertions (required in tests)
+
+All tests must use FluentAssertions (`.Should().Be(...)` style assertions). Do not use `Assert.Equal` or `Assert.True`.
+
+## CLI conventions
+
+- **NativeAOT constraints**: avoid reflection, `dynamic`, and runtime code generation in `Clustral.Cli` and `Clustral.Sdk`. Prefer source generators.
+- **Debug logging**: every CLI command must include `CliDebug.Log(...)` calls at each logical step. Use the `>` indicator pattern.
+- **Error display**: use `CliErrors.*` card-style methods for user-facing errors. Let exceptions propagate to `CliExceptionHandler` instead of adding per-command try-catch blocks.
+- **User-facing strings**: define in `Ui/Messages.cs`, not as inline string literals.
+- **Command aliases**: all listing commands support both `list` and `ls`.
+
+## Proto contracts
+
+`.proto` files live in `packages/proto/`. Generated C# stubs are output to `packages/Clustral.Sdk/Generated/` via `Grpc.Tools` -- do not edit generated files.
+
+After editing a `.proto` file, rebuild the SDK:
+
+```bash
+dotnet build packages/Clustral.Sdk
+```
+
+Editing `.proto` files is an API change that affects both the ControlPlane and Agent. Note the downstream impact before making changes.
+
+## Database migrations
+
+All EF Core migrations are append-only. Never edit existing migration files -- add a new migration instead:
+
+```bash
+# Add a migration
+dotnet ef migrations add <MigrationName> --project src/Clustral.ControlPlane
+
+# Apply to local DB
+dotnet ef database update --project src/Clustral.ControlPlane
+
+# Generate SQL script for production
+dotnet ef migrations script --idempotent --project src/Clustral.ControlPlane -o infra/migrations/latest.sql
+```
+
+## Web UI state management
+
+- **Local/ephemeral UI state**: React `useState`
+- **Server state**: TanStack Query
+- **Cross-component shared state**: Zustand
+
+Do not use Zustand for data that TanStack Query already owns.

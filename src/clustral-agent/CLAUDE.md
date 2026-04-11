@@ -241,3 +241,11 @@ kubectl apply -f src/clustral-agent/k8s/
 | 4 | mTLS between Agent and ControlPlane | `tunnel.connectAndRun` gRPC dial options |
 | 5 | Graceful shutdown — drain in-flight requests before closing stream | `tunnel.Run` |
 | 6 | Prometheus metrics endpoint | new `internal/metrics/` package |
+
+---
+
+## Documentation
+
+Every agent feature or protocol change **must** include a corresponding
+documentation update in `docs/content/docs/agent/`. Do not ship an agent
+change without updating the docs.

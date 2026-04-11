@@ -1,0 +1,131 @@
+---
+title: Testing
+description: Unit, integration, and end-to-end testing strategies for the Clustral codebase
+---
+
+Clustral has three testing layers that run independently. Every new feature must include tests.
+
+## Running tests
+
+```bash
+# Unit + integration (.NET — requires Docker for Testcontainers)
+dotnet test Clustral.slnx --filter "Category!=E2E"
+
+# Go agent (race detector enabled)
+cd src/clustral-agent && go test -race ./...
+
+# End-to-end (slow — full Docker stack)
+dotnet test src/Clustral.E2E.Tests
+```
+
+## Unit tests
+
+Unit test projects live alongside each `src/` project with a `*.Tests` suffix.
+
+Requirements:
+- Use **FluentAssertions** for all assertions (`.Should().Be(...)`, not `Assert.Equal`)
+- Use **ITestOutputHelper** for xUnit test output, not `Console.WriteLine`
+
+## Integration tests
+
+Integration tests live in `src/Clustral.ControlPlane.Tests/Integration/` and use:
+
+- **Testcontainers** for MongoDB -- a real database instance is spun up in Docker
+- **WebApplicationFactory** for the ASP.NET Core test server
+
+Do not mock the database. Docker must be running to execute integration tests.
+
+### gRPC integration tests
+
+`GrpcClusterServiceTests`, `GrpcAuthServiceTests`, and `GrpcMtlsTests` test all gRPC endpoints using `Grpc.Net.Client` against the test server. They cover:
+
+- Cluster registration, listing, get, status update, deregistration
+- Credential issuance, validation, rotation, and revocation
+- mTLS bootstrap and bootstrap token single-use enforcement
+
+### CLI integration tests
+
+`CliIntegrationTests` verify that CLI wire types deserialize correctly against the real ControlPlane API.
+
+## End-to-end tests
+
+End-to-end tests live in `src/Clustral.E2E.Tests/` and orchestrate the full production stack:
+
+- MongoDB
+- Keycloak (OIDC provider)
+- K3s (Kubernetes)
+- ControlPlane (built from Dockerfile)
+- Real Go agent (built from Dockerfile)
+
+All components run on a shared Docker network. Tests exercise the full production path including the gRPC tunnel and multi-value impersonation header forwarding.
+
+E2E tests are tagged with `[Trait("Category", "E2E")]` so the standard `dotnet test --filter "Category!=E2E"` command skips them. They require Docker with privileged container support (K3s needs it).
+
+## E2E Test Architecture
+
+Every E2E test runs against the real production binaries on a shared Docker network. There are no mocks, no in-process shortcuts, no test-only auth handlers. Keycloak issues real OIDC tokens, the ControlPlane validates real JWTs, and the Go agent forwards real multi-value impersonation headers to a real Kubernetes API.
+
+```mermaid
+flowchart LR
+    subgraph host [Test host - xUnit]
+        TEST[E2E Test HttpClient + ControlPlaneClient]
+    end
+
+    subgraph dockernet [Docker network: clustral-e2e]
+        KC[keycloak :8080 real OIDC + clustral realm]
+        MONGO[(mongo :27017 no auth)]
+        CP[controlplane :5100 REST :5443 mTLS gRPC]
+        AGENT[agent per-test container real Go binary]
+        K3S[k3s :6443 real Kubernetes API privileged container]
+    end
+
+    TEST -- 1. OIDC password grant --> KC
+    TEST -- 2. REST API Bearer JWT --> CP
+    TEST -- 3. kubectl proxy --> CP
+
+    CP -- JWKS validation --> KC
+    CP -- store clusters, roles, credentials --> MONGO
+    AGENT == mTLS + JWT tunnel :5443 direct ==> CP
+    AGENT -- impersonated kubectl SA token + multi-value Impersonate-Group --> K3S
+```
+
+### E2E Test Coverage
+
+```mermaid
+graph TB
+    subgraph bootstrap [Bootstrap and lifecycle]
+        AB[AgentBootstrapTests - 1 test register, mTLS, tunnel up]
+        AR[AgentReconnectionTests - 2 tests stop, disconnected; fresh agent, reconnect]
+        ARR[AgentRenewalTests - 2 tests cert + JWT auto-renewal aggressive thresholds]
+    end
+
+    subgraph proxy [kubectl proxy path]
+        KP[KubectlProxyTests - 6 tests list NS, get pods, CRUD, 400 invalid UUID, 401 no token, 502 agent down]
+    end
+
+    subgraph access [Access control]
+        RBA[RoleBasedAccessTests - 6 tests no role 403, system:masters 201, unknown group K3s denies, static assignment + removal, multi-group regression]
+        AR2[AccessRequestLifecycleTests - 3 tests JIT request + approve 200, then expires 403; deny 403; active grant + revoke 403]
+    end
+
+    subgraph cred [Credentials]
+        CL[CredentialLifecycleTests - 3 tests issue + use + revoke 401, expired credential 401, cross-cluster 403]
+    end
+```
+
+## Web UI tests
+
+The Web UI uses:
+
+- **Vitest** for unit tests (`bun test`)
+- **Playwright** for end-to-end tests (`bun e2e`)
+
+## Test coverage by component
+
+| Component | Unit | Integration | E2E |
+|---|---|---|---|
+| ControlPlane | Required | Required (Testcontainers + WebApplicationFactory) | For cross-component changes |
+| CLI | Required | Required | For cross-component changes |
+| SDK | Required | Required | For cross-component changes |
+| Agent (Go) | Required (`go test -race`) | -- | For tunnel/proxy changes |
+| Web UI | Optional (Vitest) | -- | Optional (Playwright) |

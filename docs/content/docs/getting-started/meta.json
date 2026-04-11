@@ -1,0 +1,6 @@
+{
+  "title": "Getting Started",
+  "description": "Installation, quickstart, and configuration",
+  "root": true,
+  "pages": ["index", "installation", "quickstart", "configuration"]
+}

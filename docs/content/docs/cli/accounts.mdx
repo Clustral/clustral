@@ -1,0 +1,64 @@
+---
+title: Accounts
+description: Manage multiple OIDC identities within a profile
+---
+
+Accounts allow you to store multiple OIDC identities within a single profile. This is useful when you have different user accounts for the same Clustral environment (e.g., a personal account and an admin account).
+
+## How Accounts Work
+
+Each time you run `clustral login`, the CLI stores the resulting JWT token under the authenticated email address. Multiple logins produce multiple stored accounts within the current profile:
+
+```
+~/.clustral/profiles/default/accounts/
+├── admin@corp.com.token
+└── dev@corp.com.token
+```
+
+Only one account is active at a time. All CLI commands use the active account's token for authentication.
+
+## List Accounts
+
+```bash
+clustral accounts list
+clustral accounts ls
+```
+
+Output shows all accounts in the current profile with session status:
+
+```
+  admin@corp.com   (3h remaining)
+  dev@corp.com     (expired)
+```
+
+The active account is marked with a bullet indicator.
+
+## Switch Active Account
+
+```bash
+clustral accounts use dev@corp.com
+```
+
+After switching, all subsequent CLI commands authenticate as the selected account.
+
+## Remove an Account
+
+```bash
+clustral accounts remove dev@corp.com
+```
+
+Removes the stored token for the specified account. Any kubeconfig credentials issued under that account remain valid until they expire, but cannot be renewed.
+
+## The --account Flag
+
+You can log in as a specific account without switching:
+
+```bash
+clustral login --account dev@corp.com
+```
+
+This stores (or refreshes) the token for the specified email address but does not change the active account.
+
+## Accounts and Profiles
+
+Accounts are scoped to the current profile. Switching profiles with `clustral profiles use` changes which set of accounts is visible and active. Each profile maintains its own independent set of accounts.

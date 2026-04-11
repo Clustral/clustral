@@ -1,0 +1,101 @@
+---
+title: Kubernetes Commands
+description: Issue kubeconfig credentials and manage cluster connections
+---
+
+The `clustral kube` commands manage Kubernetes access by issuing short-lived kubeconfig credentials and writing entries to your `~/.kube/config`.
+
+## clustral kube login
+
+Issues a kubeconfig credential for a cluster and writes a context entry so `kubectl` works transparently.
+
+```bash
+# Login by cluster name
+clustral kube login prod
+
+# Login by cluster GUID
+clustral kube login 550e8400-e29b-41d4-a716-446655440000
+
+# Custom TTL (default: 8 hours)
+clustral kube login prod --ttl PT4H
+clustral kube login prod --ttl 4H
+clustral kube login prod --ttl 30M
+
+# Custom context name (default: clustral-<cluster-name>)
+clustral kube login prod --context-name my-prod
+```
+
+### Options
+
+| Option | Description |
+|---|---|
+| `cluster` | Cluster name or GUID (positional, required) |
+| `--ttl` | Credential time-to-live. Accepts ISO 8601 durations (`PT8H`, `PT30M`) or shorthand (`8H`, `30M`, `1D`). Default: 8 hours |
+| `--context-name` | Override the kubeconfig context name. Default: `clustral-<cluster-name>` |
+
+### Name Resolution
+
+Cluster arguments accept either a human-readable name or a GUID. When a name is provided, the CLI resolves it to a cluster ID via the ControlPlane API. If the argument is already a valid GUID, the HTTP lookup is skipped.
+
+```bash
+# These are equivalent
+clustral kube login production
+clustral kube login 550e8400-e29b-41d4-a716-446655440000
+```
+
+### TTL Shorthand
+
+The `--ttl` flag accepts shorthand duration formats in addition to full ISO 8601:
+
+| Shorthand | ISO 8601 | Duration |
+|---|---|---|
+| `30M` | `PT30M` | 30 minutes |
+| `4H` | `PT4H` | 4 hours |
+| `8H` | `PT8H` | 8 hours |
+| `1D` | `P1D` | 1 day |
+
+The TTL is capped at the ControlPlane's configured maximum (default: 8 hours). If a JIT access grant is active, the TTL is further capped to the grant's expiry time.
+
+### What Happens
+
+1. The CLI reads the stored JWT from `~/.clustral/accounts/`.
+2. The cluster name is resolved to an ID (if not already a GUID).
+3. A `POST /api/v1/auth/kubeconfig-credential` request issues a short-lived bearer token.
+4. A kubeconfig entry is written to `~/.kube/config` with:
+   - **Context name**: `clustral-<cluster-name>` (or the `--context-name` override)
+   - **Server URL**: `{ControlPlaneUrl}/api/proxy/<cluster-id>`
+   - **Token**: the issued bearer credential
+5. The kubectl context is set as the current context.
+
+After login, `kubectl` commands are automatically routed through the Clustral tunnel:
+
+```bash
+clustral kube login prod
+kubectl get pods -A          # transparently proxied through the tunnel
+kubectl get nodes            # uses the clustral-prod context
+```
+
+## clustral kube logout
+
+Revokes a kubeconfig credential and removes the context from `~/.kube/config`.
+
+```bash
+clustral kube logout prod
+clustral kube logout 550e8400-e29b-41d4-a716-446655440000
+```
+
+This revokes the credential on the ControlPlane and removes the corresponding cluster, context, and user entries from the kubeconfig file.
+
+## clustral kube list
+
+Lists clusters available for kubectl access. Alias: `clustral kube ls`.
+
+```bash
+clustral kube list
+clustral kube ls
+
+# JSON output
+clustral kube ls -o json
+```
+
+Shows each cluster's name, status (Connected/Disconnected), and whether you have an active credential for it.

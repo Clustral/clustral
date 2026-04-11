@@ -1,0 +1,6 @@
+{
+  "title": "Contributing",
+  "description": "Development setup and coding standards",
+  "root": true,
+  "pages": ["index", "testing", "ci-cd"]
+}

@@ -1,0 +1,133 @@
+---
+title: CLI Overview
+description: Command reference and installation guide for the clustral CLI
+---
+
+The `clustral` CLI is a NativeAOT-compiled binary that provides authentication, Kubernetes access, and platform management from the terminal. It connects to a Clustral ControlPlane via OIDC, writes kubeconfig credentials, and manages just-in-time access requests.
+
+## Command Tree
+
+```
+clustral
+├── login [controlplane-url]         OIDC PKCE flow
+├── logout                           Revoke all credentials, clear JWT
+├── kube
+│   ├── login <cluster>              Issue kubeconfig credential (name or GUID)
+│   ├── logout <cluster>             Revoke credential, remove context
+│   └── list (alias: ls)             List available clusters
+├── clusters
+│   └── list (alias: ls)             List registered clusters
+├── users
+│   └── list (alias: ls)             List all users
+├── roles
+│   └── list (alias: ls)             List all roles
+├── access
+│   ├── request                      Request JIT access
+│   ├── list (alias: ls)             List access requests
+│   ├── approve <id>                 Approve pending request
+│   ├── deny <id>                    Deny pending request
+│   └── revoke <id>                  Revoke active grant
+├── config
+│   ├── show [--json] [--remote]     Show CLI files, session, kubeconfig
+│   ├── path                         Print file paths the CLI uses
+│   └── clean [--yes] [--dry-run]    Factory reset (delete all CLI state)
+├── status                           Session, clusters, grants, health
+├── doctor                           Sequential connectivity diagnostics
+├── profiles
+│   ├── list (alias: ls)             List profiles
+│   ├── use <name>                   Switch active profile
+│   ├── current                      Show active profile name
+│   ├── create <name>                Create a new profile
+│   └── delete <name>                Delete a profile
+├── accounts
+│   ├── list (alias: ls)             List accounts in current profile
+│   ├── use <email>                  Switch active account
+│   └── remove <email>              Remove a stored account
+├── whoami                           Quick identity + session check
+├── completion <shell>               Generate bash/zsh/fish completions
+├── update                           Self-update from GitHub
+└── version                          Show CLI version
+```
+
+## Installation
+
+### macOS / Linux (one-liner)
+
+```bash
+curl -sL https://raw.githubusercontent.com/Clustral/clustral/main/install.sh | sh
+```
+
+### Homebrew
+
+```bash
+brew install Clustral/tap/clustral
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/Clustral/clustral/main/install.ps1 | iex
+```
+
+### Build from Source
+
+The CLI is compiled as a NativeAOT binary for fast startup and zero runtime dependencies.
+
+```bash
+dotnet publish src/Clustral.Cli -r osx-arm64 -c Release    # macOS Apple Silicon
+dotnet publish src/Clustral.Cli -r linux-x64  -c Release    # Linux x64
+dotnet publish src/Clustral.Cli -r win-x64    -c Release    # Windows x64
+```
+
+The output binary is at `src/Clustral.Cli/bin/Release/net10.0/<rid>/publish/clustral`.
+
+### Self-Update
+
+```bash
+# Update to latest stable release
+clustral update
+
+# Check for updates without installing
+clustral update --check
+
+# Update to pre-release
+clustral update --pre
+```
+
+## Global Options
+
+These options are available on every command.
+
+| Option | Description |
+|---|---|
+| `--debug` | Enable verbose output: HTTP request/response traces, full exception details, timing information |
+| `--output`, `-o` | Output format: `table` (default) or `json` for machine-readable output |
+| `--no-color` | Disable colored output. Also respects the `NO_COLOR=1` environment variable |
+
+## Configuration File
+
+The CLI stores its configuration in `~/.clustral/config.json`. All fields can be overridden via command-line options.
+
+| Field | Default | CLI Override |
+|---|---|---|
+| `oidcAuthority` | *(required)* | `--authority` |
+| `oidcClientId` | `clustral-cli` | `--client-id` |
+| `oidcScopes` | `openid email profile` | `--scopes` |
+| `controlPlaneUrl` | *(required)* | *(set in config)* |
+| `callbackPort` | `7777` | `--port` |
+| `insecureTls` | `false` | `--insecure` |
+
+Example:
+
+```json
+{
+  "oidcAuthority": "http://localhost:8080/realms/clustral",
+  "oidcClientId": "clustral-cli",
+  "oidcScopes": "openid email profile",
+  "controlPlaneUrl": "http://localhost:5000",
+  "callbackPort": 7777,
+  "insecureTls": true
+}
+```
+
+> In most cases, you do not need to create this file manually. Running `clustral login <url>` discovers the configuration automatically via the `.well-known/clustral-configuration` endpoint.

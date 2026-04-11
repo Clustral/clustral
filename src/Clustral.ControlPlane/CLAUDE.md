@@ -298,3 +298,11 @@ The following must be reviewed carefully before any change:
 | 2 | Audit logging for access requests (approve/deny/revoke events) | `AuditLog` entity + `AccessRequestsController` |
 | 3 | Role-based access policies — enforce RBAC on cluster operations | `Domain/` + controller authorization filters |
 | 4 | Agent heartbeat monitoring — detect stale tunnel sessions | `TunnelSessionManager` + background health check service |
+
+---
+
+## Documentation
+
+Every new API endpoint, feature, or architectural change **must** include a
+corresponding documentation update in `docs/content/docs/control-plane/`.
+Do not ship a ControlPlane feature without updating the docs.

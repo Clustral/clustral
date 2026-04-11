@@ -1,0 +1,6 @@
+{
+  "title": "Agent",
+  "description": "Go service deployed per Kubernetes cluster",
+  "root": true,
+  "pages": ["index", "helm", "tunneling"]
+}

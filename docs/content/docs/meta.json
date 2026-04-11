@@ -1,0 +1,4 @@
+{
+  "title": "Clustral",
+  "pages": ["getting-started", "cli", "control-plane", "agent", "contributing"]
+}

@@ -1,0 +1,120 @@
+---
+title: Debugging and Scripting
+description: Debug mode, JSON output, color control, and shell completions
+---
+
+## Debug Mode
+
+The `--debug` flag enables verbose output on any command. It shows HTTP request/response traces, timing information, and full exception details.
+
+```bash
+clustral --debug clusters list
+clustral --debug kube login prod
+clustral --debug login
+```
+
+### What Debug Mode Shows
+
+- **HTTP traces**: full request URL, method, headers, and response status for every HTTP call
+- **Timing**: duration of each HTTP request and overall command execution time
+- **Exception details**: full stack traces instead of user-friendly error messages
+- **Token details**: JWT claims and expiry (redacted token value)
+
+Debug output is written to stderr so it does not interfere with JSON output piped to other tools:
+
+```bash
+# Debug traces go to stderr, JSON goes to stdout
+clustral --debug clusters list -o json 2>debug.log | jq '.'
+```
+
+## JSON Output
+
+The `--output json` (or `-o json`) flag switches all listing commands to machine-readable JSON output. This is designed for scripting, CI/CD pipelines, and integration with tools like `jq`.
+
+```bash
+# List clusters as JSON
+clustral clusters list -o json
+
+# List users as JSON
+clustral users list -o json
+
+# Filter access requests with jq
+clustral access list -o json | jq '.requests[] | select(.status == "Pending")'
+
+# Status as JSON
+clustral status -o json
+
+# Config as JSON
+clustral config show --json
+```
+
+### CI/CD Integration
+
+Combine `--output json` with `--no-color` for reliable automation:
+
+```bash
+#!/bin/bash
+# Check if session is valid
+if ! clustral whoami --no-color > /dev/null 2>&1; then
+  echo "Not logged in"
+  exit 1
+fi
+
+# Get cluster list
+CLUSTERS=$(clustral clusters list -o json)
+echo "$CLUSTERS" | jq -r '.[].name'
+```
+
+## Color Control
+
+Disable colored output for log files, CI/CD systems, or terminals that do not support ANSI escape codes.
+
+```bash
+# Per-command
+clustral --no-color clusters list
+
+# Environment variable (applies to all commands)
+export NO_COLOR=1
+clustral clusters list
+```
+
+The CLI automatically respects the `NO_COLOR` environment variable, following the [no-color.org](https://no-color.org) convention.
+
+## Shell Completions
+
+Generate shell completion scripts for tab-completion of commands, options, and arguments.
+
+### Bash
+
+```bash
+# Add to ~/.bashrc for persistent completions
+eval "$(clustral completion bash)"
+```
+
+### Zsh
+
+```bash
+# Add to ~/.zshrc for persistent completions
+eval "$(clustral completion zsh)"
+```
+
+### Fish
+
+```bash
+# Install completions
+clustral completion fish > ~/.config/fish/completions/clustral.fish
+```
+
+Completions cover all commands, subcommands, and options. Cluster and role names are completed dynamically when the ControlPlane is reachable.
+
+## Error Display
+
+The CLI uses structured error output to help diagnose issues:
+
+| Error Type | Display |
+|---|---|
+| HTTP errors | Status code and response body in a bordered panel |
+| Connection errors | Failure message with actionable hints (check URL, firewall, etc.) |
+| Validation errors | Yellow-bordered card listing each field and its error |
+| Not configured | Guides you to run `clustral login` with the correct URL |
+| Unexpected errors | General error panel; use `--debug` for the full stack trace |

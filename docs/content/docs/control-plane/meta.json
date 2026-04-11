@@ -1,0 +1,6 @@
+{
+  "title": "Control Plane",
+  "description": "ASP.NET Core REST + gRPC server",
+  "root": true,
+  "pages": ["index", "deployment", "security"]
+}

@@ -1,0 +1,6 @@
+{
+  "title": "CLI",
+  "description": "Command reference for the clustral CLI",
+  "root": true,
+  "pages": ["index", "login", "kube", "access", "profiles", "accounts", "config", "status-doctor", "debugging"]
+}

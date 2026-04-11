@@ -33,6 +33,10 @@ dist/
 # Keep bun.lock committed for reproducible builds
 # bun.lock
 
+# Docs build output
+docs/out/
+docs/.source/
+
 # Docker
 docker-compose.override.yml
 

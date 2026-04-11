@@ -1,0 +1,155 @@
+---
+title: Security
+description: Authentication, authorization, mTLS, token handling, and rate limiting
+---
+
+## Security Model
+
+Clustral uses a layered security model with different mechanisms at each boundary.
+
+| Layer | Mechanism |
+|---|---|
+| External to nginx | TLS termination on `:443` (HTTPS) |
+| User to ControlPlane | OIDC JWT (Keycloak, Auth0, Okta, Azure AD) via nginx `:443` |
+| kubectl to ControlPlane | Short-lived bearer token (SHA-256 hashed), via nginx `:443` |
+| Agent to ControlPlane | mTLS client certificate + RS256 JWT, direct to Kestrel `:5443` |
+| Agent to Kubernetes API | In-cluster ServiceAccount token + Kubernetes Impersonation API |
+| Tunnel transport | gRPC over mTLS (agents connect directly, no nginx) |
+
+## OIDC Authentication (Users)
+
+Users authenticate via any OIDC-compliant provider. The ControlPlane uses JwtBearer middleware configured with the provider's authority URL. JWKS keys are fetched automatically via OIDC discovery at startup.
+
+### Supported Providers
+
+- Keycloak
+- Auth0
+- Okta
+- Azure AD
+- Any OIDC-compliant provider
+
+### Configuration
+
+OIDC settings are read from the `Oidc` section in `appsettings.json` (with `Keycloak` as a backward-compatible fallback):
+
+```json
+{
+  "Oidc": {
+    "Authority": "https://auth.example.com/realms/clustral",
+    "ClientId": "clustral-control-plane",
+    "Audience": "clustral-control-plane",
+    "RequireHttpsMetadata": true
+  }
+}
+```
+
+In development, `RequireHttpsMetadata` can be set to `false` to allow plain-HTTP OIDC providers.
+
+### User Sync
+
+On first login, users are automatically synced from the OIDC provider via `UserSyncService`. This creates a local `User` record with claims from the JWT (name, email, etc.). The sync runs on every authenticated request via `UserSyncFilter` to keep user data current.
+
+## Agent Authentication (mTLS + JWT)
+
+Agents authenticate using a two-factor approach: mTLS client certificates and RS256 JWTs. Both are required for every gRPC call.
+
+### Bootstrap Flow
+
+1. An administrator registers a cluster in the Web UI, receiving a one-time bootstrap token.
+2. The agent starts with the bootstrap token and calls `ClusterService.RegisterAgent` on `:5443`.
+3. The ControlPlane verifies the token, issues an mTLS client certificate (RSA 2048, 395 days) and an RS256 JWT (30 days).
+4. The agent saves credentials to disk and uses them for all subsequent connections.
+5. The bootstrap token is consumed (single-use) and cannot be reused.
+
+### Credential Renewal
+
+The agent's `RenewalManager` checks credentials every 6 hours:
+
+- **Certificate renewal**: if the cert expires within 30 days, `RenewCertificate` RPC issues a new cert (395 days).
+- **JWT renewal**: if the JWT expires within 7 days, `RenewToken` RPC issues a new JWT. The JWT is hot-swapped via `RWMutex` -- no tunnel reconnect is needed.
+
+### Credential Revocation
+
+Administrators can revoke an agent's credentials by incrementing the cluster's `tokenVersion`. This instantly invalidates all JWTs for that agent:
+
+1. Admin calls `POST /api/v1/clusters/{id}/revoke`
+2. ControlPlane increments `tokenVersion` (e.g., 1 to 2)
+3. On the agent's next RPC call, `AgentAuthInterceptor` detects the JWT's `tokenVersion` is stale
+4. Agent receives `Unauthenticated`, triggers immediate JWT renewal
+5. New JWT is issued with the current `tokenVersion`
+6. Agent reconnects with the new JWT
+
+For full credential revocation (e.g., compromised agent), the administrator can deregister the cluster entirely. The agent stops with `PermissionDenied` and does not retry.
+
+## Token Hashing
+
+Raw bearer tokens are **never stored** in the database. Only the SHA-256 hex digest (`TokenHash`) is persisted in the `access_tokens` collection. Token lookup is O(1) via the unique index `ix_access_tokens_token_hash`.
+
+The hash is computed identically in both `AuthController.HashToken` (REST path) and `AuthServiceImpl.HashToken` (gRPC path) to ensure consistency.
+
+## Kubeconfig Credentials
+
+When a user runs `clustral kube login`, a short-lived bearer token is issued:
+
+- Default TTL: 8 hours (configurable via `Oidc.DefaultKubeconfigCredentialTtl`)
+- Maximum TTL: 8 hours (configurable via `Oidc.MaxKubeconfigCredentialTtl`)
+- If a JIT access grant is active, the TTL is capped to the grant's remaining duration
+- The token hash is stored in MongoDB; the raw token is only returned to the CLI once
+
+## Proxy Authentication
+
+When kubectl traffic arrives at the ControlPlane, the `ProxyAuthService` validates the request:
+
+1. Extract the bearer token from the `Authorization` header
+2. Hash the token and look it up in the `access_tokens` collection
+3. Verify the credential is valid (not expired, not revoked)
+4. Verify the credential is scoped to the target cluster
+5. Verify the credential kind is `Kubeconfig` (not an agent credential)
+
+If validation passes, the `ImpersonationResolver` resolves the user's Kubernetes groups:
+
+1. Check static role assignments for the user on the target cluster
+2. Fall back to active JIT access grants
+3. Extract the role's Kubernetes groups (e.g., `system:masters`)
+4. Send as `X-Clustral-Impersonate-User` and `X-Clustral-Impersonate-Group` headers through the tunnel
+
+## Rate Limiting
+
+The kubectl proxy includes per-credential token bucket rate limiting to protect the ControlPlane and tunnel from abuse.
+
+```json
+{
+  "Proxy": {
+    "TunnelTimeout": "00:02:00",
+    "RateLimiting": {
+      "Enabled": true,
+      "BurstSize": 200,
+      "RequestsPerSecond": 100,
+      "QueueSize": 50
+    }
+  }
+}
+```
+
+| Setting | Default | Description |
+|---|---|---|
+| `TunnelTimeout` | 2 min | Maximum wait for an agent response (returns 504 on timeout) |
+| `RateLimiting:Enabled` | `true` | Toggle per-credential rate limiting |
+| `RateLimiting:BurstSize` | `200` | Token bucket capacity (matches `kubectl` client-go defaults) |
+| `RateLimiting:RequestsPerSecond` | `100` | Sustained QPS per credential |
+| `RateLimiting:QueueSize` | `50` | Queued requests before returning 429 |
+
+Rate limiting is applied per credential, so different users have independent rate limits. Request body size and API timeouts are left to the Kubernetes API server.
+
+## Security-Sensitive Code Paths
+
+The following code paths require careful review before any change:
+
+| Location | Impact |
+|---|---|
+| `AuthServiceImpl.ValidateKubeconfigCredential` | Every kubectl request goes through here |
+| `AuthServiceImpl.IssueAgentCredential` | Bootstrap token is single-use; consumption must be race-free |
+| `AuthController.HashToken` / `AuthServiceImpl.HashToken` | Must stay consistent (same algorithm, same encoding) |
+| `TunnelServiceImpl.OpenTunnel` auth block | Agent impersonation if bypassed |
+| `ProxyAuthService` | Token validation for all proxy traffic |
+| `ImpersonationResolver` | Determines which Kubernetes groups a user can impersonate |

@@ -1,0 +1,100 @@
+---
+title: Status, Doctor, and Whoami
+description: Diagnostic commands for checking session health and connectivity
+---
+
+Clustral provides three diagnostic commands at different levels of detail. Use `whoami` for a quick identity check, `status` for a full overview, and `doctor` when troubleshooting connectivity issues.
+
+## clustral whoami
+
+A fast, local-only identity check. Decodes the stored JWT without making any network calls.
+
+```bash
+clustral whoami
+```
+
+Output:
+
+```
+admin@clustral.local (3h42m remaining) (profile: staging)
+```
+
+### When to Use
+
+- Quick check that you are logged in as the expected user
+- Verify which profile and account are active
+- Check remaining session validity without network overhead
+
+`whoami` never contacts the ControlPlane. It reads and decodes the JWT from disk, so it works even when offline.
+
+## clustral status
+
+Full overview of your session, connected clusters, active access grants, and ControlPlane health.
+
+```bash
+clustral status
+
+# JSON output for scripting
+clustral status -o json
+```
+
+### What It Shows
+
+- **Session**: logged-in user, email, token expiry, remaining time
+- **Profile**: active profile name
+- **Clusters**: list of clusters with connection status (Connected/Disconnected)
+- **Active grants**: JIT access grants with role, cluster, and expiry
+- **ControlPlane**: version, health status, uptime
+
+### When to Use
+
+- Get a complete picture of your current Clustral session
+- Check which clusters are online and which access grants are active
+- Verify the ControlPlane is healthy before running commands
+
+> Unlike `whoami`, the `status` command makes network calls to the ControlPlane to fetch cluster status and health information.
+
+## clustral doctor
+
+Sequential connectivity diagnostics that check each layer of the Clustral stack.
+
+```bash
+clustral doctor
+```
+
+### Checks Performed
+
+The doctor command runs checks in order, stopping at the first failure to help you identify the root cause:
+
+1. **DNS resolution** -- can the ControlPlane hostname be resolved?
+2. **TLS connection** -- can a TLS handshake be completed? (certificate validity, chain trust)
+3. **ControlPlane reachability** -- does the health endpoint respond?
+4. **OIDC provider** -- is the OIDC discovery endpoint reachable?
+5. **JWT validity** -- is the stored token valid and not expired?
+6. **Kubeconfig** -- are there valid `clustral-*` contexts in the kubeconfig?
+
+### When to Use
+
+- `clustral login` or `clustral kube login` fails with connection errors
+- `kubectl` commands return unexpected authentication errors
+- You need to verify network connectivity to the Clustral platform
+- Troubleshooting after infrastructure changes (DNS, TLS certificates, firewall rules)
+
+### Example Output
+
+```
+  DNS resolution           clustral.example.com resolves to 10.0.1.5
+  TLS handshake            valid certificate, expires 2027-01-15
+  ControlPlane health      v1.2.0, healthy, 14d uptime
+  OIDC discovery           Keycloak at auth.example.com
+  JWT validity             admin@corp.com, expires in 3h42m
+  Kubeconfig               2 clustral contexts (prod, staging)
+```
+
+## Choosing the Right Command
+
+| Need | Command | Network Required |
+|---|---|---|
+| "Am I logged in? As whom?" | `clustral whoami` | No |
+| "What is my full session state?" | `clustral status` | Yes |
+| "Why is something not working?" | `clustral doctor` | Yes |

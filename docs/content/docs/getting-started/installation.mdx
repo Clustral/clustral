@@ -1,0 +1,99 @@
+---
+title: Installation
+description: Prerequisites and setup instructions for running Clustral locally
+---
+
+## Prerequisites
+
+You need the following tools installed on your machine:
+
+- **Docker Desktop** (or OrbStack) -- required for backing services and integration tests
+- **.NET 9 SDK** -- for the ControlPlane and CLI
+- **Node.js 20+** and **bun** -- for the Web UI
+- **kind** -- for running a local Kubernetes cluster
+- **kubectl** -- for interacting with Kubernetes
+
+## Install the CLI
+
+### macOS / Linux (one-liner)
+
+```bash
+curl -sL https://raw.githubusercontent.com/Clustral/clustral/main/install.sh | sh
+```
+
+### macOS / Linux (Homebrew)
+
+```bash
+brew install Clustral/tap/clustral
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/Clustral/clustral/main/install.ps1 | iex
+```
+
+### Build from source
+
+```bash
+dotnet publish src/Clustral.Cli -r osx-arm64 -c Release    # macOS Apple Silicon
+dotnet publish src/Clustral.Cli -r linux-x64  -c Release    # Linux
+dotnet publish src/Clustral.Cli -r win-x64    -c Release    # Windows
+```
+
+## Start backing services
+
+Run Docker Compose from the repository root to start MongoDB and Keycloak:
+
+```bash
+docker-compose up -d
+```
+
+This starts the following services:
+
+| Service    | Port  | Notes                                          |
+|------------|-------|-------------------------------------------------|
+| PostgreSQL | 5432  | db=clustral, user=clustral, pw=clustral        |
+| Keycloak   | 8080  | Realm imported from `infra/keycloak/`          |
+
+## Start the ControlPlane
+
+```bash
+cd src/Clustral.ControlPlane
+dotnet run
+# Listens: HTTP :5100, gRPC mTLS :5443
+```
+
+## Start the Agent (local development)
+
+Create a local kind cluster (one-time setup), then run the agent:
+
+```bash
+# Create local kind cluster (one-time)
+kind create cluster --config infra/k8s/kind-config.yaml
+
+# Run the agent
+cd src/clustral-agent
+export AGENT_CONTROL_PLANE_URL=https://localhost:5443
+go run .
+```
+
+## Start the Web UI
+
+```bash
+cd src/Clustral.Web
+bun install
+bun dev
+# Listens: http://localhost:5173
+```
+
+The Web UI provides pages for managing clusters, users, roles, and access requests.
+
+## Default users
+
+When using the bundled Keycloak realm, the following test users are available:
+
+| Username | Password | Role             |
+|----------|----------|------------------|
+| `admin`  | `admin`  | `clustral-admin` |
+| `dev`    | `dev`    | `clustral-user`  |

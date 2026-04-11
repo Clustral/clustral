@@ -1,0 +1,97 @@
+---
+title: Profiles
+description: Manage multiple environment profiles for the CLI
+---
+
+Profiles let you maintain separate configurations for different Clustral environments (development, staging, production). Each profile has its own configuration, tokens, and kubeconfig entries, so you can switch between environments without re-authenticating.
+
+## Create a Profile
+
+```bash
+clustral profiles create dev
+clustral profiles create staging
+clustral profiles create prod
+```
+
+## Switch Profiles
+
+```bash
+# Switch to a named profile
+clustral profiles use staging
+
+# Switch back to the default profile
+clustral profiles use default
+```
+
+After switching, all CLI commands operate against the selected profile's ControlPlane and stored credentials. Login to each profile's environment separately:
+
+```bash
+clustral profiles use staging
+clustral login https://staging.example.com
+
+clustral profiles use prod
+clustral login https://prod.example.com
+```
+
+## List Profiles
+
+```bash
+clustral profiles list
+clustral profiles ls
+```
+
+Output shows all profiles with their ControlPlane URL and status:
+
+```
+  Profile ControlPlane URL              Status
+  default https://192.168.88.4          active
+  prod    https://prod.example.com      logged in
+  staging https://staging.example.com   --
+```
+
+The active profile is marked with a bullet indicator.
+
+## Show Current Profile
+
+```bash
+clustral profiles current
+```
+
+Prints the name of the active profile.
+
+## Delete a Profile
+
+```bash
+clustral profiles delete staging
+```
+
+> The `default` profile is protected and cannot be deleted.
+
+Deleting a profile removes its configuration, stored tokens, and any associated kubeconfig entries.
+
+## Directory Structure
+
+Each profile is stored as a subdirectory under `~/.clustral/`:
+
+```
+~/.clustral/
+├── config.json              # Global CLI config (active profile pointer)
+├── profiles/
+│   ├── default/
+│   │   ├── config.json      # Profile-specific config (ControlPlane URL, OIDC settings)
+│   │   └── accounts/
+│   │       ├── admin@corp.com.token
+│   │       └── dev@corp.com.token
+│   ├── staging/
+│   │   ├── config.json
+│   │   └── accounts/
+│   │       └── admin@corp.com.token
+│   └── prod/
+│       ├── config.json
+│       └── accounts/
+│           └── admin@corp.com.token
+```
+
+### The Default Profile
+
+A `default` profile always exists. When no profile has been explicitly created or selected, all CLI operations use the default profile. It cannot be deleted.

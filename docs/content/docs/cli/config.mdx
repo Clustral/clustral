@@ -1,0 +1,88 @@
+---
+title: Config Commands
+description: Inspect and manage CLI configuration, files, and state
+---
+
+The `clustral config` commands let you inspect the CLI's configuration, view file paths, and perform a factory reset.
+
+## clustral config show
+
+Displays the current CLI configuration, session status, file locations, and active kubeconfig context.
+
+```bash
+clustral config
+clustral config show
+
+# Machine-readable JSON output
+clustral config show --json
+
+# Include remote ControlPlane configuration
+clustral config show --remote
+```
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--json` | Output in JSON format for scripting and automation |
+| `--remote` | Include configuration fetched from the ControlPlane (requires network) |
+
+The default (non-`--remote`) output is entirely local -- it reads only from disk and never makes network calls. This makes it safe to run even when the ControlPlane is unreachable.
+
+### What It Shows
+
+- **Profile**: active profile name and directory
+- **Account**: active account email and session validity
+- **ControlPlane URL**: the configured ControlPlane address
+- **OIDC settings**: authority, client ID, scopes
+- **File paths**: config file, token file, kubeconfig
+- **Kubeconfig**: active `clustral-*` contexts and their target clusters
+- **Session**: JWT expiry time and remaining validity
+
+## clustral config path
+
+Prints the file paths the CLI uses, one per line.
+
+```bash
+clustral config path
+```
+
+Output:
+
+```
+Config:      ~/.clustral/profiles/default/config.json
+Token:       ~/.clustral/profiles/default/accounts/admin@corp.com.token
+Kubeconfig:  ~/.kube/config
+```
+
+This is useful for scripts that need to locate CLI state files.
+
+## clustral config clean
+
+Factory reset: deletes all CLI state including configuration, tokens, and kubeconfig entries.
+
+```bash
+# Interactive confirmation
+clustral config clean
+
+# Preview what would be removed (no changes)
+clustral config clean --dry-run
+
+# Skip confirmation (for automation)
+clustral config clean --yes
+```
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Show what would be removed without making changes |
+| `--yes` | Skip the confirmation prompt |
+
+### What Gets Removed
+
+- All profile directories under `~/.clustral/profiles/`
+- All stored tokens and configuration files
+- All `clustral-*` contexts, clusters, and users from `~/.kube/config`
+
+> The `--dry-run` flag is recommended before running a clean to verify what will be deleted. This is a destructive operation that cannot be undone.

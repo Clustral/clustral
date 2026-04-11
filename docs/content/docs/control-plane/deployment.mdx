@@ -1,0 +1,205 @@
+---
+title: Deployment
+description: Deploy the ControlPlane with Docker Compose, nginx, and Kubernetes
+---
+
+## Docker Compose (Recommended)
+
+The quickest way to deploy the full Clustral stack is with Docker Compose. This starts MongoDB, Keycloak (or your OIDC provider), the ControlPlane, Web UI, and an nginx gateway.
+
+### Prerequisites
+
+- Docker Desktop or OrbStack
+- A machine IP or hostname reachable by browsers and agents
+
+### 1. Create docker-compose.yml
+
+```yaml
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+
+  controlplane:
+    image: ghcr.io/clustral/clustral-controlplane:latest
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Clustral: "mongodb://mongo:27017"
+      MongoDB__DatabaseName: "clustral"
+      Oidc__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
+      Oidc__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
+      Oidc__ClientId: "clustral-control-plane"
+      Oidc__Audience: "clustral-control-plane"
+      Oidc__RequireHttpsMetadata: "false"
+      CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
+      CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
+    ports:
+      - "5443:5443"
+    volumes:
+      - ./ca:/etc/clustral/ca:ro
+
+  web:
+    image: ghcr.io/clustral/clustral-web:latest
+    restart: unless-stopped
+    depends_on:
+      controlplane:
+        condition: service_healthy
+    environment:
+      NEXTAUTH_URL: "https://<YOUR_HOST_IP>"
+      CONTROLPLANE_URL: "http://controlplane:5100"
+      CONTROLPLANE_PUBLIC_URL: "https://<YOUR_HOST_IP>"
+      OIDC_ISSUER: "http://<YOUR_HOST_IP>:8080/realms/clustral"
+      OIDC_CLIENT_ID: "clustral-web"
+      OIDC_CLIENT_SECRET: "clustral-web-secret"
+      AUTH_SECRET: "change-me-to-a-random-32-char-string!!"
+
+  ssl-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      controlplane:
+        condition: service_healthy
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certs:/etc/nginx/certs
+
+volumes:
+  mongo_data:
+  certs:
+```
+
+Replace `<YOUR_HOST_IP>` with your machine's IP address. All services must use the same IP so the browser, Web UI server, and ControlPlane can all reach Keycloak at the same issuer URL.
+
+### 2. Generate the CA Certificate
+
+The CA certificate is used by the ControlPlane to issue mTLS client certificates for agents.
+
+```bash
+mkdir -p ca
+openssl genrsa -out ca/ca.key 2048
+openssl req -x509 -new -nodes \
+  -key ca/ca.key -sha256 -days 3650 \
+  -subj "/CN=Clustral CA" \
+  -addext "subjectAltName=DNS:clustral,DNS:localhost,DNS:controlplane,IP:127.0.0.1,IP:<YOUR_HOST_IP>" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -out ca/ca.crt
+```
+
+The SAN must include the IP or hostname that agents will use in `AGENT_CONTROL_PLANE_URL`.
+
+### 3. Download the Keycloak Realm
+
+```bash
+mkdir -p keycloak
+curl -sL https://raw.githubusercontent.com/Clustral/clustral/main/infra/keycloak/clustral-realm.json \
+  -o keycloak/clustral-realm.json
+```
+
+### 4. Start
+
+```bash
+docker compose up -d
+```
+
+### Default Users (Keycloak)
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin` | `clustral-admin` |
+| `dev` | `dev` | `clustral-user` |
+
+## nginx Gateway
+
+nginx serves as the unified HTTPS gateway. It terminates TLS on `:443` and routes traffic to the ControlPlane and Web UI.
+
+### Routing Rules
+
+| Path | Destination | Purpose |
+|---|---|---|
+| `/api/v1/*` | ControlPlane `:5100` | REST API (CLI, Web UI) |
+| `/api/proxy/*` | ControlPlane `:5100` | kubectl tunnel proxy |
+| `/healthz*` | ControlPlane `:5100` | Health checks |
+| `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
+
+> gRPC traffic on `:5443` is **not** routed through nginx. Agents connect directly to Kestrel to ensure persistent bidirectional tunnels are not interrupted by nginx restarts or timeouts.
+
+## Environment Variables
+
+### ControlPlane
+
+| Variable | Required | Description |
+|---|---|---|
+| `ConnectionStrings__Clustral` | Yes | MongoDB connection string |
+| `MongoDB__DatabaseName` | No | Database name (default: `clustral`) |
+| `Oidc__Authority` | Yes | OIDC provider authority URL |
+| `Oidc__MetadataAddress` | No | OIDC discovery URL (defaults to `{Authority}/.well-known/openid-configuration`) |
+| `Oidc__ClientId` | Yes | OIDC client ID for token validation |
+| `Oidc__Audience` | Yes | Expected JWT audience |
+| `Oidc__RequireHttpsMetadata` | No | Require HTTPS for OIDC metadata (default: `true`) |
+| `CertificateAuthority__CaCertPath` | Yes | Path to CA certificate for mTLS |
+| `CertificateAuthority__CaKeyPath` | Yes | Path to CA private key |
+| `CertificateAuthority__ClientCertValidityDays` | No | Agent client cert validity (default: 395) |
+| `CertificateAuthority__JwtValidityDays` | No | Agent JWT validity (default: 30) |
+| `Oidc__DefaultKubeconfigCredentialTtl` | No | Default kubeconfig credential TTL (default: `08:00:00`) |
+| `Oidc__MaxKubeconfigCredentialTtl` | No | Maximum kubeconfig credential TTL (default: `08:00:00`) |
+
+### Web UI
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXTAUTH_URL` | Yes | Browser-facing URL of the Web UI |
+| `CONTROLPLANE_URL` | Yes | ControlPlane REST API (internal, server-side) |
+| `CONTROLPLANE_PUBLIC_URL` | No | Public ControlPlane URL for CLI discovery |
+| `OIDC_ISSUER` | Yes | OIDC provider URL |
+| `OIDC_CLIENT_ID` | No | OIDC client ID (default: `clustral-web`) |
+| `OIDC_CLIENT_SECRET` | Yes | OIDC client secret |
+| `AUTH_SECRET` | Yes | NextAuth encryption key (random 32+ chars) |
+
+## Port Reference
+
+| Component | Port | Protocol | Direction | Description |
+|---|---|---|---|---|
+| nginx HTTPS | 443 | HTTPS | Inbound | TLS termination for all client traffic |
+| ControlPlane gRPC | 5443 | gRPC/mTLS | Direct | Agent tunnel (mTLS + JWT, no nginx) |
+| ControlPlane REST | 5100 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
+| Web UI | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
+| MongoDB | 27017 | TCP | Internal | Database (never exposed publicly) |
+| OIDC Provider | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta |
+
+## Network Requirements
+
+- Agents connect **outbound** to `:5443` directly (mTLS) -- no inbound firewall rules needed on the cluster side
+- gRPC `:5443` is **not** proxied through nginx -- persistent tunnels must not be interrupted
+- ControlPlane REST and Web UI are internal only -- nginx handles all HTTPS on `:443`
+- MongoDB must never be exposed outside the application zone
+- The OIDC provider must be reachable from the browser (PKCE), the Web UI server (token exchange), and the ControlPlane (JWKS fetch)

@@ -1,0 +1,135 @@
+---
+title: Architecture Overview
+description: ControlPlane architecture, design patterns, and API surface
+---
+
+The ControlPlane is the central server of the Clustral platform. Built on ASP.NET Core, it serves as the REST API for the CLI and Web UI, the gRPC endpoint for agent tunnels, and the kubectl traffic proxy.
+
+## Ports and Protocols
+
+The ControlPlane runs a single process that listens on two ports:
+
+| Port | Protocol | Traffic | Consumers |
+|---|---|---|---|
+| `:5100` | HTTP/1.1 | REST API, kubectl proxy | CLI and Web UI (via nginx :443) |
+| `:5443` | HTTP/2 (gRPC) | Agent tunnel, mTLS | Agents (direct, no nginx) |
+
+The two-port design is intentional:
+
+- **REST on :5100** serves the CLI and Web UI through nginx, which handles TLS termination and routing.
+- **gRPC on :5443** serves agent tunnels directly from Kestrel with mTLS. Agents connect directly to avoid tunnel drops caused by nginx restarts or timeouts.
+
+## API Surface
+
+### REST API (`:5100`)
+
+All REST endpoints are routed through nginx on `:443`.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/v1/clusters` | List registered clusters |
+| `DELETE /api/v1/clusters/{id}` | Deregister a cluster |
+| `POST /api/v1/auth/kubeconfig-credential` | Issue a kubeconfig credential |
+| `DELETE /api/v1/auth/credentials/{id}` | Revoke a credential |
+| `POST /api/v1/access-requests` | Create a JIT access request |
+| `GET /api/v1/access-requests` | List access requests |
+| `POST /api/v1/access-requests/{id}/approve` | Approve a request |
+| `POST /api/v1/access-requests/{id}/deny` | Deny a request |
+| `POST /api/v1/access-requests/{id}/revoke` | Revoke an active grant |
+| `GET /api/v1/roles` | List roles |
+| `GET /api/v1/users` | List users |
+| `GET /api/v1/users/me` | Get current user profile |
+| `GET /api/v1/config` | ControlPlane version and config (unauthenticated) |
+
+### gRPC Services (`:5443`)
+
+Agents connect directly to Kestrel on `:5443` with mTLS client certificates and RS256 JWT authorization.
+
+| Service | Methods | Purpose |
+|---|---|---|
+| **ClusterService** | `RegisterAgent`, `ListClusters`, `GetCluster`, `UpdateStatus`, `Deregister`, `RenewCertificate`, `RenewToken` | Cluster registration, heartbeat, credential renewal |
+| **TunnelService** | `OpenTunnel` | Bidirectional streaming for kubectl traffic |
+| **AuthService** | `IssueKubeconfigCredential`, `ValidateKubeconfigCredential`, `IssueAgentCredential`, `RotateAgentCredential`, `RevokeCredential` | Credential lifecycle management |
+
+### Health Endpoints
+
+| Endpoint | Auth Required | Description |
+|---|---|---|
+| `GET /healthz` | No | Liveness check |
+| `GET /healthz/ready` | No | Readiness check (MongoDB + OIDC) |
+| `GET /healthz/detail` | Yes | Detailed health with version and component status |
+
+## Architecture Patterns
+
+### Vertical Slicing with CQS
+
+The ControlPlane uses vertical slicing with Command-Query Separation. Each feature is organized into its own folder with explicit command and query sub-folders:
+
+```
+Features/
+├── Clusters/
+│   ├── Commands/     RegisterCluster, DeleteCluster
+│   └── Queries/      ListClusters, GetCluster
+├── Roles/
+│   ├── Commands/     CreateRole, UpdateRole, DeleteRole
+│   └── Queries/      ListRoles
+├── Users/
+│   ├── Commands/     AssignRole, RemoveAssignment
+│   └── Queries/      GetCurrentUser, ListUsers, GetUserAssignments
+├── Auth/
+│   ├── Commands/     IssueKubeconfigCredential, RevokeCredential
+│   └── (no queries)
+└── AccessRequests/
+    ├── Commands/     CreateAccessRequest, Approve, Deny, Revoke
+    └── Queries/      ListAccessRequests, GetAccessRequest
+```
+
+Commands implement `ICommand<Result<T>>` and queries implement `IQuery<Result<T>>`. Validation runs automatically for commands via the `ValidationBehavior` MediatR pipeline. Queries skip validation.
+
+### Domain-Driven Design
+
+The ControlPlane uses pragmatic DDD with aggregate roots and domain services.
+
+**Aggregate roots:**
+
+- **AccessRequest** -- encapsulates the JIT access lifecycle with `Approve()`, `Deny()`, `Revoke()`, and `Expire()` methods that enforce state machine invariants.
+- **Cluster** -- aggregate root for cluster registration.
+
+**Domain services:**
+
+- **UserSyncService** -- centralizes OIDC user upsert logic used by both the `UserSyncFilter` and credential issuance.
+- **ProxyAuthService** -- validates bearer tokens, checks credential validity, cluster scope, and credential kind.
+- **ImpersonationResolver** -- resolves user + groups for Kubernetes impersonation using a static assignment to JIT grant fallback chain.
+
+### Result Pattern
+
+Controllers use `Result<T>` to represent success or failure without throwing exceptions. Error cases use factory methods from `ResultErrors.*` (e.g., `ResultErrors.NotFound`, `ResultErrors.Forbidden`). The `ToActionResult()` extension maps results to HTTP status codes.
+
+Unhandled `ResultFailureException` errors are caught by `GlobalExceptionHandlerMiddleware` and returned as RFC 7807 Problem Details responses.
+
+### Controllers
+
+Controllers are thin MediatR dispatchers with no business logic. A typical controller action:
+
+1. Receives the HTTP request
+2. Constructs a command or query record
+3. Calls `mediator.Send(...)`
+4. Returns `result.ToActionResult()`
+
+## Database
+
+The ControlPlane uses MongoDB for persistence. Entity configuration uses `snake_case` naming for collections and fields.
+
+### Key Entities
+
+| Entity | Description |
+|---|---|
+| `Cluster` | Registered cluster with agent status, labels, versions |
+| `User` | OIDC-backed user record, synced on first login |
+| `AccessToken` | Issued credential (user kubeconfig or agent) with SHA-256 hash |
+| `AccessRequest` | JIT access request with state machine (Pending/Approved/Denied/Revoked/Expired) |
+
+## Background Services
+
+- **AccessRequestCleanupService** -- periodically expires access requests whose grant window has closed.
+- **StartupConfigValidator** -- validates `OidcOptions` and `MongoDbOptions` at startup using FluentValidation, performs non-blocking connectivity checks with 5-second timeouts.

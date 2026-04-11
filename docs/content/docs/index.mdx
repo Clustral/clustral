@@ -1,0 +1,18 @@
+---
+title: Clustral
+description: Kubernetes access proxy — a Teleport alternative built on .NET, Go and React
+---
+
+## What is Clustral?
+
+Clustral is an open-source Kubernetes access proxy built on .NET, Go, and React. It lets users authenticate via any OIDC provider (Keycloak, Auth0, Okta, Azure AD), then transparently proxies `kubectl` traffic through a control plane to registered cluster agents. No inbound firewall rules, VPNs, or bastion hosts are required on the cluster side.
+
+Clustral provides secure, tunneled `kubectl` access to Kubernetes clusters. Agents deployed inside each target cluster open persistent outbound gRPC connections to the ControlPlane. When a user runs `kubectl`, traffic is multiplexed over these tunnels, with role-based access enforced via Kubernetes impersonation headers.
+
+The platform includes a Web UI for managing clusters, users, roles, and access requests, a CLI for authentication and day-to-day `kubectl` workflows, and a just-in-time (JIT) access request system for time-limited cluster access.
+
+## Next steps
+
+- [Getting Started](/docs/getting-started) -- architecture overview, installation, and quickstart
+- [CLI Reference](/docs/cli) -- full command reference for the `clustral` CLI
+- [Contributing](/docs/contributing) -- development setup, coding standards, and testing

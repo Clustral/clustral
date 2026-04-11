@@ -221,3 +221,11 @@ bun run build
 | 6 | Playwright e2e | `playwright.config.ts` + `e2e/` |
 | 7 | Audit log viewer page | new `app/audit/page.tsx` |
 | 8 | Cluster health metrics dashboard | new `app/clusters/[id]/metrics/page.tsx` |
+
+---
+
+## Documentation
+
+Every Web UI feature or page change **must** include a corresponding
+documentation update in `docs/content/docs/web-ui/`. Do not ship a Web UI
+change without updating the docs.

@@ -11,6 +11,8 @@
 
 Kubernetes access proxy — a Teleport alternative built on .NET, Go and React.
 
+**[Documentation](https://docs.clustral.kube.it.com)** · [Getting Started](https://docs.clustral.kube.it.com/docs/getting-started) · [CLI Reference](https://docs.clustral.kube.it.com/docs/cli)
+
 Clustral lets users authenticate via any OIDC provider (Keycloak, Auth0, Okta, Azure AD), then transparently proxies `kubectl` traffic through a control plane to registered cluster agents. No inbound firewall rules required on the cluster side.
 
 ## Architecture

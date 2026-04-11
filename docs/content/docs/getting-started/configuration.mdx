@@ -1,0 +1,136 @@
+---
+title: Configuration
+description: CLI configuration files, profiles, and accounts
+---
+
+## Config files
+
+The Clustral CLI stores its configuration in `~/.clustral/`. You can inspect the current state with:
+
+```bash
+# Show CLI configuration, files, session, and kubeconfig context
+clustral config
+clustral config show              # same as above
+clustral config show --json       # machine-readable output
+clustral config path              # print file paths only
+```
+
+### Factory reset
+
+To remove all CLI state and start fresh:
+
+```bash
+clustral config clean             # interactive confirmation
+clustral config clean --dry-run   # preview what would be removed
+clustral config clean --yes       # skip confirmation (for scripts)
+```
+
+## Profiles
+
+Profiles let you manage multiple Clustral environments (e.g., dev, staging, production). Each profile maintains its own configuration and JWT tokens.
+
+### Create and switch profiles
+
+```bash
+# Create profiles
+clustral profiles create dev
+clustral profiles create staging
+clustral profiles create prod
+
+# Switch to a profile
+clustral profiles use staging
+clustral login https://staging.example.com
+
+clustral profiles use prod
+clustral login https://prod.example.com
+```
+
+### List and manage profiles
+
+```bash
+# List all profiles
+clustral profiles list
+#   Profile ControlPlane URL              Status
+# ● default https://192.168.88.4          active
+# ○ prod    https://prod.example.com      logged in
+# ○ staging https://staging.example.com   —
+
+# Show the active profile
+clustral profiles current
+
+# Switch back to default
+clustral profiles use default
+
+# Delete a profile (the default profile is protected)
+clustral profiles delete staging
+```
+
+## Accounts
+
+Within a single profile, you can store multiple OIDC identities. This is useful when you have different accounts with different permission levels.
+
+```bash
+# Each login stores the identity as a separate account
+clustral login
+
+# List accounts in the current profile
+clustral accounts list
+# ● admin@corp.com   (3h remaining)
+# ○ dev@corp.com     (expired)
+
+# Switch active account
+clustral accounts use dev@corp.com
+
+# Remove a stored account
+clustral accounts remove dev@corp.com
+```
+
+## Auto-login
+
+When a session expires during an interactive command, the CLI prompts you to re-authenticate:
+
+```
+Session expired. Login again? [Y/n]
+```
+
+In non-interactive environments (e.g., CI/CD), the CLI exits with an error instead.
+
+## Shell completions
+
+Enable tab completion for your shell:
+
+```bash
+# Bash
+eval "$(clustral completion bash)"          # add to ~/.bashrc
+
+# Zsh
+eval "$(clustral completion zsh)"           # add to ~/.zshrc
+
+# Fish
+clustral completion fish > ~/.config/fish/completions/clustral.fish
+```
+
+## Color and debug output
+
+```bash
+# Disable colors (for CI/CD or log files)
+clustral --no-color clusters list
+export NO_COLOR=1                   # also respected automatically
+
+# Enable verbose output (HTTP traces, full exceptions, timing)
+clustral --debug clusters list
+clustral --debug kube login prod
+```
+
+## Self-update
+
+```bash
+# Update to latest stable
+clustral update
+
+# Check for updates without installing
+clustral update --check
+
+# Update to pre-release
+clustral update --pre
+```

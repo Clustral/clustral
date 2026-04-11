@@ -1,0 +1,139 @@
+---
+title: Deployment
+description: Deploy the Clustral agent to a Kubernetes cluster
+---
+
+## Prerequisites
+
+1. A running Clustral ControlPlane with a registered cluster (register via the Web UI)
+2. The cluster ID, ControlPlane URL, and bootstrap token from the registration step
+3. `kubectl` access to the target Kubernetes cluster
+
+## Kubernetes Manifests
+
+The agent ships with Kubernetes manifests for deployment. These are the recommended way to deploy the agent.
+
+### 1. Apply RBAC
+
+The agent needs permissions to impersonate users and groups on the Kubernetes API server:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/serviceaccount.yaml
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/clusterrole.yaml
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/clusterrolebinding.yaml
+```
+
+This creates:
+
+- A `clustral` namespace
+- A `clustral-agent` ServiceAccount
+- A ClusterRole with the `impersonate` verb on users, groups, and service accounts
+- A ClusterRoleBinding binding the role to the service account
+
+### 2. Create the Agent Secret
+
+Store the registration values from the Web UI in a Kubernetes Secret:
+
+```bash
+kubectl -n clustral create secret generic clustral-agent-config \
+  --from-literal=cluster-id="<CLUSTER_ID>" \
+  --from-literal=control-plane-url="https://<YOUR_HOST>:5443" \
+  --from-literal=bootstrap-token="<BOOTSTRAP_TOKEN>"
+```
+
+> The `control-plane-url` must point directly to the ControlPlane's gRPC port (`:5443`), not to nginx. Agents connect directly to Kestrel for mTLS.
+
+For Docker Desktop Kubernetes, use `host.docker.internal`:
+
+```bash
+--from-literal=control-plane-url="https://host.docker.internal:5443"
+```
+
+### 3. Deploy the Agent
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/deployment.yaml
+```
+
+### 4. Verify
+
+```bash
+# Check the agent logs
+kubectl -n clustral logs -f deploy/clustral-agent
+
+# Expected output:
+# Starting Clustral Agent v0.1.0
+# Bootstrapping with ControlPlane...
+# Credentials saved to /etc/clustral/tls/
+# Connected to ControlPlane, opening tunnel...
+# Tunnel established, waiting for requests
+```
+
+The cluster status should change to "Connected" in the Web UI and in `clustral clusters list`.
+
+## Configuration
+
+All agent settings are configured via environment variables. The deployment manifest reads them from the Kubernetes Secret.
+
+| Variable | Required | Description |
+|---|---|---|
+| `AGENT_CLUSTER_ID` | Yes | Cluster ID from registration |
+| `AGENT_CONTROL_PLANE_URL` | Yes | gRPC mTLS endpoint (`:5443`) |
+| `AGENT_BOOTSTRAP_TOKEN` | First boot | One-time token, consumed on registration |
+| `AGENT_HEARTBEAT_INTERVAL` | No | Heartbeat frequency (default: `30s`) |
+| `AGENT_KUBERNETES_API_URL` | No | K8s API URL (default: `https://kubernetes.default.svc`) |
+| `AGENT_KUBERNETES_SKIP_TLS_VERIFY` | No | Skip k8s API TLS (default: `false`, dev only) |
+
+See the [Agent Overview](/docs/agent) for the full configuration reference.
+
+## Upgrading
+
+To upgrade the agent to a new version:
+
+```bash
+# Update the image tag in the deployment
+kubectl -n clustral set image deploy/clustral-agent \
+  clustral-agent=ghcr.io/clustral/clustral-agent:<new-version>
+
+# Or re-apply the latest manifest
+kubectl apply -f https://raw.githubusercontent.com/Clustral/clustral/main/src/clustral-agent/k8s/deployment.yaml
+```
+
+The agent reconnects automatically after restart. Existing mTLS credentials are reused -- no re-bootstrap is needed unless credentials were revoked.
+
+## Container Image
+
+| Image | Size |
+|---|---|
+| `ghcr.io/clustral/clustral-agent` | ~16MB |
+
+The image is built from a multi-stage Dockerfile: `golang:1.23-alpine` for compilation, `alpine:3.20` for the runtime. The final image contains a single static Go binary.
+
+### Image Tags
+
+| Tag | Description |
+|---|---|
+| `latest` | Latest stable release |
+| `1.2.3` | Exact version |
+| `1.2` | Minor cascade (stable only) |
+| `main` | Latest commit on main branch |
+| `alpha`, `beta`, `rc` | Pre-release channel floating tags |
+
+## Troubleshooting
+
+### Agent cannot connect to ControlPlane
+
+- Verify the `AGENT_CONTROL_PLANE_URL` uses port `:5443` (gRPC, not nginx `:443`)
+- Check that the ControlPlane's gRPC port is reachable from the cluster (outbound connectivity)
+- Verify the CA certificate SAN includes the hostname or IP the agent uses
+
+### Bootstrap token rejected
+
+- Bootstrap tokens are single-use. If the agent was previously bootstrapped, it already has mTLS credentials and does not need the token.
+- Check if the cluster was re-registered (which generates a new bootstrap token)
+
+### "PermissionDenied" and agent stops
+
+- Agent credentials were revoked by an administrator
+- The cluster must be re-registered in the Web UI to generate a new bootstrap token
+- Delete the old credentials from the agent pod: `kubectl -n clustral exec deploy/clustral-agent -- rm -rf /etc/clustral/tls/`
