@@ -192,8 +192,7 @@ internal sealed class ConfigCli
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Response from <c>GET /.well-known/clustral-configuration</c> (Web UI discovery)
-/// or <c>GET /api/v1/config</c> (direct ControlPlane).
+/// Response from <c>GET /.well-known/clustral-configuration</c> (Web UI discovery).
 /// </summary>
 internal sealed class ControlPlaneConfig
 {

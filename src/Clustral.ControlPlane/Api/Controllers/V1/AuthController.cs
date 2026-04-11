@@ -51,8 +51,7 @@ public sealed class AuthController(IMediator mediator) : ControllerBase
     }
 
     /// <summary>
-    /// Token hashing — kept as static for backward compatibility with
-    /// <c>AuthServiceImpl.HashToken</c> in gRPC services.
+    /// Token hashing — delegates to <c>TokenHashingService</c>.
     /// </summary>
     internal static string HashToken(string rawToken) =>
         new Features.Shared.TokenHashingService().HashToken(rawToken);

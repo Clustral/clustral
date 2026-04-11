@@ -25,8 +25,7 @@ public sealed class TokenHashingService
 
     /// <summary>
     /// Returns the SHA-256 hex digest (lowercase) of the raw token.
-    /// Must stay consistent with <c>AuthController.HashToken</c> and
-    /// <c>AuthServiceImpl.HashToken</c>.
+    /// Must stay consistent with <c>AuthController.HashToken</c>.
     /// </summary>
     public string HashToken(string rawToken)
     {

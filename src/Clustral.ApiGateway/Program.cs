@@ -130,6 +130,22 @@ builder.WebHost.ConfigureKestrel(kestrel =>
     kestrel.Limits.MaxRequestBodySize = 10 * 1024 * 1024; // 10 MB
 });
 
+// ── Health Checks ───────────────────────────────────────────────────────────
+var oidcMetadata = builder.Configuration["Oidc:MetadataAddress"];
+var oidcAuthority = builder.Configuration["Oidc:Authority"];
+var oidcDiscoveryUrl = !string.IsNullOrEmpty(oidcMetadata)
+    ? oidcMetadata
+    : !string.IsNullOrEmpty(oidcAuthority)
+        ? $"{oidcAuthority.TrimEnd('/')}/.well-known/openid-configuration"
+        : null;
+
+var hcBuilder = builder.Services.AddHealthChecks();
+if (!string.IsNullOrEmpty(oidcDiscoveryUrl))
+{
+    hcBuilder.AddUrlGroup(new Uri(oidcDiscoveryUrl), "oidc", tags: ["ready"],
+        timeout: TimeSpan.FromSeconds(5));
+}
+
 var app = builder.Build();
 
 // ── Middleware Pipeline ──────────────────────────────────────────────────────
@@ -155,6 +171,18 @@ app.UseAuthorization();
 // so it's correctly forwarded to downstream services.
 
 app.UseRateLimiter();
+
+// Gateway's own health check — verifies OIDC provider reachability.
+// Distinct from /healthz which proxies to ControlPlane via YARP.
+app.MapHealthChecks("/gateway/healthz", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false, // liveness — no checks
+}).AllowAnonymous();
+app.MapHealthChecks("/gateway/healthz/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+}).AllowAnonymous();
+
 app.MapReverseProxy();
 
 app.Run();

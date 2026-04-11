@@ -46,60 +46,21 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
             });
     }
 
-    [Fact]
-    public void Startup_MissingOidcAuthority_Throws()
+    private static Dictionary<string, string?> ValidConfig() => new()
     {
-        var ex = Assert.ThrowsAny<Exception>(() =>
-        {
-            using var factory = CreateFactoryWithConfig(new()
-            {
-                ["Oidc:Authority"] = "",
-                ["Oidc:ClientId"] = "test-client",
-                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
-                ["MongoDB:DatabaseName"] = "test",
-            });
-
-            // Force startup by creating a client.
-            factory.CreateClient();
-        });
-
-        output.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
-        ex.Message.Should().Contain("Authority");
-    }
-
-    [Fact]
-    public void Startup_MissingOidcClientId_Throws()
-    {
-        var ex = Assert.ThrowsAny<Exception>(() =>
-        {
-            using var factory = CreateFactoryWithConfig(new()
-            {
-                ["Oidc:Authority"] = "http://localhost:8080/realms/test",
-                ["Oidc:ClientId"] = "",
-                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
-                ["MongoDB:DatabaseName"] = "test",
-            });
-
-            factory.CreateClient();
-        });
-
-        output.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
-        ex.Message.Should().Contain("ClientId");
-    }
+        ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
+        ["MongoDB:DatabaseName"] = "test",
+    };
 
     [Fact]
     public void Startup_InvalidMongoConnectionString_Throws()
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = CreateFactoryWithConfig(new()
-            {
-                ["Oidc:Authority"] = "http://localhost:8080/realms/test",
-                ["Oidc:ClientId"] = "test-client",
-                ["MongoDB:ConnectionString"] = "not-a-mongodb-url",
-                ["MongoDB:DatabaseName"] = "test",
-            });
+            var config = ValidConfig();
+            config["MongoDB:ConnectionString"] = "not-a-mongodb-url";
 
+            using var factory = CreateFactoryWithConfig(config);
             factory.CreateClient();
         });
 
@@ -108,40 +69,15 @@ public sealed class StartupConfigValidatorIntegrationTests(ITestOutputHelper out
     }
 
     [Fact]
-    public void Startup_InvalidOidcAuthorityUrl_Throws()
-    {
-        var ex = Assert.ThrowsAny<Exception>(() =>
-        {
-            using var factory = CreateFactoryWithConfig(new()
-            {
-                ["Oidc:Authority"] = "not-a-url",
-                ["Oidc:ClientId"] = "test-client",
-                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
-                ["MongoDB:DatabaseName"] = "test",
-            });
-
-            factory.CreateClient();
-        });
-
-        output.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
-        ex.Message.Should().Contain("Authority");
-    }
-
-    [Fact]
     public void Startup_MaxTtlLessThanDefault_Throws()
     {
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
-            using var factory = CreateFactoryWithConfig(new()
-            {
-                ["Oidc:Authority"] = "http://localhost:8080/realms/test",
-                ["Oidc:ClientId"] = "test-client",
-                ["Oidc:DefaultKubeconfigCredentialTtl"] = "08:00:00",
-                ["Oidc:MaxKubeconfigCredentialTtl"] = "01:00:00",
-                ["MongoDB:ConnectionString"] = "mongodb://localhost:27017/?serverSelectionTimeout=1s",
-                ["MongoDB:DatabaseName"] = "test",
-            });
+            var config = ValidConfig();
+            config["Credential:DefaultKubeconfigCredentialTtl"] = "08:00:00";
+            config["Credential:MaxKubeconfigCredentialTtl"] = "01:00:00";
 
+            using var factory = CreateFactoryWithConfig(config);
             factory.CreateClient();
         });
 

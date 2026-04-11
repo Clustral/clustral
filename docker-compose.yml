@@ -62,11 +62,6 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       MongoDB__ConnectionString: "${MONGO_CONNECTION_STRING}"
       MongoDB__DatabaseName: "${MONGO_DATABASE_NAME}"
-      Oidc__Authority: "${OIDC_AUTHORITY}"
-      Oidc__MetadataAddress: "${OIDC_METADATA_ADDRESS}"
-      Oidc__ClientId: "${OIDC_CLIENT_ID}"
-      Oidc__Audience: "${OIDC_AUDIENCE}"
-      Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
       CertificateAuthority__CaCertPath: "${CA_CERT_PATH}"
       CertificateAuthority__CaKeyPath: "${CA_KEY_PATH}"
       InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"

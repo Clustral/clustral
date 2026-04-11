@@ -54,10 +54,6 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
             {
                 ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
                 ["MongoDB:DatabaseName"] = "clustral-test",
-                ["Oidc:Authority"] = "http://localhost:8080/realms/clustral",
-                ["Oidc:ClientId"] = "clustral-control-plane",
-                ["Oidc:Audience"] = "clustral-control-plane",
-                ["Oidc:RequireHttpsMetadata"] = "false",
                 ["CertificateAuthority:CaCertPath"] = _caCertPath,
                 ["CertificateAuthority:CaKeyPath"] = _caKeyPath,
             });

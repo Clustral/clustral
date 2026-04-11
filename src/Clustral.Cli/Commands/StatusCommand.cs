@@ -123,7 +123,7 @@ internal static class StatusCommand
                 // ControlPlane version
                 try
                 {
-                    var configJson = await http.GetStringAsync("api/v1/config", ct);
+                    var configJson = await http.GetStringAsync("api/v1/version", ct);
                     var cpConfig = JsonSerializer.Deserialize(configJson, CliJsonContext.Default.ControlPlaneConfig);
                     output.ControlPlane = new StatusControlPlane
                     {

@@ -19,7 +19,7 @@ public record IssueKubeconfigCredentialCommand(Guid ClusterId, string? Requested
 public sealed class IssueKubeconfigCredentialHandler(
     IClusterRepository clusters,
     IAccessTokenRepository accessTokens,
-    IOptions<OidcOptions> oidcOptions,
+    IOptions<CredentialOptions> credentialOptions,
     ICurrentUserProvider currentUser,
     IMediator mediator,
     UserSyncService userSync,
@@ -43,7 +43,7 @@ public sealed class IssueKubeconfigCredentialHandler(
         }
 
         // 2. Determine TTL.
-        var opts = oidcOptions.Value;
+        var opts = credentialOptions.Value;
         var ttl = opts.DefaultKubeconfigCredentialTtl;
 
         if (!string.IsNullOrEmpty(request.RequestedTtl) &&

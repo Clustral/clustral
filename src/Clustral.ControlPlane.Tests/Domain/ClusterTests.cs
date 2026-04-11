@@ -67,7 +67,7 @@ public class ClusterTests(ITestOutputHelper output)
 
         output.WriteLine($"Before: BootstrapTokenHash = \"{cluster.BootstrapTokenHash}\"");
 
-        // Simulate consumption (as AuthServiceImpl does).
+        // Simulate consumption (as ClusterServiceImpl.RegisterAgent does).
         cluster.BootstrapTokenHash = null;
 
         output.WriteLine($"After:  BootstrapTokenHash = {cluster.BootstrapTokenHash ?? "null"}");

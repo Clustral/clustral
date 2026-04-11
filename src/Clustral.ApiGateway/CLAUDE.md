@@ -1,8 +1,11 @@
 # Clustral.ApiGateway — Claude Code Guide
 
 YARP-based API Gateway that sits between nginx and downstream services.
-Provides centralized authentication, rate limiting, CORS, correlation IDs,
-and gRPC passthrough for agent mTLS tunnels.
+Provides centralized authentication, rate limiting, CORS, and correlation IDs.
+Handles all OIDC authentication centrally -- downstream services no longer
+validate OIDC tokens. Issues ES256 internal JWTs (30s TTL) forwarded via
+`X-Internal-Token` header. Also validates kubeconfig JWTs (ES256, issued by
+ControlPlane) alongside OIDC JWTs.
 
 ---
 
@@ -11,8 +14,13 @@ and gRPC passthrough for agent mTLS tunnels.
 ```
 nginx :443 (TLS) → API Gateway :8080 (HTTP) → ControlPlane :5100
                                              → AuditService :5200
-Agent :5443 (gRPC) → API Gateway :5443 (passthrough) → ControlPlane :5443
+Agent → ControlPlane :5443 (gRPC mTLS, direct — NOT through gateway)
 ```
+
+Endpoints:
+- `/gateway/healthz` — liveness check
+- `/gateway/healthz/ready` — readiness check (includes OIDC provider connectivity)
+- Kestrel on `:8080` HTTP only (no TLS — nginx handles that)
 
 ---
 
@@ -29,7 +37,6 @@ Routes and clusters are defined in `appsettings.json` under the
 | `api-route` | `/api/{**catch-all}` | `controlplane` | Required | `api` policy |
 | `healthz-route` | `/healthz/{**catch-all}` | `controlplane` | Anonymous | None |
 | `audit-route` | `/audit-api/{**catch-all}` | `audit-service` | Required | `api` policy |
-| `grpc-route` | `/{**catch-all}` (port 5443) | `controlplane-grpc` | Anonymous | None |
 
 The `audit-route` uses `PathRemovePrefix: /audit-api` transform so
 `/audit-api/api/v1/audit` → AuditService `/api/v1/audit`.
@@ -40,7 +47,6 @@ The `audit-route` uses `PathRemovePrefix: /audit-api` transform so
 |---|---|---|
 | `controlplane` | `http://controlplane:5100` | HTTP/1.1 |
 | `audit-service` | `http://audit-service:5200` | HTTP/1.1 |
-| `controlplane-grpc` | `https://controlplane:5443` | HTTP/2 (gRPC passthrough) |
 
 ---
 
@@ -95,12 +101,7 @@ same auth pipeline as browser/CLI requests.
 
 Agents connect directly to ControlPlane :5443 for mTLS gRPC tunnels.
 This traffic does NOT go through the gateway — mTLS is its own security
-boundary. See issue #4 for the planned TunnelService split.
-
-The `controlplane-grpc` cluster uses:
-```json
-"HttpRequest": { "Version": "2", "VersionPolicy": "RequestVersionExact" }
-```
+boundary. The gateway has no gRPC routes or passthrough configuration.
 
 ---
 
@@ -110,7 +111,10 @@ The `controlplane-grpc` cluster uses:
 |---|---|---|
 | `Oidc:Authority` | env/appsettings | OIDC provider URL |
 | `Oidc:Audience` | env/appsettings | Expected JWT audience |
-| `InternalJwt:PrivateKeyPath` | env | ES256 private key for signing |
+| `Oidc:ClientId` | env/appsettings | OIDC client ID |
+| `Oidc:RequireHttpsMetadata` | env/appsettings | Require HTTPS for OIDC metadata (default: true) |
+| `InternalJwt:PrivateKeyPath` | env | ES256 private key for signing internal JWTs |
+| `KubeconfigJwt:PublicKeyPath` | env | ES256 public key for validating kubeconfig JWTs |
 | `Cors:AllowedOrigins` | appsettings | Array of allowed CORS origins |
 
 ---

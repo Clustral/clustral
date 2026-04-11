@@ -19,27 +19,23 @@ public sealed class CliIntegrationTests(
     ClustralWebApplicationFactory factory,
     ITestOutputHelper output)
 {
-    // ── Config endpoint ─────────────────────────────────────────────────────
+    // ── Version endpoint ──────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Config_DeserializesWithCliWireType()
+    public async Task Version_DeserializesWithCliWireType()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/api/v1/config");
+        var response = await client.GetAsync("/api/v1/version");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var json = await response.Content.ReadAsStringAsync();
         var config = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
 
-        output.WriteLine($"Version:   {config!.Version}");
-        output.WriteLine($"Authority: {config.OidcAuthority}");
-        output.WriteLine($"ClientId:  {config.OidcClientId}");
+        output.WriteLine($"Version: {config!.Version}");
 
         config.Should().NotBeNull();
-        config!.Version.Should().NotBeNullOrEmpty("config should include version");
-        config.OidcAuthority.Should().NotBeNullOrEmpty();
-        config.OidcClientId.Should().NotBeNullOrEmpty();
+        config!.Version.Should().NotBeNullOrEmpty("response should include version");
     }
 
     // ── Clusters ────────────────────────────────────────────────────────────

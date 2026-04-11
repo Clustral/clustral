@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="AspNetCore.HealthChecks.Uris" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Yarp.ReverseProxy" />
   </ItemGroup>

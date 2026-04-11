@@ -202,7 +202,6 @@ internal static class LoginCommand
     private static readonly string[] DiscoveryPaths =
     [
         "/.well-known/clustral-configuration",   // unified domain (app.clustral.dev)
-        "/api/v1/config",                        // direct ControlPlane
     ];
 
     private static async Task<ControlPlaneConfig?> DiscoverConfigAsync(

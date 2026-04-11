@@ -54,8 +54,7 @@ graph TB
     CP -->|integration events| RMQ
     RMQ --> AUDIT
     AUDIT --> DB
-    AGENT ==>|"gRPC mTLS :5443<br/>(passthrough via GW)"| GW
-    GW ==>|"gRPC passthrough"| CP
+    AGENT ==>|"gRPC mTLS :5443<br/>(direct to ControlPlane)"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
@@ -118,7 +117,7 @@ sequenceDiagram
     participant Agent as Agent (Go)
     participant K8S as k8s API
 
-    Note over Agent,CP: Persistent gRPC tunnel via GW :5443 → CP :5443 (mTLS)
+    Note over Agent,CP: Persistent gRPC tunnel direct to CP :5443 (mTLS)
 
     kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {kubeconfig JWT}
     NGX->>GW: proxy /api/proxy/*
@@ -141,11 +140,10 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Agent as Agent (Go)
-    participant GW as API Gateway :5443
     participant CP as ControlPlane :5443
     participant DB as MongoDB
 
-    Note over Agent,GW: Agent connects to Gateway :5443 (gRPC passthrough → CP :5443 mTLS)
+    Note over Agent,CP: Agent connects directly to ControlPlane :5443 (gRPC mTLS, no gateway)
 
     Agent->>CP: ClusterService.RegisterAgent (bootstrap token)
     CP->>CP: Verify token, issue cert + JWT
@@ -279,7 +277,7 @@ flowchart TB
         NGX["nginx gateway\n:443 HTTPS"]
 
         subgraph app ["Application Zone"]
-            GW["API Gateway (YARP)\n:8080 | :5443"]
+            GW["API Gateway (YARP)\n:8080"]
             WEB["Web UI\n:3000"]
             CP["ControlPlane\nREST :5100 | gRPC mTLS :5443"]
             RMQ["RabbitMQ\n:5672"]
@@ -315,9 +313,8 @@ flowchart TB
     WEB -. "Server OIDC" .-> OIDC
     GW -. "OIDC JWKS" .-> OIDC
 
-    AGENT_A == "gRPC mTLS :5443\n(via Gateway)" ==> GW
-    AGENT_B == "gRPC mTLS :5443\n(via Gateway)" ==> GW
-    GW == "gRPC passthrough" ==> CP
+    AGENT_A == "gRPC mTLS :5443\n(direct)" ==> CP
+    AGENT_B == "gRPC mTLS :5443\n(direct)" ==> CP
     AGENT_A --> K8S_A
     AGENT_B --> K8S_B
 
@@ -344,9 +341,8 @@ flowchart TB
 |---|---|---|---|---|
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
 | **API Gateway REST** | 8080 | HTTP/1.1 | Internal | YARP routes API + audit (proxied by nginx) |
-| **API Gateway gRPC** | 5443 | gRPC/HTTP2 | **Inbound** | Agent gRPC passthrough → ControlPlane |
 | **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by gateway) |
-| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | Internal | Agent tunnel — mTLS + JWT (via gateway) |
+| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Inbound** | Agent tunnel — mTLS + JWT (direct, no gateway) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **RabbitMQ** | 5672 | AMQP | Internal | Message broker — audit event pipeline |
 | **AuditService REST** | 5200 | HTTP/1.1 | Internal | Audit event queries (proxied by Web UI) |
@@ -359,6 +355,8 @@ flowchart TB
 
 | Port | Path | Destination | Purpose |
 |---|---|---|---|
+| `:443` | `/api/auth/*` | Web UI `:3000` | NextAuth authentication |
+| `:443` | `/api/audit/*` | Web UI `:3000` | Next.js audit proxy |
 | `:443` | `/api/*` | API Gateway `:8080` | REST API + kubectl proxy |
 | `:443` | `/healthz*` | API Gateway `:8080` | Health checks |
 | `:443` | `/audit-api/*` | API Gateway `:8080` | Audit event queries |
@@ -373,7 +371,7 @@ flowchart TB
 - **ControlPlane REST and Web UI are internal only** — not exposed publicly; nginx handles all HTTPS traffic on :443
 - **MongoDB** must never be exposed outside the application zone
 - **TLS**: nginx terminates TLS on :443 for REST/Web UI; Kestrel handles mTLS on :5443 for agent gRPC
-- **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the ControlPlane (JWKS key fetch)
+- **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the API Gateway (JWKS key fetch)
 - **kubectl traffic** flows: kubectl → nginx `:443` → ControlPlane → gRPC tunnel → Agent → k8s API
 
 ### Proxy Configuration
@@ -436,8 +434,7 @@ sequenceDiagram
 | **Correlation IDs** | `X-Correlation-Id` generated or preserved, forwarded to all downstream services |
 | **CORS** | Configurable origins per environment |
 | **Request Size** | 10 MB max request body |
-| **Health Checks** | Active health probes on downstream clusters (10s interval) |
-| **gRPC Passthrough** | Agent mTLS traffic on :5443 forwarded to ControlPlane (no TLS termination) |
+| **Health Checks** | `/gateway/healthz` (liveness), `/gateway/healthz/ready` (readiness + OIDC) |
 
 ### Credential Lifecycle
 
@@ -638,29 +635,46 @@ services:
       retries: 30
       start_period: 60s
 
+  api-gateway:
+    image: ghcr.io/clustral/clustral-api-gateway:latest
+    restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Oidc__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
+      Oidc__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
+      Oidc__ClientId: "clustral-control-plane"
+      Oidc__Audience: "clustral-control-plane"
+      Oidc__RequireHttpsMetadata: "false"
+      InternalJwt__PrivateKeyPath: "/etc/clustral/internal-jwt/private.pem"
+      KubeconfigJwt__PublicKeyPath: "/etc/clustral/kubeconfig-jwt/public.pem"
+      Cors__AllowedOrigins__0: "https://<YOUR_HOST_IP>"
+    volumes:
+      - ./internal-jwt:/etc/clustral/internal-jwt:ro
+      - ./kubeconfig-jwt:/etc/clustral/kubeconfig-jwt:ro
+
   controlplane:
     image: ghcr.io/clustral/clustral-controlplane:latest
     restart: unless-stopped
     depends_on:
       mongo:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Clustral: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Oidc__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
-      Oidc__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
-      Oidc__ClientId: "clustral-control-plane"
-      Oidc__Audience: "clustral-control-plane"
-      Oidc__RequireHttpsMetadata: "false"
+      InternalJwt__PublicKeyPath: "/etc/clustral/internal-jwt/public.pem"
+      KubeconfigJwt__PrivateKeyPath: "/etc/clustral/kubeconfig-jwt/private.pem"
       CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
       CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
     ports:
       - "5443:5443"   # gRPC mTLS — agents connect directly
     volumes:
       - ./ca:/etc/clustral/ca:ro
+      - ./internal-jwt:/etc/clustral/internal-jwt:ro
+      - ./kubeconfig-jwt:/etc/clustral/kubeconfig-jwt:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5100/healthz/ready || exit 1"]
       interval: 10s
@@ -687,6 +701,8 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
+      api-gateway:
+        condition: service_started
       controlplane:
         condition: service_healthy
     ports:
@@ -742,13 +758,27 @@ openssl req -x509 -new -nodes \
 
 > The SAN must include the IP/hostname agents use in `AGENT_CONTROL_PLANE_URL`. Replace `<YOUR_HOST_IP>` with the same IP used for Keycloak.
 
-### 4. Start
+### 4. Generate ES256 key pairs
+
+```bash
+# Internal JWT keys (gateway signs, downstream validates)
+mkdir -p internal-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out internal-jwt/private.pem
+openssl ec -in internal-jwt/private.pem -pubout -out internal-jwt/public.pem
+
+# Kubeconfig JWT keys (ControlPlane signs, gateway validates)
+mkdir -p kubeconfig-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out kubeconfig-jwt/private.pem
+openssl ec -in kubeconfig-jwt/private.pem -pubout -out kubeconfig-jwt/public.pem
+```
+
+### 5. Start
 
 ```bash
 docker compose up -d
 ```
 
-### 5. Default users (Keycloak)
+### 6. Default users (Keycloak)
 
 | Username | Password | Role             |
 |----------|----------|------------------|
@@ -1280,7 +1310,9 @@ Clustral/clustral (monorepo)
 │   └── proto/                   # Protobuf contracts (shared between .NET + Go)
 ├── infra/
 │   ├── keycloak/                # Realm export with pre-configured clients
-│   ├── nginx/                   # Optional SSL termination proxy
+│   ├── nginx/                   # SSL termination proxy + routing
+│   ├── internal-jwt/            # ES256 key pair for internal JWTs (gateway → downstream)
+│   ├── kubeconfig-jwt/          # ES256 key pair for kubeconfig JWTs (ControlPlane → gateway)
 │   └── docker-compose.yml       # Infrastructure (MongoDB, Keycloak)
 ├── .github/workflows/
 │   ├── build.yml                # Build + test (.NET, Go, Web)
@@ -1289,7 +1321,7 @@ Clustral/clustral (monorepo)
 ├── install.sh                   # Linux/macOS installer
 ├── install.ps1                  # Windows installer
 ├── .env                         # App stack env vars (committed defaults — edit HOST_IP)
-├── docker-compose.yml           # Application stack (ControlPlane + Web + AuditService)
+├── docker-compose.yml           # Application stack (API Gateway + ControlPlane + Web + AuditService)
 └── CLAUDE.md                    # Claude Code guide
 
 Clustral/homebrew-tap (separate repo)
@@ -1426,10 +1458,9 @@ dotnet test src/Clustral.E2E.Tests
 > feature, with explicit `ICommand<T>` / `IQuery<T>` marker interfaces. Validation
 > only runs for commands. Domain events are dispatched after every mutation.
 >
-> **gRPC integration tests** verify the ClusterService and AuthService endpoints
-> (register, list, get, update status, deregister, credential issuance/validation/
-> rotation/revocation, bootstrap token single-use) using `Grpc.Net.Client` against
-> `WebApplicationFactory`.
+> **gRPC integration tests** verify the ClusterService endpoints
+> (register, list, get, update status, deregister, bootstrap token single-use)
+> using `Grpc.Net.Client` against `WebApplicationFactory`.
 >
 > The CLI uses **FluentValidation** for input validation and accepts shorthand
 > durations (`8H`, `30M`, `1D`) alongside full ISO 8601 (`PT8H`). Resource

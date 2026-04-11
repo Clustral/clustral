@@ -42,6 +42,33 @@ builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
 
+// ── Authentication — Internal JWT (ES256, issued by API Gateway) ─────
+var internalJwtPublicKeyPath = builder.Configuration["InternalJwt:PublicKeyPath"];
+if (!string.IsNullOrEmpty(internalJwtPublicKeyPath) && File.Exists(internalJwtPublicKeyPath))
+{
+    var publicKeyPem = File.ReadAllText(internalJwtPublicKeyPath);
+    var internalJwt = InternalJwtService.ForValidation(publicKeyPem);
+
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(opts =>
+        {
+            opts.TokenValidationParameters = internalJwt.GetValidationParameters();
+            opts.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var internalToken = context.HttpContext.Request.Headers["X-Internal-Token"]
+                        .FirstOrDefault();
+                    if (!string.IsNullOrEmpty(internalToken))
+                        context.Token = internalToken;
+                    return Task.CompletedTask;
+                },
+            };
+        });
+}
+builder.Services.AddAuthorization();
+
 // ── ASP.NET Core ─────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

@@ -33,7 +33,7 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 // If any required config is missing, the app aborts immediately with a clear error.
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services.AddOptionsWithValidation<OidcOptions, OidcOptionsValidator>(OidcOptions.SectionName);
+builder.Services.AddOptionsWithValidation<CredentialOptions, CredentialOptionsValidator>(CredentialOptions.SectionName);
 
 builder.Services.AddOptionsWithValidation<MongoDbOptions, MongoDbOptionsValidator>(MongoDbOptions.SectionName);
 
@@ -41,8 +41,6 @@ builder.Services.AddOptionsWithValidation<ProxyOptions, ProxyOptionsValidator>(P
 
 builder.Services.AddOptionsWithValidation<Clustral.Sdk.Crypto.CertificateAuthorityOptions,
     CertificateAuthorityOptionsValidator>(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName);
-
-var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MongoDB — resolved lazily via IOptions<MongoDbOptions>.
@@ -62,9 +60,6 @@ builder.Services.AddSingleton<ClustralDb>();
 // The API Gateway validates external OIDC JWTs and issues short-lived
 // internal JWTs (ES256) forwarded via X-Internal-Token header.
 // The ControlPlane validates using only the public key.
-//
-// Falls back to OIDC JwtBearer if no internal JWT key is configured
-// (backward compatibility for direct access without gateway).
 // ─────────────────────────────────────────────────────────────────────────────
 
 var internalJwtPublicKeyPath = builder.Configuration["InternalJwt:PublicKeyPath"];
@@ -96,50 +91,6 @@ if (!string.IsNullOrEmpty(internalJwtPublicKeyPath) && File.Exists(internalJwtPu
                     if (!string.IsNullOrEmpty(internalToken))
                         context.Token = internalToken;
 
-                    return Task.CompletedTask;
-                },
-            };
-        });
-}
-else
-{
-    // Fallback: OIDC JwtBearer for direct access without gateway
-    builder.Services
-        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(opts =>
-        {
-            opts.RequireHttpsMetadata = oidcOpts.RequireHttpsMetadata;
-            opts.Audience = string.IsNullOrEmpty(oidcOpts.Audience)
-                ? oidcOpts.ClientId
-                : oidcOpts.Audience;
-
-            if (!string.IsNullOrEmpty(oidcOpts.MetadataAddress))
-            {
-                opts.Authority = null;
-                opts.MetadataAddress = oidcOpts.MetadataAddress;
-            }
-            else
-            {
-                opts.Authority = oidcOpts.Authority;
-            }
-
-            opts.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = false,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ClockSkew = TimeSpan.FromSeconds(30),
-            };
-
-            opts.Events = new JwtBearerEvents
-            {
-                OnMessageReceived = context =>
-                {
-                    if (context.HttpContext.Connection.LocalPort == 5443)
-                    {
-                        context.NoResult();
-                    }
                     return Task.CompletedTask;
                 },
             };
@@ -272,14 +223,8 @@ builder.Services.AddHostedService<AccessRequestCleanupService>();
 // Health checks
 // ─────────────────────────────────────────────────────────────────────────────
 
-var oidcDiscoveryUrl = !string.IsNullOrEmpty(oidcOpts.MetadataAddress)
-    ? oidcOpts.MetadataAddress
-    : $"{oidcOpts.Authority.TrimEnd('/')}/.well-known/openid-configuration";
-
 builder.Services.AddHealthChecks()
-    .AddMongoDb(tags: ["ready"], name: "mongodb", timeout: TimeSpan.FromSeconds(5))
-    .AddUrlGroup(new Uri(oidcDiscoveryUrl), "oidc", tags: ["ready"],
-        timeout: TimeSpan.FromSeconds(5));
+    .AddMongoDb(tags: ["ready"], name: "mongodb", timeout: TimeSpan.FromSeconds(5));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate limiting (proxy traffic, per-credential token bucket)
@@ -391,7 +336,6 @@ app.MapControllers();
 // gRPC endpoints
 app.MapGrpcService<ClusterServiceImpl>();
 app.MapGrpcService<TunnelServiceImpl>();
-app.MapGrpcService<AuthServiceImpl>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health check endpoints
@@ -415,20 +359,13 @@ app.MapHealthChecks("/healthz/detail", new HealthCheckOptions
     ResponseWriter = WriteDetailedHealthResponse,
 }).RequireAuthorization();
 
-// Public config endpoint — CLI auto-discovers OIDC settings from here
-// so users only need to know the ControlPlane URL, not the OIDC provider URL.
-app.MapGet("/api/v1/config", (IOptions<OidcOptions> oidc) =>
+// Public version endpoint — CLI uses this for version checks and health probes.
+// OIDC discovery is served by the Web UI via /.well-known/clustral-configuration.
+app.MapGet("/api/v1/version", () =>
 {
-    var o = oidc.Value;
     var version = Assembly.GetExecutingAssembly()
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-dev";
-    return Results.Ok(new
-    {
-        version,
-        oidcAuthority = o.Authority,
-        oidcClientId = "clustral-cli",
-        oidcScopes = "openid email profile",
-    });
+    return Results.Ok(new { version });
 }).AllowAnonymous();
 
 // ─────────────────────────────────────────────────────────────────────────────
