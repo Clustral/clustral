@@ -70,7 +70,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = false,  // tokens come from multiple clients (CLI, Web UI, kubeconfig)
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true, // JWKS or ES256 key check proves authenticity
-            NameClaimType = "preferred_username",
+            NameClaimType = builder.Configuration["Oidc:NameClaimType"] ?? "preferred_username",
         };
 
         // Add kubeconfig JWT public key as additional valid signing key.
