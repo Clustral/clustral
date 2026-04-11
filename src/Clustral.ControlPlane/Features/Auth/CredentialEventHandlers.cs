@@ -12,7 +12,9 @@ public sealed class CredentialAuditHandler(
     IPublishEndpoint publisher,
     ClustralDb db)
     : INotificationHandler<CredentialIssued>,
-      INotificationHandler<CredentialRevoked>
+      INotificationHandler<CredentialRevoked>,
+      INotificationHandler<CredentialRevokeDenied>,
+      INotificationHandler<CredentialIssueFailed>
 {
     public async Task Handle(CredentialIssued e, CancellationToken ct)
     {
@@ -56,6 +58,36 @@ public sealed class CredentialAuditHandler(
             ClusterName = cluster?.Name,
             RevokedByEmail = e.ActorEmail,
             Reason = e.Reason,
+            OccurredAt = e.OccurredAt
+        }, ct);
+    }
+
+    public async Task Handle(CredentialRevokeDenied e, CancellationToken ct)
+    {
+        logger.LogWarning("[Audit] Credential revoke denied: {Reason}", e.Reason);
+
+        await publisher.Publish(new CredentialRevokeDeniedEvent
+        {
+            CredentialId = e.CredentialId,
+            Reason = e.Reason,
+            ActorEmail = e.ActorEmail,
+            OccurredAt = e.OccurredAt
+        }, ct);
+    }
+
+    public async Task Handle(CredentialIssueFailed e, CancellationToken ct)
+    {
+        var cluster = await db.Clusters.Find(c => c.Id == e.ClusterId).FirstOrDefaultAsync(ct);
+
+        logger.LogWarning("[Audit] Credential issuance failed for cluster {ClusterId}: {Reason}",
+            e.ClusterId, e.Reason);
+
+        await publisher.Publish(new CredentialIssueFailedEvent
+        {
+            ClusterId = e.ClusterId,
+            ClusterName = cluster?.Name,
+            Reason = e.Reason,
+            ActorEmail = e.ActorEmail,
             OccurredAt = e.OccurredAt
         }, ct);
     }

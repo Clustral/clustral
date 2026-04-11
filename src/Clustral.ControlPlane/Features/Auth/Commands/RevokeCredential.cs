@@ -28,13 +28,21 @@ public sealed class RevokeCredentialHandler(
             .FirstOrDefaultAsync(ct);
 
         if (credential is null)
+        {
+            await mediator.Publish(new CredentialRevokeDenied(
+                request.CredentialId, "Credential not found", currentUser.Email), ct);
             return ResultErrors.CredentialNotFound();
+        }
 
         if (credential.UserId.HasValue)
         {
             var owner = await users.GetByIdAsync(credential.UserId.Value, ct);
             if (owner?.KeycloakSubject != currentUser.Subject)
+            {
+                await mediator.Publish(new CredentialRevokeDenied(
+                    request.CredentialId, "Credential owner mismatch", currentUser.Email), ct);
                 return ResultErrors.CredentialOwnerMismatch();
+            }
         }
 
         var now = DateTimeOffset.UtcNow;

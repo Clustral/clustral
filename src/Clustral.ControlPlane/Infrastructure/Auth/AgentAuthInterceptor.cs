@@ -1,6 +1,8 @@
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.Sdk.Crypto;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
+using MediatR;
 using Microsoft.Extensions.Caching.Memory;
 using MongoDB.Driver;
 
@@ -10,11 +12,13 @@ namespace Clustral.ControlPlane.Infrastructure.Auth;
 /// gRPC server interceptor that enforces mTLS + JWT on port 5443.
 /// Validates JWT signature, cross-checks cert CN against JWT agent_id,
 /// checks tokenVersion against MongoDB, and enforces allowedRpcs.
+/// Publishes <see cref="AgentAuthFailed"/> audit events on every failure.
 /// </summary>
 public sealed class AgentAuthInterceptor(
     JwtIssuer jwtIssuer,
     ClustralDb db,
     IMemoryCache cache,
+    IMediator mediator,
     ILogger<AgentAuthInterceptor> logger) : Interceptor
 {
     private const int MtlsPort = 5443;
@@ -47,7 +51,8 @@ public sealed class AgentAuthInterceptor(
         // Only enforce on the mTLS port
         if (localPort != MtlsPort) return;
 
-        var method = context.Method; // e.g., "/clustral.v1.ClusterService/RegisterAgent"
+        var method = context.Method;
+        var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString();
 
         // Bootstrap RPCs skip mTLS+JWT validation (agent has no cert yet)
         if (BootstrapRpcs.Contains(method)) return;
@@ -56,14 +61,19 @@ public sealed class AgentAuthInterceptor(
         var clientCert = httpContext.Connection.ClientCertificate;
         if (clientCert is null)
         {
+            PublishAuthFailed(null, "Client certificate required on port 5443", null, remoteIp);
             throw new RpcException(new Status(StatusCode.Unauthenticated,
                 "Client certificate required on port 5443"));
         }
+
+        var certCn = clientCert.GetNameInfo(
+            System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, forIssuer: false);
 
         // 2. Extract JWT from authorization metadata
         var authHeader = context.RequestHeaders.GetValue("authorization");
         if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
+            PublishAuthFailed(null, "Bearer JWT required in authorization header", certCn, remoteIp);
             throw new RpcException(new Status(StatusCode.Unauthenticated,
                 "Bearer JWT required in authorization header"));
         }
@@ -78,16 +88,17 @@ public sealed class AgentAuthInterceptor(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "JWT validation failed for {Method}", method);
+            PublishAuthFailed(null, "Invalid or expired JWT", certCn, remoteIp);
             throw new RpcException(new Status(StatusCode.Unauthenticated,
                 "Invalid or expired JWT"));
         }
 
         // 4. Cross-check: JWT agent_id must match cert CN
         var jwtAgentId = JwtIssuer.GetAgentId(principal);
-        var certCn = clientCert.GetNameInfo(System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, forIssuer: false);
         if (string.IsNullOrEmpty(jwtAgentId) || !string.Equals(jwtAgentId, certCn, StringComparison.OrdinalIgnoreCase))
         {
             logger.LogWarning("JWT agent_id {JwtAgentId} does not match cert CN {CertCn}", jwtAgentId, certCn);
+            PublishAuthFailed(null, $"JWT agent_id '{jwtAgentId}' does not match certificate CN '{certCn}'", certCn, remoteIp);
             throw new RpcException(new Status(StatusCode.Unauthenticated,
                 "JWT agent_id does not match certificate CN"));
         }
@@ -96,6 +107,7 @@ public sealed class AgentAuthInterceptor(
         var jwtClusterId = JwtIssuer.GetClusterId(principal);
         if (string.IsNullOrEmpty(jwtClusterId) || !Guid.TryParse(jwtClusterId, out var clusterId))
         {
+            PublishAuthFailed(null, "Invalid cluster_id in JWT", certCn, remoteIp);
             throw new RpcException(new Status(StatusCode.Unauthenticated,
                 "Invalid cluster_id in JWT"));
         }
@@ -107,6 +119,7 @@ public sealed class AgentAuthInterceptor(
         {
             logger.LogWarning("Token version mismatch for cluster {ClusterId}: JWT={JwtVersion}, stored={StoredVersion}",
                 clusterId, jwtTokenVersion, storedVersion);
+            PublishAuthFailed(clusterId, $"Token has been revoked (version {jwtTokenVersion} < {storedVersion})", certCn, remoteIp);
             throw new RpcException(new Status(StatusCode.Unauthenticated,
                 "Token has been revoked (version mismatch)"));
         }
@@ -120,6 +133,7 @@ public sealed class AgentAuthInterceptor(
             !allowedRpcs.Any(r => fullServiceMethod.Contains(r, StringComparison.OrdinalIgnoreCase)))
         {
             logger.LogWarning("RPC {Method} not in allowedRpcs for agent {AgentId}", method, jwtAgentId);
+            PublishAuthFailed(clusterId, $"RPC {shortMethod} is not permitted for this agent", certCn, remoteIp);
             throw new RpcException(new Status(StatusCode.PermissionDenied,
                 $"RPC {shortMethod} is not permitted for this agent"));
         }
@@ -127,6 +141,21 @@ public sealed class AgentAuthInterceptor(
         // Store validated identity in HttpContext for downstream use
         httpContext.Items["AgentId"] = jwtAgentId;
         httpContext.Items["ClusterId"] = clusterId;
+    }
+
+    private void PublishAuthFailed(Guid? clusterId, string reason, string? certCn, string? remoteIp)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await mediator.Publish(new AgentAuthFailed(clusterId, reason, certCn, remoteIp));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to publish agent auth failed event");
+            }
+        });
     }
 
     private async Task<int> GetCachedTokenVersion(Guid clusterId, CancellationToken ct)

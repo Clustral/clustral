@@ -13,3 +13,17 @@ public sealed record CredentialRevoked(
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
+
+public sealed record CredentialRevokeDenied(
+    Guid CredentialId, string Reason,
+    string? ActorEmail = null) : IDomainEvent
+{
+    public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public sealed record CredentialIssueFailed(
+    Guid ClusterId, string Reason,
+    string? ActorEmail = null) : IDomainEvent
+{
+    public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
+}

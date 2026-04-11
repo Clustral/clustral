@@ -26,8 +26,10 @@ public static class EventCodes
     public const string AccessRequestExpired  = "CAR005I";
 
     // ── Credentials ─────────────────────────────────────────────────────
-    public const string CredentialIssued  = "CCR001I";
-    public const string CredentialRevoked = "CCR002I";
+    public const string CredentialIssued       = "CCR001I";
+    public const string CredentialRevoked      = "CCR002I";
+    public const string CredentialRevokeDenied = "CCR003W";
+    public const string CredentialIssueFailed  = "CCR004W";
 
     // ── Clusters ────────────────────────────────────────────────────────
     public const string ClusterRegistered   = "CCL001I";
@@ -45,6 +47,9 @@ public static class EventCodes
     public const string RoleAssigned    = "CUA002I";
     public const string RoleUnassigned  = "CUA003I";
 
+    // ── Agent Auth ───────────────────────────────────────────────────────
+    public const string AgentAuthFailed = "CAG001W";
+
     // ── Proxy ───────────────────────────────────────────────────────────
     public const string ProxyRequestCompleted = "CPR001I";
     public const string ProxyAccessDenied     = "CPR002W";
@@ -54,10 +59,11 @@ public static class EventCodes
     [
         AccessRequestCreated, AccessRequestApproved, AccessRequestDenied,
         AccessRequestRevoked, AccessRequestExpired,
-        CredentialIssued, CredentialRevoked,
+        CredentialIssued, CredentialRevoked, CredentialRevokeDenied, CredentialIssueFailed,
         ClusterRegistered, ClusterConnected, ClusterDisconnected, ClusterDeleted,
         RoleCreated, RoleUpdated, RoleDeleted,
         UserSynced, RoleAssigned, RoleUnassigned,
+        AgentAuthFailed,
         ProxyRequestCompleted, ProxyAccessDenied,
     ];
 }

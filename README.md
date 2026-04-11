@@ -120,7 +120,7 @@ sequenceDiagram
     Agent-->>CP: HttpResponseFrame via gRPC tunnel
     CP-->>NGX: Pod list (JSON)
     NGX-->>kubectl: Pod list (JSON)
-    Note over CP: CPR001I proxy.request
+    Note over CP: CPR001I proxy.request (or CPR002W if denied)
 ```
 
 ### Agent Tunnel Lifecycle
@@ -225,6 +225,7 @@ sequenceDiagram
     Note over Agent: Normal operation (mTLS + JWT)
     Agent->>CP: TunnelService.OpenTunnel :5443 (mTLS + JWT)
     CP->>CP: Verify cert chain, JWT, CN match, tokenVersion
+    Note over CP: CAG001W agent.auth_failed (on any failure)
     CP-->>Agent: TunnelHello
 
     Note over Agent: Auto-renewal (every 6h check)
@@ -445,6 +446,7 @@ sequenceDiagram
 
     alt Unauthenticated (expired JWT)
         CP-->>Agent: StatusCode.Unauthenticated
+        Note over CP: CAG001W agent.auth_failed
         Agent->>Agent: Trigger immediate JWT renewal
         Agent->>CP: ClusterService.RenewToken
         CP-->>Agent: new JWT
@@ -479,6 +481,7 @@ sequenceDiagram
     Agent->>CP: ClusterService.UpdateStatus (mTLS + JWT)
     CP->>CP: AgentAuthInterceptor:<br/>JWT tokenVersion=1 < stored=2
     CP-->>Agent: StatusCode.Unauthenticated
+    Note over CP: CAG001W agent.auth_failed (revoked)
     Agent->>Agent: Attempt JWT renewal
     Agent->>CP: ClusterService.RenewToken
     CP->>CP: Issue new JWT with tokenVersion=2
@@ -1044,6 +1047,10 @@ Event codes follow the format `[PREFIX][NUMBER][SEVERITY]` where the prefix iden
 | `CUA002I` | `user.role_assigned` | `auth` | Info | Role assigned to user for a cluster |
 | `CUA003I` | `user.role_unassigned` | `auth` | Info | Role assignment removed |
 | `CPR001I` | `proxy.request` | `proxy` | Info* | kubectl proxy request completed |
+| `CPR002W` | `proxy.access_denied` | `proxy` | Warning | kubectl proxy request denied (401/403) |
+| `CAG001W` | `agent.auth_failed` | `auth` | Warning | Agent gRPC auth failed (cert/JWT/revoked) |
+| `CCR003W` | `credential.revoke_denied` | `credentials` | Warning | Credential revocation denied (not found/not owner) |
+| `CCR004W` | `credential.issue_failed` | `credentials` | Warning | Credential issuance failed (cluster not found) |
 
 > \*`CPR001I` severity is elevated to Warning when the HTTP response status code is >= 400.
 
@@ -1327,7 +1334,7 @@ cd src/clustral-agent && go run .
 ### Run tests
 
 ```bash
-# .NET unit + integration tests (796 tests — fast, no Docker network required)
+# .NET unit + integration tests (805 tests — fast, no Docker network required)
 dotnet test Clustral.slnx --filter "Category!=E2E"
 
 # Go Agent (with race detector)

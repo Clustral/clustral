@@ -22,3 +22,20 @@ public record CredentialRevokedEvent
     public string? Reason { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }
+
+public record CredentialRevokeDeniedEvent
+{
+    public Guid CredentialId { get; init; }
+    public string Reason { get; init; } = string.Empty;
+    public string? ActorEmail { get; init; }
+    public DateTimeOffset OccurredAt { get; init; }
+}
+
+public record CredentialIssueFailedEvent
+{
+    public Guid ClusterId { get; init; }
+    public string? ClusterName { get; init; }
+    public string Reason { get; init; } = string.Empty;
+    public string? ActorEmail { get; init; }
+    public DateTimeOffset OccurredAt { get; init; }
+}

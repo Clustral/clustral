@@ -1,3 +1,4 @@
+using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Features.Proxy.Commands;
 using Clustral.Sdk.Results;
 using MediatR;
@@ -50,6 +51,13 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
         var bearerToken = ExtractBearerToken(httpContext.Request);
         if (bearerToken is null)
         {
+            _ = Task.Run(async () =>
+            {
+                try { await mediator.Publish(new ProxyAccessDenied(
+                    clusterId, null, httpContext.Request.Method, k8sPath,
+                    "Authorization: Bearer token required")); }
+                catch { /* best-effort */ }
+            });
             httpContext.Response.StatusCode = 401;
             await httpContext.Response.WriteAsync(
                 "Authorization: Bearer token required.", cancellationToken: ct);

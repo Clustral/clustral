@@ -14,7 +14,8 @@ public sealed class ClusterAuditHandler(
     : INotificationHandler<ClusterRegistered>,
       INotificationHandler<ClusterConnected>,
       INotificationHandler<ClusterDisconnected>,
-      INotificationHandler<ClusterDeleted>
+      INotificationHandler<ClusterDeleted>,
+      INotificationHandler<AgentAuthFailed>
 {
     public async Task Handle(ClusterRegistered e, CancellationToken ct)
     {
@@ -69,6 +70,26 @@ public sealed class ClusterAuditHandler(
             ClusterId = e.ClusterId,
             ClusterName = e.ClusterName,
             DeletedByEmail = e.ActorEmail,
+            OccurredAt = e.OccurredAt
+        }, ct);
+    }
+
+    public async Task Handle(AgentAuthFailed e, CancellationToken ct)
+    {
+        var cluster = e.ClusterId.HasValue
+            ? await db.Clusters.Find(c => c.Id == e.ClusterId).FirstOrDefaultAsync(ct)
+            : null;
+
+        logger.LogWarning("[Audit] Agent auth failed for cluster {ClusterId}: {Reason}",
+            e.ClusterId?.ToString() ?? "unknown", e.Reason);
+
+        await publisher.Publish(new AgentAuthFailedEvent
+        {
+            ClusterId = e.ClusterId,
+            ClusterName = cluster?.Name,
+            Reason = e.Reason,
+            CertCN = e.CertCN,
+            RemoteIp = e.RemoteIp,
             OccurredAt = e.OccurredAt
         }, ct);
     }
