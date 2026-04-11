@@ -114,15 +114,17 @@ public sealed class KubeconfigJwtServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void GetValidationParameters_ThrowsOnSigningOnlyInstance()
+    public void ForSigning_CanAlsoValidate()
     {
         var (priv, _) = GenerateKeyPair();
         var signer = KubeconfigJwtService.ForSigning(priv);
 
-        var act = () => signer.GetValidationParameters();
+        var token = signer.Issue(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddHours(1));
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*signing only*");
+        // ForSigning can also validate (ControlPlane needs both)
+        var result = signer.Validate(token);
+        result.Should().NotBeNull();
     }
 
     [Fact]

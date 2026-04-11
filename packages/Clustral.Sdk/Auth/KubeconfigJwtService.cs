@@ -26,7 +26,9 @@ public sealed class KubeconfigJwtService
     {
         var key = ECDsa.Create();
         key.ImportFromPem(privateKeyPem);
-        return new KubeconfigJwtService(signingKey: key, validationKey: null);
+        // Private key can also validate — ControlPlane needs both for
+        // issuing credentials and validating them in ProxyAuthService.
+        return new KubeconfigJwtService(signingKey: key, validationKey: key);
     }
 
     public static KubeconfigJwtService ForValidation(string publicKeyPem)
