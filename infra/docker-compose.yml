@@ -40,8 +40,8 @@ services:
       start-dev
       --import-realm
     environment:
-      KEYCLOAK_ADMIN:          admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN:          "${KEYCLOAK_ADMIN}"
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD}"
       KC_HTTP_PORT:            8080
       KC_HOSTNAME_STRICT:      "false"
     ports:
@@ -99,6 +99,29 @@ services:
           echo "Self-signed certificate generated."
         fi
         exec nginx -g "daemon off;"
+    networks:
+      - clustral
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # RabbitMQ 4 (message broker for integration events)
+  #
+  # Management UI: http://localhost:15672 (clustral/clustral)
+  # AMQP: localhost:5672
+  # ──────────────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:4-management
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_DEFAULT_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_DEFAULT_PASS}"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     networks:
       - clustral
 

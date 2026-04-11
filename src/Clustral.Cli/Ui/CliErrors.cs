@@ -228,6 +228,10 @@ internal static class CliErrors
     {
         HttpRequestException { InnerException: System.Net.Sockets.SocketException } =>
             ("Connection refused", "Could not connect to the ControlPlane. Is it running?", "Check that the ControlPlane is started and accessible."),
+        HttpRequestException hre when hre.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase)
+            && ContainsAnywhere(hre, "frame size") =>
+            ("SSL/TLS failure", "TLS handshake failed — the server appears to be plain HTTP, not HTTPS.",
+             "Check the URL in ~/.clustral/config.json — use http:// instead of https://."),
         HttpRequestException hre when hre.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) =>
             ("SSL/TLS failure", "The SSL connection could not be established.", "Try: clustral <command> --insecure"),
         HttpRequestException hre when hre.Message.Contains("Name or service not known", StringComparison.OrdinalIgnoreCase) =>
@@ -267,6 +271,18 @@ internal static class CliErrors
         504 => "Gateway Timeout",
         _ => "",
     };
+
+    /// <summary>
+    /// Walks the full InnerException chain checking if any message contains
+    /// the given substring (case-insensitive).
+    /// </summary>
+    private static bool ContainsAnywhere(Exception ex, string substring)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+            if (current.Message.Contains(substring, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
 
     private static string? GetStatusHint(int statusCode) => statusCode switch
     {

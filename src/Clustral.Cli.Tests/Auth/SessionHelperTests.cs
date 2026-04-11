@@ -1,11 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Text;
-using System.Text.Json;
 using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
-using Clustral.Sdk.Auth;
 using FluentAssertions;
-using Xunit.Abstractions;
 
 namespace Clustral.Cli.Tests.Auth;
 

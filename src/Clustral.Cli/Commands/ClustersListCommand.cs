@@ -6,7 +6,6 @@ using Clustral.Cli.Auth;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
 using Clustral.Cli.Ui;
-using Clustral.Sdk.Auth;
 using Spectre.Console;
 
 namespace Clustral.Cli.Commands;

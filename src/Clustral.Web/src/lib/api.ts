@@ -222,3 +222,42 @@ export function revokeAccessRequest(
     body: JSON.stringify({ reason }),
   });
 }
+
+// ── Audit Events ────────────────────────────────────────────────────────────
+
+export function fetchAuditEvents(
+  token: string,
+  filters?: import("@/types/api").AuditFilters,
+): Promise<import("@/types/api").AuditListResponse> {
+  const qs = new URLSearchParams();
+  if (filters?.category) qs.set("category", filters.category);
+  if (filters?.code) qs.set("code", filters.code);
+  if (filters?.severity) qs.set("severity", filters.severity);
+  if (filters?.user) qs.set("user", filters.user);
+  if (filters?.clusterId) qs.set("clusterId", filters.clusterId);
+  if (filters?.from) qs.set("from", filters.from);
+  if (filters?.to) qs.set("to", filters.to);
+  if (filters?.page) qs.set("page", String(filters.page));
+  if (filters?.pageSize) qs.set("pageSize", String(filters.pageSize));
+
+  const query = qs.toString();
+  const res = fetch(`/api/audit/list?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.then(async (r) => {
+    if (!r.ok) throw new Error(`Audit API error: ${r.status}`);
+    return r.json();
+  });
+}
+
+export function fetchAuditEventDetail(
+  token: string,
+  uid: string,
+): Promise<import("@/types/api").AuditEvent> {
+  return fetch(`/api/audit/detail/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(async (r) => {
+    if (!r.ok) throw new Error(`Audit API error: ${r.status}`);
+    return r.json();
+  });
+}

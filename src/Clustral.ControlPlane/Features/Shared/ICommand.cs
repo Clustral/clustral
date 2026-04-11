@@ -1,21 +1,13 @@
-using Clustral.Sdk.Results;
-using MediatR;
+// Delegate to shared SDK CQS interfaces.
+// ControlPlane code keeps using Clustral.ControlPlane.Features.Shared namespace.
 
 namespace Clustral.ControlPlane.Features.Shared;
 
-/// <summary>
-/// Marker interface for commands (write operations) that return a result.
-/// Commands modify state and are validated by <see cref="ValidationBehavior{TRequest,TResponse}"/>.
-/// </summary>
-public interface ICommand<TResponse> : IRequest<TResponse>;
+/// <inheritdoc cref="Clustral.Sdk.Cqs.ICommand{TResponse}"/>
+public interface ICommand<TResponse> : Clustral.Sdk.Cqs.ICommand<TResponse>;
 
-/// <summary>
-/// Marker interface for commands that return a non-generic <see cref="Result"/>.
-/// </summary>
-public interface ICommand : IRequest<Result>;
+/// <inheritdoc cref="Clustral.Sdk.Cqs.ICommand"/>
+public interface ICommand : Clustral.Sdk.Cqs.ICommand;
 
-/// <summary>
-/// Marker interface for queries (read operations).
-/// Queries do not modify state and skip validation.
-/// </summary>
-public interface IQuery<TResponse> : IRequest<TResponse>;
+/// <inheritdoc cref="Clustral.Sdk.Cqs.IQuery{TResponse}"/>
+public interface IQuery<TResponse> : Clustral.Sdk.Cqs.IQuery<TResponse>;

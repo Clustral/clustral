@@ -87,6 +87,7 @@ internal static class Messages
         public const string DenyingRequest = "Denying access request...";
         public const string RevokingGrant = "Revoking access grant...";
         public const string FetchingVersion = "Fetching ControlPlane version...";
+        public const string LoadingAuditEvents = "Loading audit events...";
 
         public static string RevokingCredentials(int count) =>
             $"Revoking {count} credential(s) on ControlPlane...";

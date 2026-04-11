@@ -10,18 +10,22 @@ Clustral is an open-source Kubernetes access proxy (Teleport alternative) built 
 clustral/
 ├── src/
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB, OIDC
+│   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
 │   ├── clustral-agent/          # Go 1.23 service — gRPC client, kubectl reverse proxy, Helm-deployed
 │   ├── Clustral.Cli/            # System.CommandLine, NativeAOT — clustral login / clustral kube login
-│   └── Clustral.Web/            # Vite + React 18 + TypeScript, shadcn/ui, TanStack Query, Zustand
+│   └── Clustral.Web/            # Next.js 14 + React 18 + TypeScript, shadcn/ui, TanStack Query
 ├── packages/
-│   ├── Clustral.Sdk/            # Shared: TokenCache, KubeconfigWriter, GrpcChannelFactory
+│   ├── Clustral.Sdk/            # Shared: TokenCache, KubeconfigWriter, GrpcChannelFactory, CQS
+│   ├── Clustral.Contracts/      # Shared integration event records (MassTransit)
 │   └── proto/                   # .proto contracts: ClusterService, TunnelService, AuthService
 ├── infra/
 │   ├── helm/                    # Agent Helm chart
 │   ├── nginx/                   # nginx gateway config (TLS termination, routing)
 │   └── k8s/                     # Local kind cluster manifests for dev
+├── .env                         # App stack environment variables (committed defaults)
+├── infra/.env                   # Infrastructure environment variables (committed defaults)
 ├── Directory.Packages.props     # Central package version management
-├── docker-compose.yml
+├── docker-compose.yml           # Application stack (ControlPlane + Web + AuditService)
 └── CLAUDE.md
 ```
 
@@ -46,8 +50,14 @@ clustral/
   ControlPlane  (ASP.NET Core)
       │  REST :5100   — CLI + Web UI management calls (via nginx)
       │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no nginx)
-      │  MongoDB (clusters, users, audit log)
+      │  MongoDB (clusters, users, credentials)
       │  OIDC — token introspection / JWKS validation
+      │  Publishes integration events → RabbitMQ
+      ▼
+  RabbitMQ → AuditService  (ASP.NET Core :5200)
+      │  Consumes integration events via MassTransit
+      │  Persists audit logs to MongoDB (clustral-audit)
+      │  REST API: GET /api/v1/audit (queryable by category, code, user, cluster)
       ▼
   Agent  (Go service, runs in-cluster via Helm)
       │  gRPC client → Kestrel :5443 directly (mTLS + JWT)
@@ -77,7 +87,10 @@ Key flows:
 ### Start backing services
 
 ```bash
-docker-compose up -d
+# Edit HOST_IP in .env to match your machine's IP address
+# Then start infrastructure + application:
+docker compose -f infra/docker-compose.yml up -d
+docker compose up -d
 ```
 
 This starts:
@@ -205,6 +218,10 @@ Services:
 | Proto message names | PascalCase, no namespace prefix (proto package provides namespacing) |
 | Result error codes | SCREAMING_SNAKE_CASE (e.g. `ROLE_NOT_FOUND`) via `ResultErrors.*` catalog |
 | Controller result mapping | Private methods return `Result<T>`, mapped to HTTP via `ToActionResult()` |
+| Repository methods | `GetByIdAsync`, `InsertAsync`, `ReplaceAsync`, `DeleteByXxxAsync`, `ListAsync` — use `ById` not `ByUid`/`ByGuid`. Async suffix on all async methods. |
+| Domain factory methods | Static `Create(...)` for aggregate roots (e.g. `AuditEvent.Create(...)`, `AccessRequest.Create(...)`). Never use raw constructors with public setters. |
+| Event handler methods | `Handle(TNotification, CancellationToken)` — MediatR convention. Keep handlers thin, delegate to domain methods. |
+| MassTransit consumers | `Consume(ConsumeContext<TEvent>)` — one consumer class per integration event. Named `{EventName}Consumer`. |
 
 ---
 
@@ -213,7 +230,7 @@ Services:
 Three layers, run independently:
 
 ```bash
-# Unit + integration (713 .NET tests, fast — Testcontainers MongoDB only)
+# Unit + integration (805+ .NET tests, fast — Testcontainers MongoDB only)
 dotnet test Clustral.slnx --filter "Category!=E2E"
 
 # Go agent (race detector enabled)
@@ -280,4 +297,6 @@ dotnet test src/Clustral.E2E.Tests
 - **Command aliases**: all listing commands support both `list` and `ls` aliases.
 - **xUnit test output**: use `ITestOutputHelper` in xUnit tests, not `Console.WriteLine`.
 - **Integration tests need Docker** running for Testcontainers.
+- **Event-driven architecture** — the ControlPlane publishes integration events to RabbitMQ via MassTransit 8.x (`packages/Clustral.Contracts/IntegrationEvents/`). The AuditService (`src/Clustral.AuditService/`) consumes them and persists audit logs to MongoDB. Shared MassTransit extensions live in `packages/Clustral.Sdk/Messaging/`. Event codes follow Teleport convention: `[PREFIX][NUMBER][SEVERITY]` (e.g. `CAR002I`). When adding new domain events, also add integration events + consumers + tests. Event handlers enrich domain events with user emails and cluster names via DB lookups before publishing integration events.
+- **Docker Compose `.env` files** — all environment variables (credentials, IPs, connection strings) are defined in `.env` (app stack) and `infra/.env` (infrastructure). Both files are committed with working defaults. Edit `HOST_IP` in `.env` for your environment.
 - **Every new feature must include tests.** Write both unit tests and integration tests for ControlPlane, CLI, and SDK changes. Integration tests use `WebApplicationFactory` + Testcontainers MongoDB. Cross-component changes (anything that touches the agent ↔ ControlPlane tunnel, kubectl proxy path, or credential lifecycle) should also have an end-to-end test in `src/Clustral.E2E.Tests/` so the real Go agent + real K3s exercise the change. Frontend (Web UI) tests are not yet required but will be added later.

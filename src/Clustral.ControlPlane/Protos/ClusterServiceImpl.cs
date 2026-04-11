@@ -328,13 +328,13 @@ public sealed class ClusterServiceImpl(
     private static string GenerateToken()
     {
         Span<byte> bytes = stackalloc byte[32];
-        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        RandomNumberGenerator.Fill(bytes);
         return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 
     private static string HashToken(string raw)
     {
-        var hash = System.Security.Cryptography.SHA256.HashData(
+        var hash = SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }

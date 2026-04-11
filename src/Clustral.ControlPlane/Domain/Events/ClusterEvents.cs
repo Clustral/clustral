@@ -17,7 +17,8 @@ public sealed record ClusterDisconnected(Guid ClusterId) : IDomainEvent
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
-public sealed record ClusterDeleted(Guid ClusterId) : IDomainEvent
+public sealed record ClusterDeleted(Guid ClusterId, string? ClusterName,
+    string? ActorEmail = null) : IDomainEvent
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }

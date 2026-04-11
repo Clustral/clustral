@@ -1,10 +1,13 @@
 <Solution>
   <Folder Name="/packages/">
+    <Project Path="packages/Clustral.Contracts/Clustral.Contracts.csproj" />
     <Project Path="packages/Clustral.Sdk.Tests/Clustral.Sdk.Tests.csproj" />
     <Project Path="packages/Clustral.Sdk/Clustral.Sdk.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Clustral.Cli/Clustral.Cli.csproj" />
+    <Project Path="src/Clustral.AuditService.Tests/Clustral.AuditService.Tests.csproj" />
+    <Project Path="src/Clustral.AuditService/Clustral.AuditService.csproj" />
     <Project Path="src/Clustral.Cli.Tests/Clustral.Cli.Tests.csproj" />
     <Project Path="src/Clustral.ControlPlane/Clustral.ControlPlane.csproj" />
     <Project Path="src/Clustral.ControlPlane.Tests/Clustral.ControlPlane.Tests.csproj" />

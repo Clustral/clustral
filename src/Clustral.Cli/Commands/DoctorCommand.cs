@@ -3,13 +3,10 @@ using System.CommandLine.Invocation;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Clustral.Cli.Config;
 using Clustral.Cli.Http;
-using Clustral.Cli.Ui;
-using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
 

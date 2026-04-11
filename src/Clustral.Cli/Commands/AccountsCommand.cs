@@ -1,11 +1,8 @@
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Json;
-using Clustral.Cli.Config;
 using Clustral.Cli.Ui;
-using Clustral.Sdk.Auth;
 using Spectre.Console;
 
 namespace Clustral.Cli.Commands;

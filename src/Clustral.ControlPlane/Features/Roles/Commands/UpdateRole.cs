@@ -10,7 +10,10 @@ namespace Clustral.ControlPlane.Features.Roles.Commands;
 public record UpdateRoleCommand(Guid Id, string? Name, string? Description, List<string>? KubernetesGroups)
     : ICommand<Result<RoleResponse>>;
 
-public sealed class UpdateRoleHandler(IRoleRepository roles, IMediator mediator)
+public sealed class UpdateRoleHandler(
+    IRoleRepository roles,
+    ICurrentUserProvider currentUser,
+    IMediator mediator)
     : IRequestHandler<UpdateRoleCommand, Result<RoleResponse>>
 {
     public async Task<Result<RoleResponse>> Handle(UpdateRoleCommand request, CancellationToken ct)
@@ -19,7 +22,8 @@ public sealed class UpdateRoleHandler(IRoleRepository roles, IMediator mediator)
         if (role is null)
             return ResultErrors.RoleNotFound(request.Id.ToString());
 
-        role.Update(request.Name, request.Description, request.KubernetesGroups);
+        role.Update(request.Name, request.Description,
+            request.KubernetesGroups, currentUser.Email);
 
         await roles.ReplaceAsync(role, ct);
         await mediator.DispatchDomainEventsAsync(role, ct);

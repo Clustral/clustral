@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Text.Json;
+using Clustral.ControlPlane.Features.Proxy;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
+using Clustral.Sdk.Messaging;
 using Clustral.ControlPlane.Protos;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -93,7 +95,7 @@ builder.Services
 
         // Skip OIDC JWT validation for requests on the mTLS port (:5443).
         // Agent auth on that port is handled by AgentAuthInterceptor, not OIDC.
-        opts.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        opts.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
             {
@@ -270,10 +272,14 @@ if (proxyOpts.RateLimiting.Enabled)
 }
 
 // MediatR + FluentValidation vertical slicing infrastructure.
+// ── MassTransit (publish integration events to RabbitMQ) ──────────────────
+builder.Services.AddMassTransitWithRabbitMq(builder.Configuration);
+
+
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
-builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(Clustral.Sdk.Cqs.ValidationBehavior<,>));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserProvider, HttpCurrentUserProvider>();
 builder.Services.AddScoped<Clustral.ControlPlane.Domain.Services.UserSyncService>();

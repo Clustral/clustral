@@ -1,7 +1,6 @@
 using Clustral.ControlPlane.Domain;
 using Clustral.ControlPlane.Domain.Events;
 using FluentAssertions;
-using Xunit;
 
 namespace Clustral.ControlPlane.Tests.Features.Clusters;
 

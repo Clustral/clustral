@@ -11,6 +11,7 @@
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="MassTransit" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers.MongoDb" />

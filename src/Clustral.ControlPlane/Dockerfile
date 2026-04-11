@@ -13,6 +13,7 @@ COPY Directory.Packages.props    Directory.Packages.props
 # Copy everything needed for build.
 COPY packages/proto/              packages/proto/
 COPY packages/Clustral.Sdk/      packages/Clustral.Sdk/
+COPY packages/Clustral.Contracts/ packages/Clustral.Contracts/
 COPY src/Clustral.ControlPlane/  src/Clustral.ControlPlane/
 
 RUN dotnet publish src/Clustral.ControlPlane/Clustral.ControlPlane.csproj \

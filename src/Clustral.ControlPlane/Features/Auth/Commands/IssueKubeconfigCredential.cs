@@ -34,7 +34,11 @@ public sealed class IssueKubeconfigCredentialHandler(
         var cluster = await clusters.GetByIdAsync(request.ClusterId, ct);
 
         if (cluster is null)
+        {
+            await mediator.Publish(new CredentialIssueFailed(
+                request.ClusterId, "Cluster not found", currentUser.Email), ct);
             return ResultErrors.ClusterNotFound(request.ClusterId.ToString());
+        }
 
         // 2. Determine TTL.
         var opts = oidcOptions.Value;

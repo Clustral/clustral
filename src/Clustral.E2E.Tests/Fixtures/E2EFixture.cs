@@ -6,7 +6,6 @@ using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
 using DotNet.Testcontainers.Networks;
 using Testcontainers.K3s;
-using Testcontainers.MongoDb;
 
 namespace Clustral.E2E.Tests.Fixtures;
 
@@ -21,6 +20,7 @@ public sealed class E2EFixture : IAsyncLifetime
     // ─── Network alias constants (must match container hostnames) ─────────
     public const string KeycloakAlias = "keycloak";
     public const string MongoAlias = "mongo";
+    public const string RabbitMqAlias = "rabbitmq";
     public const string K3sAlias = "k3s";
     public const string ControlPlaneAlias = "controlplane";
     public const string KeycloakRealm = "clustral";
@@ -31,9 +31,11 @@ public sealed class E2EFixture : IAsyncLifetime
     private const int ControlPlaneGrpcPort = 5443;
     private const int K3sInternalPort = 6443;
     private const int MongoInternalPort = 27017;
+    private const int RabbitMqInternalPort = 5672;
 
     private INetwork _network = null!;
     private IContainer _mongo = null!;
+    private IContainer _rabbitmq = null!;
     private IContainer _keycloak = null!;
     private K3sContainer _k3s = null!;
     private IContainer _controlPlane = null!;
@@ -81,6 +83,7 @@ public sealed class E2EFixture : IAsyncLifetime
         _agentImage = BuildAgentImage();
 
         _mongo = BuildMongoContainer();
+        _rabbitmq = BuildRabbitMqContainer();
         _keycloak = BuildKeycloakContainer();
         _k3s = BuildK3sContainer();
 
@@ -88,6 +91,7 @@ public sealed class E2EFixture : IAsyncLifetime
             _controlPlaneImage.CreateAsync(),
             _agentImage.CreateAsync(),
             _mongo.StartAsync(),
+            _rabbitmq.StartAsync(),
             _keycloak.StartAsync(),
             _k3s.StartAsync());
 
@@ -118,6 +122,7 @@ public sealed class E2EFixture : IAsyncLifetime
         await SafeDispose(_controlPlane);
         await SafeDispose(_k3s);
         await SafeDispose(_keycloak);
+        await SafeDispose(_rabbitmq);
         await SafeDispose(_mongo);
         await SafeDispose(_network);
 
@@ -181,6 +186,18 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithNetworkAliases(MongoAlias)
             .WithPortBinding(MongoInternalPort, assignRandomHostPort: true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(MongoInternalPort))
+            .WithCleanUp(true)
+            .Build();
+
+    private IContainer BuildRabbitMqContainer() =>
+        new ContainerBuilder()
+            .WithImage("rabbitmq:4")
+            .WithNetwork(_network)
+            .WithNetworkAliases(RabbitMqAlias)
+            .WithPortBinding(RabbitMqInternalPort, assignRandomHostPort: true)
+            .WithEnvironment("RABBITMQ_DEFAULT_USER", "clustral")
+            .WithEnvironment("RABBITMQ_DEFAULT_PASS", "clustral")
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(RabbitMqInternalPort))
             .WithCleanUp(true)
             .Build();
 
@@ -280,6 +297,10 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("Oidc__ClientId", "clustral-control-plane")
             .WithEnvironment("Oidc__Audience", "clustral-control-plane")
             .WithEnvironment("Oidc__RequireHttpsMetadata", "false")
+            .WithEnvironment("RabbitMQ__Host", RabbitMqAlias)
+            .WithEnvironment("RabbitMQ__Port", RabbitMqInternalPort.ToString())
+            .WithEnvironment("RabbitMQ__User", "clustral")
+            .WithEnvironment("RabbitMQ__Pass", "clustral")
             .WithEnvironment("CertificateAuthority__CaCertPath", "/etc/clustral/ca.crt")
             .WithEnvironment("CertificateAuthority__CaKeyPath", "/etc/clustral/ca.key")
             .WithEnvironment("CertificateAuthority__ClientCertValidityDays", "1")

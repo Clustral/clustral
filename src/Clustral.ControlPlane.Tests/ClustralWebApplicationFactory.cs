@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Clustral.Sdk.Crypto;
+using Clustral.ControlPlane.Tests.Helpers;
+using MassTransit;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -79,6 +80,21 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
                 opts.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
                 opts.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             });
+
+            // Remove MassTransit's hosted service so bus startup doesn't
+            // block waiting for a RabbitMQ connection that doesn't exist.
+            var mtHostedServices = services
+                .Where(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
+                    && d.ImplementationType?.FullName?.StartsWith("MassTransit") == true)
+                .ToList();
+            foreach (var d in mtHostedServices)
+                services.Remove(d);
+
+            // Replace the real bus with a no-op so IPublishEndpoint injections
+            // don't fail. Event handlers will publish but messages go nowhere.
+            services.RemoveAll<IPublishEndpoint>();
+            services.AddSingleton<IPublishEndpoint>(
+                _ => new NoOpPublishEndpoint());
         });
     }
 

@@ -135,3 +135,49 @@ export interface AccessRequest {
 export interface AccessRequestListResponse {
   requests: AccessRequest[];
 }
+
+// ── Audit Events ────────────────────────────────────────────────────────────
+// Mirrors AuditEventResponse / AuditListResponse from the AuditService REST API.
+
+export type AuditSeverity = "Info" | "Warning" | "Error";
+
+export interface AuditEvent {
+  uid: string;
+  event: string;
+  code: string;
+  category: string;
+  severity: AuditSeverity;
+  success: boolean;
+  user: string | null;
+  userId: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  resourceName: string | null;
+  clusterName: string | null;
+  clusterId: string | null;
+  time: string;
+  receivedAt: string | null;
+  message: string | null;
+  error: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface AuditListResponse {
+  events: AuditEvent[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+export interface AuditFilters {
+  category?: string;
+  code?: string;
+  severity?: string;
+  user?: string;
+  clusterId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
