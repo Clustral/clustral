@@ -18,10 +18,23 @@ catch (BsonSerializationException) { /* already registered */ }
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Logging ──────────────────────────────────────────────────────────────
-builder.Host.UseSerilog((ctx, lc) => lc
-    .ReadFrom.Configuration(ctx.Configuration)
-    .Enrich.FromLogContext()
-    .WriteTo.Console());
+builder.Host.UseSerilog((ctx, lc) =>
+{
+    lc.ReadFrom.Configuration(ctx.Configuration)
+        .Enrich.FromLogContext()
+        .WriteTo.Console();
+
+    var otlpEndpoint = ctx.Configuration["OpenTelemetry:LogsEndpoint"];
+    var serviceName = ctx.Configuration["OpenTelemetry:ServiceName"];
+    if (!string.IsNullOrEmpty(otlpEndpoint))
+    {
+        lc.WriteTo.OpenTelemetry(sinkOptions =>
+        {
+            sinkOptions.Endpoint = otlpEndpoint;
+            sinkOptions.ResourceAttributes.Add("service.name", serviceName ?? "clustral-audit-service");
+        });
+    }
+});
 
 // ── MongoDB ──────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<IMongoClient>(sp =>

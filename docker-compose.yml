@@ -16,6 +16,8 @@ services:
       context: .
       dockerfile: src/Clustral.ControlPlane/Dockerfile
     restart: unless-stopped
+    labels:
+      - "service=controlplane"
     networks:
       - clustral
     environment:
@@ -35,6 +37,7 @@ services:
       RabbitMQ__Pass: "clustral"
       OpenTelemetry__ServiceName: "clustral-controlplane"
       OpenTelemetry__OtlpEndpoint: "http://tempo:4317"
+      OpenTelemetry__LogsEndpoint: "http://loki:3100/otlp"
     ports:
       # gRPC mTLS — agents connect directly (not through nginx)
       - "5443:5443"
@@ -81,6 +84,8 @@ services:
       context: .
       dockerfile: src/Clustral.AuditService/Dockerfile
     restart: unless-stopped
+    labels:
+      - "service=audit-service"
     networks:
       - clustral
     environment:
@@ -93,6 +98,7 @@ services:
       RabbitMQ__Pass: "clustral"
       OpenTelemetry__ServiceName: "clustral-audit-service"
       OpenTelemetry__OtlpEndpoint: "http://tempo:4317"
+      OpenTelemetry__LogsEndpoint: "http://loki:3100/otlp"
     ports:
       - "5200:5200"
     # RabbitMQ runs in infra/docker-compose.yml on the same network.

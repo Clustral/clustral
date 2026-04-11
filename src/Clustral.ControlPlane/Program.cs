@@ -23,11 +23,25 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, services, configuration) => configuration
-    .ReadFrom.Configuration(context.Configuration)
-    .ReadFrom.Services(services)
-    .Enrich.FromLogContext()
-    .WriteTo.Console());
+builder.Host.UseSerilog((context, services, configuration) =>
+{
+    configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .WriteTo.Console();
+
+    var otlpEndpoint = context.Configuration["OpenTelemetry:LogsEndpoint"];
+    var serviceName = context.Configuration["OpenTelemetry:ServiceName"];
+    if (!string.IsNullOrEmpty(otlpEndpoint))
+    {
+        configuration.WriteTo.OpenTelemetry(sinkOptions =>
+        {
+            sinkOptions.Endpoint = otlpEndpoint;
+            sinkOptions.ResourceAttributes.Add("service.name", serviceName ?? "clustral-controlplane");
+        });
+    }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Options — validated at startup via FluentValidation + ValidateOnStart().

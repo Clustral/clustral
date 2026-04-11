@@ -147,7 +147,10 @@ services:
     restart: unless-stopped
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/loki
     networks:
       - clustral
 
@@ -188,6 +191,7 @@ services:
 volumes:
   mongo_data:
   certs:
+  loki_data:
   tempo_data:
   grafana_data:
 
