@@ -110,7 +110,7 @@ public sealed class KubeconfigJwtServiceTests(ITestOutputHelper output)
             DateTimeOffset.UtcNow.AddHours(1));
 
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*validation only*");
+            .WithMessage("*No signing key*");
     }
 
     [Fact]
@@ -137,8 +137,8 @@ public sealed class KubeconfigJwtServiceTests(ITestOutputHelper output)
             DateTimeOffset.UtcNow.AddHours(1));
 
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
-        jwt.Issuer.Should().Be(KubeconfigJwtService.Issuer);
-        jwt.Audiences.Should().Contain(KubeconfigJwtService.Audience);
+        jwt.Issuer.Should().Be(KubeconfigJwtService.IssuerName);
+        jwt.Audiences.Should().Contain(KubeconfigJwtService.AudienceName);
     }
 
     [Fact]

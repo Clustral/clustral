@@ -103,7 +103,7 @@ public sealed class InternalJwtTests(ITestOutputHelper output)
 
         var act = () => validator.Issue([new Claim("sub", "user-123")]);
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*validation only*");
+            .WithMessage("*No signing key*");
     }
 
     [Fact]
@@ -114,6 +114,6 @@ public sealed class InternalJwtTests(ITestOutputHelper output)
 
         var act = () => signer.GetValidationParameters();
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*signing only*");
+            .WithMessage("*No validation key*");
     }
 }
