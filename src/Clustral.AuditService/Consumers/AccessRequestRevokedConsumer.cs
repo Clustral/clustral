@@ -25,6 +25,8 @@ public sealed class AccessRequestRevokedConsumer(
             userId: evt.RevokedById,
             resourceType: "AccessRequest",
             resourceId: evt.RequestId,
+            clusterId: evt.ClusterId != Guid.Empty ? evt.ClusterId : null,
+            clusterName: evt.ClusterName,
             message: $"Access request {evt.RequestId} revoked{(evt.Reason is not null ? $": {evt.Reason}" : "")}",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);

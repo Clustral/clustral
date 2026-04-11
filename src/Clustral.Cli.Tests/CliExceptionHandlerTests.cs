@@ -83,6 +83,25 @@ public sealed class CliExceptionHandlerTests(ITestOutputHelper output) : IDispos
     }
 
     [Fact]
+    public void HttpRequestException_SSL_FrameSize_SuggestsHttpScheme()
+    {
+        CliDebug.Enabled = false;
+        var console = new TestConsole(); console.Profile.Width = 120;
+        var frameEx = new Exception("Cannot determine the frame size or a corrupted frame was received.");
+        var authEx = new System.Security.Authentication.AuthenticationException(
+            "Cannot determine the frame size", frameEx);
+        var ex = new HttpRequestException(
+            "The SSL connection could not be established, see inner exception.", authEx);
+
+        var exitCode = CliExceptionHandler.Handle(console, ex);
+
+        output.WriteLine(console.Output);
+        exitCode.Should().Be(1);
+        console.Output.Should().Contain("plain HTTP");
+        console.Output.Should().Contain("http://");
+    }
+
+    [Fact]
     public void TaskCanceledException_ExitCode1_ShowsTimeout()
     {
         CliDebug.Enabled = false;

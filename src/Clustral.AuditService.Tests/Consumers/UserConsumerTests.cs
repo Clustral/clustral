@@ -1,5 +1,6 @@
 using Clustral.AuditService.Consumers;
 using Clustral.AuditService.Domain;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Contracts.IntegrationEvents;
 using FluentAssertions;
@@ -149,7 +150,7 @@ public sealed class UserConsumerTests(MongoFixture mongo, ITestOutputHelper outp
     }
 
     [Fact]
-    public async Task RoleUnassignedConsumer_PersistsAuditEvent()
+    public async Task RoleUnassignedConsumer_PersistsAuditEvent_WithUserAndCluster()
     {
         var db = mongo.CreateDbContext();
         await using var provider = BuildProvider<RoleUnassignedConsumer>(db);
@@ -157,10 +158,20 @@ public sealed class UserConsumerTests(MongoFixture mongo, ITestOutputHelper outp
         await harness.Start();
 
         var assignmentId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var roleId = Guid.NewGuid();
+        var clusterId = Guid.NewGuid();
 
         await harness.Bus.Publish(new RoleUnassignedEvent
         {
             AssignmentId = assignmentId,
+            UserId = userId,
+            UserEmail = "alice@example.com",
+            RoleId = roleId,
+            RoleName = "developer",
+            ClusterId = clusterId,
+            ClusterName = "prod",
+            RemovedByEmail = "admin@example.com",
             OccurredAt = DateTimeOffset.UtcNow,
         });
 
@@ -173,9 +184,13 @@ public sealed class UserConsumerTests(MongoFixture mongo, ITestOutputHelper outp
         stored!.Code.Should().Be(EventCodes.RoleUnassigned);
         stored.Event.Should().Be("user.role_unassigned");
         stored.Category.Should().Be("auth");
+        stored.User.Should().Be("admin@example.com");
+        stored.UserId.Should().Be(userId);
+        stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("prod");
         stored.ResourceType.Should().Be("RoleAssignment");
         stored.ResourceId.Should().Be(assignmentId);
-        stored.Message.Should().Contain("removed");
+        stored.Message.Should().Contain("developer").And.Contain("alice@example.com");
     }
 
     private static ServiceProvider BuildProvider<TConsumer>(AuditDbContext db)
@@ -183,6 +198,7 @@ public sealed class UserConsumerTests(MongoFixture mongo, ITestOutputHelper outp
     {
         return new ServiceCollection()
             .AddSingleton(db)
+            .AddSingleton<IAuditEventRepository, MongoAuditEventRepository>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<TConsumer>())
             .BuildServiceProvider(true);

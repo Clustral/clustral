@@ -17,15 +17,20 @@ public sealed class DeleteRoleHandler(
 {
     public async Task<Result> Handle(DeleteRoleCommand request, CancellationToken ct)
     {
+        // Read before delete so the domain event carries the role name.
+        var role = await roles.GetByIdAsync(request.Id, ct);
+        if (role is null)
+            return ResultErrors.RoleNotFound(request.Id.ToString());
+
         var deleted = await roles.DeleteAsync(request.Id, ct);
         if (!deleted)
             return ResultErrors.RoleNotFound(request.Id.ToString());
 
         // Cascade: remove all assignments for this role.
         await assignments.DeleteByRoleIdAsync(request.Id, ct);
-        await mediator.Publish(new RoleDeleted(request.Id), ct);
+        await mediator.Publish(new RoleDeleted(request.Id, role.Name), ct);
 
-        logger.LogInformation("Role {RoleId} deleted", request.Id);
+        logger.LogInformation("Role {RoleId} ({Name}) deleted", request.Id, role.Name);
 
         return Result.Success();
     }

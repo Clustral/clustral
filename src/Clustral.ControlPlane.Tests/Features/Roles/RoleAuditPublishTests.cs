@@ -8,15 +8,16 @@ using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Features.Roles;
 
-public sealed class RoleAuditPublishTests(ITestOutputHelper output)
+[Collection("Mongo")]
+public sealed class RoleAuditPublishTests(MongoFixture mongo, ITestOutputHelper output)
 {
     [Fact]
     public async Task CreateRole_PublishesRoleCreatedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new RoleAuditHandler(NullLogger<RoleAuditHandler>.Instance, publisher);
+        var handler = new RoleAuditHandler(
+            NullLogger<RoleAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var roleId = Guid.NewGuid();
         var roleName = "admin";
@@ -28,10 +29,8 @@ public sealed class RoleAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()
@@ -46,23 +45,21 @@ public sealed class RoleAuditPublishTests(ITestOutputHelper output)
     [Fact]
     public async Task DeleteRole_PublishesRoleDeletedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new RoleAuditHandler(NullLogger<RoleAuditHandler>.Instance, publisher);
+        var handler = new RoleAuditHandler(
+            NullLogger<RoleAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var roleId = Guid.NewGuid();
         var occurredAt = DateTimeOffset.UtcNow;
 
-        var domainEvent = new RoleDeleted(roleId)
+        var domainEvent = new RoleDeleted(roleId, "test-role")
         {
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()

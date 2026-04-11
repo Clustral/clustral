@@ -21,8 +21,12 @@ public sealed class AccessRequestExpiredConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.RequesterEmail,
+            userId: evt.RequesterId != Guid.Empty ? evt.RequesterId : null,
             resourceType: "AccessRequest",
             resourceId: evt.RequestId,
+            clusterId: evt.ClusterId != Guid.Empty ? evt.ClusterId : null,
+            clusterName: evt.ClusterName,
             message: $"Access request {evt.RequestId} expired",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);

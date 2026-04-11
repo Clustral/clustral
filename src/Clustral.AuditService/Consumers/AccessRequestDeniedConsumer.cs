@@ -25,6 +25,8 @@ public sealed class AccessRequestDeniedConsumer(
             userId: evt.ReviewerId,
             resourceType: "AccessRequest",
             resourceId: evt.RequestId,
+            clusterId: evt.ClusterId != Guid.Empty ? evt.ClusterId : null,
+            clusterName: evt.ClusterName,
             message: $"Access request {evt.RequestId} denied: {evt.Reason}",
             error: evt.Reason,
             metadata: evt.ToBsonDocument());

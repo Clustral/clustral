@@ -77,6 +77,8 @@ public sealed class AuditEventResponse
     public string? ClusterName { get; init; }
     public Guid? ClusterId { get; init; }
     public DateTimeOffset Time { get; init; }
+    public DateTimeOffset ReceivedAt { get; init; }
     public string? Message { get; init; }
     public string? Error { get; init; }
+    public Dictionary<string, object?>? Metadata { get; init; }
 }

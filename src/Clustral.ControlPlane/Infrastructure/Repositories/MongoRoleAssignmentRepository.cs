@@ -6,6 +6,9 @@ namespace Clustral.ControlPlane.Infrastructure.Repositories;
 
 public sealed class MongoRoleAssignmentRepository(ClustralDb db) : IRoleAssignmentRepository
 {
+    public async Task<RoleAssignment?> GetByIdAsync(Guid id, CancellationToken ct) =>
+        await db.RoleAssignments.Find(a => a.Id == id).FirstOrDefaultAsync(ct);
+
     public async Task<List<RoleAssignment>> GetByUserIdAsync(Guid userId, CancellationToken ct) =>
         await db.RoleAssignments.Find(a => a.UserId == userId).ToListAsync(ct);
 

@@ -8,15 +8,16 @@ using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Features.Auth;
 
-public sealed class CredentialAuditPublishTests(ITestOutputHelper output)
+[Collection("Mongo")]
+public sealed class CredentialAuditPublishTests(MongoFixture mongo, ITestOutputHelper output)
 {
     [Fact]
     public async Task IssueCredential_PublishesCredentialIssuedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new CredentialAuditHandler(NullLogger<CredentialAuditHandler>.Instance, publisher);
+        var handler = new CredentialAuditHandler(
+            NullLogger<CredentialAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var credentialId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -29,10 +30,8 @@ public sealed class CredentialAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         published.Should().ContainSingle()
@@ -50,10 +49,10 @@ public sealed class CredentialAuditPublishTests(ITestOutputHelper output)
     [Fact]
     public async Task RevokeCredential_PublishesCredentialRevokedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new CredentialAuditHandler(NullLogger<CredentialAuditHandler>.Instance, publisher);
+        var handler = new CredentialAuditHandler(
+            NullLogger<CredentialAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var credentialId = Guid.NewGuid();
         var reason = "User offboarded";
@@ -64,10 +63,8 @@ public sealed class CredentialAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()

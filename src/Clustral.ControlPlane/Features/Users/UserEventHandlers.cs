@@ -1,11 +1,16 @@
 using Clustral.Contracts.IntegrationEvents;
 using Clustral.ControlPlane.Domain.Events;
+using Clustral.ControlPlane.Infrastructure;
 using MassTransit;
 using MediatR;
+using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Users;
 
-public sealed class UserAuditHandler(ILogger<UserAuditHandler> logger, IPublishEndpoint publisher)
+public sealed class UserAuditHandler(
+    ILogger<UserAuditHandler> logger,
+    IPublishEndpoint publisher,
+    ClustralDb db)
     : INotificationHandler<UserSynced>,
       INotificationHandler<RoleAssigned>,
       INotificationHandler<RoleUnassigned>
@@ -32,14 +37,18 @@ public sealed class UserAuditHandler(ILogger<UserAuditHandler> logger, IPublishE
         logger.LogInformation("[Audit] Role {RoleId} assigned to user {UserId} on cluster {ClusterId} by {AssignedBy}",
             e.RoleId, e.UserId, e.ClusterId, e.AssignedBy);
 
+        var user = await db.Users.Find(u => u.Id == e.UserId).FirstOrDefaultAsync(ct);
+        var role = await db.Roles.Find(r => r.Id == e.RoleId).FirstOrDefaultAsync(ct);
+        var cluster = await db.Clusters.Find(c => c.Id == e.ClusterId).FirstOrDefaultAsync(ct);
+
         await publisher.Publish(new RoleAssignedEvent
         {
             UserId = e.UserId,
-            UserEmail = null,
+            UserEmail = user?.Email,
             RoleId = e.RoleId,
-            RoleName = null,
+            RoleName = role?.Name,
             ClusterId = e.ClusterId,
-            ClusterName = null,
+            ClusterName = cluster?.Name,
             AssignedBy = e.AssignedBy,
             OccurredAt = e.OccurredAt
         }, ct);
@@ -49,9 +58,20 @@ public sealed class UserAuditHandler(ILogger<UserAuditHandler> logger, IPublishE
     {
         logger.LogInformation("[Audit] Role assignment {AssignmentId} removed", e.AssignmentId);
 
+        // Domain event now carries IDs from the assignment (read before delete).
+        var user = await db.Users.Find(u => u.Id == e.UserId).FirstOrDefaultAsync(ct);
+        var role = await db.Roles.Find(r => r.Id == e.RoleId).FirstOrDefaultAsync(ct);
+        var cluster = await db.Clusters.Find(c => c.Id == e.ClusterId).FirstOrDefaultAsync(ct);
+
         await publisher.Publish(new RoleUnassignedEvent
         {
             AssignmentId = e.AssignmentId,
+            UserId = e.UserId,
+            UserEmail = user?.Email,
+            RoleId = e.RoleId,
+            RoleName = role?.Name,
+            ClusterId = e.ClusterId,
+            ClusterName = cluster?.Name,
             OccurredAt = e.OccurredAt
         }, ct);
     }

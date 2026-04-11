@@ -55,13 +55,13 @@ public sealed class CliConfig
     /// Config file path — resolves to the active profile's <c>config.json</c>
     /// when a profile is active, otherwise <c>~/.clustral/config.json</c>.
     /// </summary>
-    public static string DefaultPath => Commands.ProfileCommand.ResolveConfigPath();
+    public static string DefaultPath => ProfileCommand.ResolveConfigPath();
 
     /// <summary>
     /// Token file path — resolves to the active profile's <c>token</c>
     /// when a profile is active, otherwise <c>~/.clustral/token</c>.
     /// </summary>
-    public static string DefaultTokenPath => Commands.ProfileCommand.ResolveTokenPath();
+    public static string DefaultTokenPath => ProfileCommand.ResolveTokenPath();
 
     /// <summary>
     /// Reads <c>~/.clustral/config.json</c> if it exists, returning

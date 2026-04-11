@@ -1,5 +1,6 @@
 using Clustral.AuditService.Consumers;
 using Clustral.AuditService.Domain;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Contracts.IntegrationEvents;
 using FluentAssertions;
@@ -116,11 +117,15 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
         var requestId = Guid.NewGuid();
         var reviewerId = Guid.NewGuid();
 
+        var clusterId = Guid.NewGuid();
+
         await harness.Bus.Publish(new AccessRequestDeniedEvent
         {
             RequestId = requestId,
             ReviewerId = reviewerId,
             ReviewerEmail = "bob@example.com",
+            ClusterId = clusterId,
+            ClusterName = "prod",
             Reason = "Insufficient justification",
             OccurredAt = DateTimeOffset.UtcNow,
         });
@@ -136,6 +141,8 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
         stored.Category.Should().Be("access_requests");
         stored.Severity.Should().Be(Severity.Warning);
         stored.Success.Should().BeFalse();
+        stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("prod");
         stored.Error.Should().Be("Insufficient justification");
         stored.Message.Should().Contain("denied");
     }
@@ -151,11 +158,15 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
         var requestId = Guid.NewGuid();
         var revokedById = Guid.NewGuid();
 
+        var clusterId = Guid.NewGuid();
+
         await harness.Bus.Publish(new AccessRequestRevokedEvent
         {
             RequestId = requestId,
             RevokedById = revokedById,
             RevokedByEmail = "admin@example.com",
+            ClusterId = clusterId,
+            ClusterName = "staging",
             Reason = "Policy violation",
             OccurredAt = DateTimeOffset.UtcNow,
         });
@@ -171,11 +182,13 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
         stored.Category.Should().Be("access_requests");
         stored.Severity.Should().Be(Severity.Info);
         stored.User.Should().Be("admin@example.com");
+        stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("staging");
         stored.Message.Should().Contain("Policy violation");
     }
 
     [Fact]
-    public async Task ExpiredConsumer_PersistsAuditEvent_WithNoUser()
+    public async Task ExpiredConsumer_PersistsAuditEvent_WithUserAndCluster()
     {
         var db = mongo.CreateDbContext();
         await using var provider = BuildProvider<AccessRequestExpiredConsumer>(db);
@@ -183,10 +196,16 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
         await harness.Start();
 
         var requestId = Guid.NewGuid();
+        var requesterId = Guid.NewGuid();
+        var clusterId = Guid.NewGuid();
 
         await harness.Bus.Publish(new AccessRequestExpiredEvent
         {
             RequestId = requestId,
+            RequesterId = requesterId,
+            RequesterEmail = "alice@example.com",
+            ClusterId = clusterId,
+            ClusterName = "prod",
             OccurredAt = DateTimeOffset.UtcNow,
         });
 
@@ -200,7 +219,10 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
         stored.Event.Should().Be("access_request.expired");
         stored.Category.Should().Be("access_requests");
         stored.Severity.Should().Be(Severity.Info);
-        stored.User.Should().BeNull();
+        stored.User.Should().Be("alice@example.com");
+        stored.UserId.Should().Be(requesterId);
+        stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("prod");
         stored.ResourceId.Should().Be(requestId);
         stored.Message.Should().Contain("expired");
     }
@@ -210,6 +232,7 @@ public sealed class AccessRequestConsumerTests(MongoFixture mongo, ITestOutputHe
     {
         return new ServiceCollection()
             .AddSingleton(db)
+            .AddSingleton<IAuditEventRepository, MongoAuditEventRepository>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<TConsumer>())
             .BuildServiceProvider(true);

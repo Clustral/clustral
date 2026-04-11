@@ -12,7 +12,7 @@ public sealed record RoleUpdated(
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
-public sealed record RoleDeleted(Guid RoleId) : IDomainEvent
+public sealed record RoleDeleted(Guid RoleId, string? RoleName) : IDomainEvent
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }

@@ -8,15 +8,16 @@ using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Features.AccessRequests;
 
-public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
+[Collection("Mongo")]
+public sealed class AccessRequestAuditPublishTests(MongoFixture mongo, ITestOutputHelper output)
 {
     [Fact]
     public async Task CreateAccessRequest_PublishesAccessRequestCreatedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new AccessRequestAuditHandler(NullLogger<AccessRequestAuditHandler>.Instance, publisher);
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var requestId = Guid.NewGuid();
         var requesterId = Guid.NewGuid();
@@ -31,10 +32,8 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()
@@ -52,10 +51,10 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
     [Fact]
     public async Task ApproveAccessRequest_PublishesAccessRequestApprovedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new AccessRequestAuditHandler(NullLogger<AccessRequestAuditHandler>.Instance, publisher);
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var requestId = Guid.NewGuid();
         var reviewerId = Guid.NewGuid();
@@ -68,10 +67,8 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()
@@ -87,10 +84,10 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
     [Fact]
     public async Task DenyAccessRequest_PublishesAccessRequestDeniedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new AccessRequestAuditHandler(NullLogger<AccessRequestAuditHandler>.Instance, publisher);
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var requestId = Guid.NewGuid();
         var reviewerId = Guid.NewGuid();
@@ -102,10 +99,8 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()
@@ -120,10 +115,10 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
     [Fact]
     public async Task RevokeAccessRequest_PublishesAccessRequestRevokedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new AccessRequestAuditHandler(NullLogger<AccessRequestAuditHandler>.Instance, publisher);
+        var handler = new AccessRequestAuditHandler(
+            NullLogger<AccessRequestAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var requestId = Guid.NewGuid();
         var revokedById = Guid.NewGuid();
@@ -135,10 +130,8 @@ public sealed class AccessRequestAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()

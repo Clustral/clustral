@@ -1,6 +1,5 @@
 using System.CommandLine;
 using Clustral.Cli.Commands;
-using Clustral.Cli.Config;
 using FluentAssertions;
 using Xunit.Abstractions;
 

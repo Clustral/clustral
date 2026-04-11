@@ -11,5 +11,6 @@ public record ProxyRequestCompletedEvent
     public string Path { get; init; } = string.Empty;
     public int StatusCode { get; init; }
     public double DurationMs { get; init; }
+    public string? RequestBody { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }

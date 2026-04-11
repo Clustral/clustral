@@ -76,9 +76,13 @@ public sealed class RoleUnassignedConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.RemovedByEmail ?? evt.UserEmail,
+            userId: evt.UserId != Guid.Empty ? evt.UserId : null,
             resourceType: "RoleAssignment",
             resourceId: evt.AssignmentId,
-            message: $"Role assignment {evt.AssignmentId} removed",
+            clusterId: evt.ClusterId != Guid.Empty ? evt.ClusterId : null,
+            clusterName: evt.ClusterName,
+            message: $"Role {evt.RoleName ?? evt.RoleId.ToString()} unassigned from user {evt.UserEmail ?? evt.UserId.ToString()} on cluster {evt.ClusterName ?? evt.ClusterId.ToString()}",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",

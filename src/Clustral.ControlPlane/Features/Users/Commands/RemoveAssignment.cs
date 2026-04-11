@@ -16,12 +16,18 @@ public sealed class RemoveAssignmentHandler(
 {
     public async Task<Result> Handle(RemoveAssignmentCommand request, CancellationToken ct)
     {
-        var deleted = await assignments.DeleteAsync(request.AssignmentId, ct);
+        // Read before delete so the domain event carries the full context.
+        var assignment = await assignments.GetByIdAsync(request.AssignmentId, ct);
+        if (assignment is null)
+            return ResultError.NotFound("ASSIGNMENT_NOT_FOUND", "Role assignment not found.");
 
+        var deleted = await assignments.DeleteAsync(request.AssignmentId, ct);
         if (!deleted)
             return ResultError.NotFound("ASSIGNMENT_NOT_FOUND", "Role assignment not found.");
 
-        await mediator.Publish(new RoleUnassigned(request.AssignmentId), ct);
+        await mediator.Publish(new RoleUnassigned(
+            request.AssignmentId, assignment.UserId,
+            assignment.RoleId, assignment.ClusterId), ct);
 
         logger.LogInformation("Removed role assignment {Id} for user {UserId}",
             request.AssignmentId, request.UserId);

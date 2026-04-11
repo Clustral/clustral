@@ -13,7 +13,7 @@ public sealed record RoleAssigned(
 }
 
 public sealed record RoleUnassigned(
-    Guid AssignmentId) : IDomainEvent
+    Guid AssignmentId, Guid UserId, Guid RoleId, Guid ClusterId) : IDomainEvent
 {
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }

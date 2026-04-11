@@ -241,13 +241,22 @@ export function fetchAuditEvents(
   if (filters?.pageSize) qs.set("pageSize", String(filters.pageSize));
 
   const query = qs.toString();
-  // Audit API goes through /api/audit/* proxy (separate from /api/v1/* ControlPlane proxy)
-  const res = fetch(`/api/audit?${query}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const res = fetch(`/api/audit/list?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
   return res.then(async (r) => {
+    if (!r.ok) throw new Error(`Audit API error: ${r.status}`);
+    return r.json();
+  });
+}
+
+export function fetchAuditEventDetail(
+  token: string,
+  uid: string,
+): Promise<import("@/types/api").AuditEvent> {
+  return fetch(`/api/audit/detail/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(async (r) => {
     if (!r.ok) throw new Error(`Audit API error: ${r.status}`);
     return r.json();
   });

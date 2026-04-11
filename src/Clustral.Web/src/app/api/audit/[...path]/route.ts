@@ -3,13 +3,29 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Runtime proxy for AuditService REST API.
- * Forwards /api/audit?... to AUDIT_SERVICE_URL/api/v1/audit?...
+ * Catch-all proxy for the AuditService REST API.
+ *
+ *   /api/audit/list         → AUDIT_SERVICE_URL/api/v1/audit?...
+ *   /api/audit/detail/{uid} → AUDIT_SERVICE_URL/api/v1/audit/{uid}
  */
-async function handler(req: NextRequest) {
+async function handler(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await params;
   const auditUrl =
     process.env.AUDIT_SERVICE_URL || "http://localhost:5200";
-  const target = `${auditUrl}/api/v1/audit${req.nextUrl.search}`;
+
+  const subPath = path.join("/");
+  let target: string;
+  if (subPath === "list") {
+    target = `${auditUrl}/api/v1/audit${req.nextUrl.search}`;
+  } else if (subPath.startsWith("detail/")) {
+    const uid = subPath.slice("detail/".length);
+    target = `${auditUrl}/api/v1/audit/${uid}`;
+  } else {
+    target = `${auditUrl}/api/v1/audit/${subPath}${req.nextUrl.search}`;
+  }
 
   const headers = new Headers();
   req.headers.forEach((value, key) => {

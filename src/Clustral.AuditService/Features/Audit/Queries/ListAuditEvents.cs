@@ -63,7 +63,11 @@ public sealed class ListAuditEventsHandler(IAuditEventRepository repository)
         ClusterName = e.ClusterName,
         ClusterId = e.ClusterId,
         Time = e.Time,
+        ReceivedAt = e.ReceivedAt,
         Message = e.Message,
         Error = e.Error,
+        Metadata = e.Metadata?.ToDictionary(
+            el => el.Name,
+            el => MongoDB.Bson.BsonTypeMapper.MapToDotNetValue(el.Value) as object),
     };
 }

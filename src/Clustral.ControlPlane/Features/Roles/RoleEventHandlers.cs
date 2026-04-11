@@ -1,11 +1,16 @@
 using Clustral.Contracts.IntegrationEvents;
 using Clustral.ControlPlane.Domain.Events;
+using Clustral.ControlPlane.Infrastructure;
 using MassTransit;
 using MediatR;
+using MongoDB.Driver;
 
 namespace Clustral.ControlPlane.Features.Roles;
 
-public sealed class RoleAuditHandler(ILogger<RoleAuditHandler> logger, IPublishEndpoint publisher)
+public sealed class RoleAuditHandler(
+    ILogger<RoleAuditHandler> logger,
+    IPublishEndpoint publisher,
+    ClustralDb db)
     : INotificationHandler<RoleCreated>,
       INotificationHandler<RoleUpdated>,
       INotificationHandler<RoleDeleted>
@@ -40,11 +45,13 @@ public sealed class RoleAuditHandler(ILogger<RoleAuditHandler> logger, IPublishE
 
     public async Task Handle(RoleDeleted e, CancellationToken ct)
     {
-        logger.LogInformation("[Audit] Role {RoleId} deleted", e.RoleId);
+        logger.LogInformation("[Audit] Role {RoleId} ({Name}) deleted",
+            e.RoleId, e.RoleName ?? "unknown");
 
         await publisher.Publish(new RoleDeletedEvent
         {
             RoleId = e.RoleId,
+            Name = e.RoleName,
             OccurredAt = e.OccurredAt
         }, ct);
     }

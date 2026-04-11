@@ -248,7 +248,7 @@ public sealed class GrpcAuthServiceTests(
                 OidcAccessToken = "test-oidc",
             });
 
-        var revoke = await svc.RevokeCredentialAsync(new Clustral.V1.RevokeCredentialRequest
+        var revoke = await svc.RevokeCredentialAsync(new RevokeCredentialRequest
         {
             CredentialId = issued.CredentialId,
             Reason = "test revocation",

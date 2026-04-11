@@ -24,5 +24,12 @@ public record RoleAssignedEvent
 public record RoleUnassignedEvent
 {
     public Guid AssignmentId { get; init; }
+    public Guid UserId { get; init; }
+    public string? UserEmail { get; init; }
+    public Guid RoleId { get; init; }
+    public string? RoleName { get; init; }
+    public Guid ClusterId { get; init; }
+    public string? ClusterName { get; init; }
+    public string? RemovedByEmail { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }

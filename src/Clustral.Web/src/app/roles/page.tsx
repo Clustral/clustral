@@ -140,7 +140,7 @@ export default function RolesPage() {
 
       {/* Delete dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete role</DialogTitle>
             <DialogDescription>
@@ -217,7 +217,7 @@ function RoleFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Role" : "Create Role"}</DialogTitle>
         </DialogHeader>

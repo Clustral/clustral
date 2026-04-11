@@ -21,8 +21,12 @@ public sealed class CredentialRevokedConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.RevokedByEmail ?? evt.UserEmail,
+            userId: evt.UserId != Guid.Empty ? evt.UserId : null,
             resourceType: "Credential",
             resourceId: evt.CredentialId,
+            clusterId: evt.ClusterId != Guid.Empty ? evt.ClusterId : null,
+            clusterName: evt.ClusterName,
             message: $"Credential {evt.CredentialId} revoked{(evt.Reason is not null ? $": {evt.Reason}" : "")}",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);

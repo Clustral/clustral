@@ -20,6 +20,7 @@ public sealed class RoleCreatedConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.CreatedByEmail,
             resourceType: "Role",
             resourceId: evt.RoleId,
             resourceName: evt.Name,
@@ -45,6 +46,7 @@ public sealed class RoleUpdatedConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.UpdatedByEmail,
             resourceType: "Role",
             resourceId: evt.RoleId,
             resourceName: evt.Name,
@@ -70,9 +72,11 @@ public sealed class RoleDeletedConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.DeletedByEmail,
             resourceType: "Role",
             resourceId: evt.RoleId,
-            message: $"Role {evt.RoleId} deleted",
+            resourceName: evt.Name,
+            message: $"Role {evt.Name ?? evt.RoleId.ToString()} deleted",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",

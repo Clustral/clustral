@@ -32,7 +32,7 @@ public class CliConfigTests(ITestOutputHelper output)
     {
         var original = new CliConfig
         {
-            OidcAuthority = "http://keycloak:8080/realms/clustral",
+            OidcAuthority = "http://keycloak:8080",
             OidcClientId = "custom-client",
             OidcScopes = "openid email",
             ControlPlaneUrl = "https://cp.example.com",

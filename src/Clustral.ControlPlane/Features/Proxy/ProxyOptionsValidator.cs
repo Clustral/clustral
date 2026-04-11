@@ -1,7 +1,7 @@
 using Clustral.ControlPlane.Infrastructure;
 using FluentValidation;
 
-namespace Clustral.ControlPlane.Features.Shared;
+namespace Clustral.ControlPlane.Features.Proxy;
 
 public sealed class ProxyOptionsValidator : AbstractValidator<ProxyOptions>
 {

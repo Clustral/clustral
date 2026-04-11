@@ -6,7 +6,6 @@ using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
 using DotNet.Testcontainers.Networks;
 using Testcontainers.K3s;
-using Testcontainers.MongoDb;
 
 namespace Clustral.E2E.Tests.Fixtures;
 

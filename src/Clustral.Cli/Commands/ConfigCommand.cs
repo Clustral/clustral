@@ -3,7 +3,6 @@ using System.CommandLine.Invocation;
 using System.Text.Json;
 using Clustral.Cli.Config;
 using Clustral.Cli.Ui;
-using Clustral.Sdk.Auth;
 using Clustral.Sdk.Kubeconfig;
 using Spectre.Console;
 

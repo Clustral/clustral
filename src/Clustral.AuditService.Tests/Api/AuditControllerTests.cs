@@ -4,9 +4,9 @@ using Clustral.AuditService.Api.Controllers;
 using Clustral.AuditService.Domain;
 using Clustral.AuditService.Infrastructure;
 using FluentAssertions;
-using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -44,16 +44,11 @@ public sealed class AuditControllerTests(MongoFixture mongo, ITestOutputHelper o
                     });
                 });
 
-                builder.ConfigureServices(services =>
+                builder.ConfigureTestServices(services =>
                 {
                     // Replace MongoDB client to point at Testcontainers.
                     services.RemoveAll<IMongoClient>();
                     services.AddSingleton<IMongoClient>(_ => new MongoClient(mongo.ConnectionString));
-
-                    // Replace MassTransit RabbitMQ transport with in-memory to avoid
-                    // requiring a running RabbitMQ instance for API-only tests.
-                    services.RemoveAll<IBusControl>();
-                    services.AddMassTransit(cfg => cfg.UsingInMemory());
                 });
             });
 

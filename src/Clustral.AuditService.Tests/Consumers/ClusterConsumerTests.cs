@@ -1,5 +1,6 @@
 using Clustral.AuditService.Consumers;
 using Clustral.AuditService.Domain;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Contracts.IntegrationEvents;
 using FluentAssertions;
@@ -64,6 +65,7 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
         await harness.Bus.Publish(new ClusterConnectedEvent
         {
             ClusterId = clusterId,
+            ClusterName = "production-east",
             KubernetesVersion = "v1.30.2",
             OccurredAt = DateTimeOffset.UtcNow,
         });
@@ -79,6 +81,7 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
         stored.Category.Should().Be("clusters");
         stored.Severity.Should().Be(Severity.Info);
         stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("production-east");
         stored.Message.Should().Contain("v1.30.2");
     }
 
@@ -95,6 +98,7 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
         await harness.Bus.Publish(new ClusterDisconnectedEvent
         {
             ClusterId = clusterId,
+            ClusterName = "production-west",
             OccurredAt = DateTimeOffset.UtcNow,
         });
 
@@ -109,6 +113,7 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
         stored.Category.Should().Be("clusters");
         stored.Severity.Should().Be(Severity.Warning);
         stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("production-west");
         stored.Message.Should().Contain("disconnected");
     }
 
@@ -125,6 +130,8 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
         await harness.Bus.Publish(new ClusterDeletedEvent
         {
             ClusterId = clusterId,
+            ClusterName = "decommissioned-cluster",
+            DeletedByEmail = "admin@example.com",
             OccurredAt = DateTimeOffset.UtcNow,
         });
 
@@ -138,7 +145,9 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
         stored.Event.Should().Be("cluster.deleted");
         stored.Category.Should().Be("clusters");
         stored.Severity.Should().Be(Severity.Info);
+        stored.User.Should().Be("admin@example.com");
         stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("decommissioned-cluster");
         stored.Message.Should().Contain("deleted");
     }
 
@@ -147,6 +156,7 @@ public sealed class ClusterConsumerTests(MongoFixture mongo, ITestOutputHelper o
     {
         return new ServiceCollection()
             .AddSingleton(db)
+            .AddSingleton<IAuditEventRepository, MongoAuditEventRepository>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<TConsumer>())
             .BuildServiceProvider(true);

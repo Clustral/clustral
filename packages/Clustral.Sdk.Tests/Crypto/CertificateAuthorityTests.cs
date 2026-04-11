@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Clustral.Sdk.Crypto;
 using FluentAssertions;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace Clustral.Sdk.Tests.Crypto;

@@ -1,6 +1,7 @@
 using Prometheus;
 using System.Reflection;
 using System.Text.Json;
+using Clustral.ControlPlane.Features.Proxy;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;

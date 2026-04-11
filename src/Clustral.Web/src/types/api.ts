@@ -156,8 +156,10 @@ export interface AuditEvent {
   clusterName: string | null;
   clusterId: string | null;
   time: string;
+  receivedAt: string | null;
   message: string | null;
   error: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 export interface AuditListResponse {

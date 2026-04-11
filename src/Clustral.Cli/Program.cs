@@ -1,4 +1,6 @@
 using System.CommandLine;
+using System.CommandLine.Builder;
+using System.CommandLine.Parsing;
 using Clustral.Cli;
 using Clustral.Cli.Commands;
 using Clustral.Cli.Ui;
@@ -52,13 +54,16 @@ if (parseResult.GetValueForOption(noColorOption) ||
     AnsiConsole.Profile.Capabilities.Ansi = false;
 }
 
-// ── Global exception handler — single catch for the entire CLI ───────────────
+// ── Build pipeline with custom exception handler ─────────────────────────────
+// System.CommandLine's default UseExceptionHandler dumps raw stack traces.
+// Replace it with CliExceptionHandler for user-friendly error output.
 
-try
-{
-    return await root.InvokeAsync(args);
-}
-catch (Exception ex)
-{
-    return CliExceptionHandler.Handle(ex);
-}
+var parser = new CommandLineBuilder(root)
+    .UseDefaults()
+    .UseExceptionHandler((ex, ctx) =>
+    {
+        ctx.ExitCode = CliExceptionHandler.Handle(ex);
+    })
+    .Build();
+
+return await parser.InvokeAsync(args);

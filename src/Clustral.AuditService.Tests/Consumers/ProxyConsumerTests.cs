@@ -1,5 +1,6 @@
 using Clustral.AuditService.Consumers;
 using Clustral.AuditService.Domain;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Contracts.IntegrationEvents;
 using FluentAssertions;
@@ -139,6 +140,7 @@ public sealed class ProxyConsumerTests(MongoFixture mongo, ITestOutputHelper out
     {
         return new ServiceCollection()
             .AddSingleton(db)
+            .AddSingleton<IAuditEventRepository, MongoAuditEventRepository>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<ProxyRequestCompletedConsumer>())
             .BuildServiceProvider(true);

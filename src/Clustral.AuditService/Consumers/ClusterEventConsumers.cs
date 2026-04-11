@@ -49,8 +49,10 @@ public sealed class ClusterConnectedConsumer(
             time: evt.OccurredAt,
             resourceType: "Cluster",
             resourceId: evt.ClusterId,
+            resourceName: evt.ClusterName,
             clusterId: evt.ClusterId,
-            message: $"Cluster {evt.ClusterId} connected (k8s {evt.KubernetesVersion ?? "unknown"})",
+            clusterName: evt.ClusterName,
+            message: $"Cluster {evt.ClusterName ?? evt.ClusterId.ToString()} connected (k8s {evt.KubernetesVersion ?? "unknown"})",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
@@ -74,8 +76,10 @@ public sealed class ClusterDisconnectedConsumer(
             time: evt.OccurredAt,
             resourceType: "Cluster",
             resourceId: evt.ClusterId,
+            resourceName: evt.ClusterName,
             clusterId: evt.ClusterId,
-            message: $"Cluster {evt.ClusterId} disconnected",
+            clusterName: evt.ClusterName,
+            message: $"Cluster {evt.ClusterName ?? evt.ClusterId.ToString()} disconnected",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",
@@ -97,10 +101,13 @@ public sealed class ClusterDeletedConsumer(
             severity: Severity.Info,
             success: true,
             time: evt.OccurredAt,
+            user: evt.DeletedByEmail,
             resourceType: "Cluster",
             resourceId: evt.ClusterId,
+            resourceName: evt.ClusterName,
             clusterId: evt.ClusterId,
-            message: $"Cluster {evt.ClusterId} deleted",
+            clusterName: evt.ClusterName,
+            message: $"Cluster {evt.ClusterName ?? evt.ClusterId.ToString()} deleted",
             metadata: evt.ToBsonDocument());
         await repository.InsertAsync(auditEvent);
         logger.LogInformation("Audit [{Code}] {Event}: {Message}",

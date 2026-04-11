@@ -1,5 +1,6 @@
 using Clustral.AuditService.Consumers;
 using Clustral.AuditService.Domain;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Contracts.IntegrationEvents;
 using FluentAssertions;
@@ -30,6 +31,7 @@ public sealed class RoleConsumerTests(MongoFixture mongo, ITestOutputHelper outp
         {
             RoleId = roleId,
             Name = "developer",
+            CreatedByEmail = "admin@example.com",
             KubernetesGroups = ["dev-team", "viewers"],
             OccurredAt = DateTimeOffset.UtcNow,
         });
@@ -47,6 +49,7 @@ public sealed class RoleConsumerTests(MongoFixture mongo, ITestOutputHelper outp
         stored.ResourceType.Should().Be("Role");
         stored.ResourceId.Should().Be(roleId);
         stored.ResourceName.Should().Be("developer");
+        stored.User.Should().Be("admin@example.com");
         stored.Message.Should().Contain("developer").And.Contain("dev-team");
     }
 
@@ -96,6 +99,8 @@ public sealed class RoleConsumerTests(MongoFixture mongo, ITestOutputHelper outp
         await harness.Bus.Publish(new RoleDeletedEvent
         {
             RoleId = roleId,
+            Name = "obsolete-role",
+            DeletedByEmail = "admin@example.com",
             OccurredAt = DateTimeOffset.UtcNow,
         });
 
@@ -108,7 +113,9 @@ public sealed class RoleConsumerTests(MongoFixture mongo, ITestOutputHelper outp
         stored!.Code.Should().Be(EventCodes.RoleDeleted);
         stored.Event.Should().Be("role.deleted");
         stored.Category.Should().Be("roles");
+        stored.User.Should().Be("admin@example.com");
         stored.ResourceId.Should().Be(roleId);
+        stored.ResourceName.Should().Be("obsolete-role");
         stored.Message.Should().Contain("deleted");
     }
 
@@ -117,6 +124,7 @@ public sealed class RoleConsumerTests(MongoFixture mongo, ITestOutputHelper outp
     {
         return new ServiceCollection()
             .AddSingleton(db)
+            .AddSingleton<IAuditEventRepository, MongoAuditEventRepository>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<TConsumer>())
             .BuildServiceProvider(true);

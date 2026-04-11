@@ -8,15 +8,16 @@ using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Features.Clusters;
 
-public sealed class ClusterAuditPublishTests(ITestOutputHelper output)
+[Collection("Mongo")]
+public sealed class ClusterAuditPublishTests(MongoFixture mongo, ITestOutputHelper output)
 {
     [Fact]
     public async Task RegisterCluster_PublishesClusterRegisteredEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new ClusterAuditHandler(NullLogger<ClusterAuditHandler>.Instance, publisher);
+        var handler = new ClusterAuditHandler(
+            NullLogger<ClusterAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var clusterId = Guid.NewGuid();
         var clusterName = "production-east";
@@ -27,10 +28,8 @@ public sealed class ClusterAuditPublishTests(ITestOutputHelper output)
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()
@@ -44,23 +43,21 @@ public sealed class ClusterAuditPublishTests(ITestOutputHelper output)
     [Fact]
     public async Task DeleteCluster_PublishesClusterDeletedEvent()
     {
-        // Arrange
         var published = new List<object>();
         var publisher = new FakePublishEndpoint(published);
-        var handler = new ClusterAuditHandler(NullLogger<ClusterAuditHandler>.Instance, publisher);
+        var handler = new ClusterAuditHandler(
+            NullLogger<ClusterAuditHandler>.Instance, publisher, mongo.CreateDb());
 
         var clusterId = Guid.NewGuid();
         var occurredAt = DateTimeOffset.UtcNow;
 
-        var domainEvent = new ClusterDeleted(clusterId)
+        var domainEvent = new ClusterDeleted(clusterId, "test-cluster")
         {
             OccurredAt = occurredAt,
         };
 
-        // Act
         await handler.Handle(domainEvent, CancellationToken.None);
 
-        // Assert
         output.WriteLine($"Published {published.Count} message(s)");
 
         var evt = published.Should().ContainSingle()

@@ -10,6 +10,7 @@ public record ClusterRegisteredEvent
 public record ClusterConnectedEvent
 {
     public Guid ClusterId { get; init; }
+    public string? ClusterName { get; init; }
     public string? KubernetesVersion { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }
@@ -17,11 +18,14 @@ public record ClusterConnectedEvent
 public record ClusterDisconnectedEvent
 {
     public Guid ClusterId { get; init; }
+    public string? ClusterName { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }
 
 public record ClusterDeletedEvent
 {
     public Guid ClusterId { get; init; }
+    public string? ClusterName { get; init; }
+    public string? DeletedByEmail { get; init; }
     public DateTimeOffset OccurredAt { get; init; }
 }

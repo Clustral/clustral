@@ -7,6 +7,7 @@ on:
     paths:
       - "packages/**"
       - "src/Clustral.ControlPlane/**"
+      - "src/Clustral.AuditService/**"
       - "src/Clustral.Cli/**"
       - "src/Clustral.Web/**"
       - "src/clustral-agent/**"
@@ -18,6 +19,7 @@ on:
     paths:
       - "packages/**"
       - "src/Clustral.ControlPlane/**"
+      - "src/Clustral.AuditService/**"
       - "src/Clustral.Cli/**"
       - "src/Clustral.Web/**"
       - "src/clustral-agent/**"
@@ -42,6 +44,7 @@ jobs:
             dotnet:
               - "packages/**"
               - "src/Clustral.ControlPlane/**"
+              - "src/Clustral.AuditService/**"
               - "src/Clustral.Cli/**"
               - "Clustral.slnx"
               - "Directory.Packages.props"

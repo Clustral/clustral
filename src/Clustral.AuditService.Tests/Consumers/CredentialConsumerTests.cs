@@ -1,5 +1,6 @@
 using Clustral.AuditService.Consumers;
 using Clustral.AuditService.Domain;
+using Clustral.AuditService.Domain.Repositories;
 using Clustral.AuditService.Infrastructure;
 using Clustral.Contracts.IntegrationEvents;
 using FluentAssertions;
@@ -61,7 +62,7 @@ public sealed class CredentialConsumerTests(MongoFixture mongo, ITestOutputHelpe
     }
 
     [Fact]
-    public async Task RevokedConsumer_PersistsAuditEvent_WithReason()
+    public async Task RevokedConsumer_PersistsAuditEvent_WithUserAndCluster()
     {
         var db = mongo.CreateDbContext();
         await using var provider = BuildProvider<CredentialRevokedConsumer>(db);
@@ -69,10 +70,17 @@ public sealed class CredentialConsumerTests(MongoFixture mongo, ITestOutputHelpe
         await harness.Start();
 
         var credentialId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var clusterId = Guid.NewGuid();
 
         await harness.Bus.Publish(new CredentialRevokedEvent
         {
             CredentialId = credentialId,
+            UserId = userId,
+            UserEmail = "alice@example.com",
+            ClusterId = clusterId,
+            ClusterName = "staging",
+            RevokedByEmail = "admin@example.com",
             Reason = "User departed",
             OccurredAt = DateTimeOffset.UtcNow,
         });
@@ -87,6 +95,9 @@ public sealed class CredentialConsumerTests(MongoFixture mongo, ITestOutputHelpe
         stored.Event.Should().Be("credential.revoked");
         stored.Category.Should().Be("credentials");
         stored.Severity.Should().Be(Severity.Info);
+        stored.User.Should().Be("admin@example.com");
+        stored.ClusterId.Should().Be(clusterId);
+        stored.ClusterName.Should().Be("staging");
         stored.ResourceType.Should().Be("Credential");
         stored.ResourceId.Should().Be(credentialId);
         stored.Message.Should().Contain("User departed");
@@ -121,6 +132,7 @@ public sealed class CredentialConsumerTests(MongoFixture mongo, ITestOutputHelpe
     {
         return new ServiceCollection()
             .AddSingleton(db)
+            .AddSingleton<IAuditEventRepository, MongoAuditEventRepository>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<TConsumer>())
             .BuildServiceProvider(true);
