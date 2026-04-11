@@ -62,7 +62,7 @@ public sealed class ProxyKubectlRequestHandler(
             request.BearerToken, request.ClusterId, ct);
         if (authResult.IsFailure)
         {
-            await PublishAccessDeniedEvent(request, null, authResult.Error!.Message);
+            PublishAccessDeniedEvent(request, null, authResult.Error!.Message);
             return authResult.Error!;
         }
 
@@ -73,7 +73,7 @@ public sealed class ProxyKubectlRequestHandler(
             identity.UserId, request.ClusterId, ct);
         if (impResult.IsFailure)
         {
-            await PublishAccessDeniedEvent(request, identity.UserId, impResult.Error!.Message);
+            PublishAccessDeniedEvent(request, identity.UserId, impResult.Error!.Message);
             return impResult.Error!;
         }
 
@@ -210,19 +210,23 @@ public sealed class ProxyKubectlRequestHandler(
             $"... (truncated, {body.Length} bytes total)");
     }
 
-    private async Task PublishAccessDeniedEvent(
+    private void PublishAccessDeniedEvent(
         ProxyKubectlRequestCommand request, Guid? userId, string reason)
     {
-        try
+        // Fire-and-forget — don't delay the 401/403 response for audit dispatch.
+        _ = Task.Run(async () =>
         {
-            await mediator.Publish(new ProxyAccessDenied(
-                request.ClusterId, userId,
-                request.Method, request.K8sPath, reason));
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to publish proxy access denied event");
-        }
+            try
+            {
+                await mediator.Publish(new ProxyAccessDenied(
+                    request.ClusterId, userId,
+                    request.Method, request.K8sPath, reason));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to publish proxy access denied event");
+            }
+        });
     }
 
     private static readonly HashSet<string> HopByHopHeaders =
