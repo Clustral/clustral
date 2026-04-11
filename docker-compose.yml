@@ -1,5 +1,8 @@
 # Clustral application stack.
 #
+# Configuration is in .env (committed with working defaults).
+# Edit HOST_IP in .env to match your machine's IP address.
+#
 # Start infrastructure first:
 #   docker compose -f infra/docker-compose.yml up -d
 #
@@ -22,19 +25,19 @@ services:
       - clustral
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      MongoDB__ConnectionString: "mongodb://mongo:27017"
-      MongoDB__DatabaseName: "clustral"
-      Oidc__Authority: "http://192.168.88.4:8080/realms/clustral"
-      Oidc__MetadataAddress: "http://192.168.88.4:8080/realms/clustral/.well-known/openid-configuration"
-      Oidc__ClientId: "clustral-control-plane"
-      Oidc__Audience: "clustral-control-plane"
-      Oidc__RequireHttpsMetadata: "false"
-      CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
-      CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
-      RabbitMQ__Host: "rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__User: "clustral"
-      RabbitMQ__Pass: "clustral"
+      MongoDB__ConnectionString: "${MONGO_CONNECTION_STRING}"
+      MongoDB__DatabaseName: "${MONGO_DATABASE_NAME}"
+      Oidc__Authority: "${OIDC_AUTHORITY}"
+      Oidc__MetadataAddress: "${OIDC_METADATA_ADDRESS}"
+      Oidc__ClientId: "${OIDC_CLIENT_ID}"
+      Oidc__Audience: "${OIDC_AUDIENCE}"
+      Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
+      CertificateAuthority__CaCertPath: "${CA_CERT_PATH}"
+      CertificateAuthority__CaKeyPath: "${CA_KEY_PATH}"
+      RabbitMQ__Host: "${RABBITMQ_HOST}"
+      RabbitMQ__Port: "${RABBITMQ_PORT}"
+      RabbitMQ__User: "${RABBITMQ_USER}"
+      RabbitMQ__Pass: "${RABBITMQ_PASS}"
     ports:
       # gRPC mTLS — agents connect directly (not through nginx)
       - "5443:5443"
@@ -59,14 +62,14 @@ services:
     networks:
       - clustral
     environment:
-      NEXTAUTH_URL: "https://192.168.88.4"
-      CONTROLPLANE_URL: "http://controlplane:5100"
-      CONTROLPLANE_PUBLIC_URL: "https://192.168.88.4"
-      OIDC_ISSUER: "http://192.168.88.4:8080/realms/clustral"
-      OIDC_CLIENT_ID: "clustral-web"
-      OIDC_CLIENT_SECRET: "clustral-web-secret"
-      AUTH_SECRET: "lXBA6UgneVKkAZSlKqDqLTuXigHVoScA"
-      AUDIT_SERVICE_URL: "http://audit-service:5200"
+      NEXTAUTH_URL: "${NEXTAUTH_URL}"
+      CONTROLPLANE_URL: "${CONTROLPLANE_URL}"
+      CONTROLPLANE_PUBLIC_URL: "${CONTROLPLANE_PUBLIC_URL}"
+      OIDC_ISSUER: "${OIDC_WEB_ISSUER}"
+      OIDC_CLIENT_ID: "${OIDC_WEB_CLIENT_ID}"
+      OIDC_CLIENT_SECRET: "${OIDC_WEB_CLIENT_SECRET}"
+      AUTH_SECRET: "${AUTH_SECRET}"
+      AUDIT_SERVICE_URL: "${AUDIT_SERVICE_URL}"
       NODE_ENV: "production"
     # No ports exposed — nginx handles all external traffic.
     # Uncomment for direct access during local dev without nginx:
@@ -87,12 +90,12 @@ services:
       - clustral
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      MongoDB__ConnectionString: "mongodb://mongo:27017"
-      MongoDB__DatabaseName: "clustral-audit"
-      RabbitMQ__Host: "rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__User: "clustral"
-      RabbitMQ__Pass: "clustral"
+      MongoDB__ConnectionString: "${MONGO_CONNECTION_STRING}"
+      MongoDB__DatabaseName: "${MONGO_AUDIT_DATABASE_NAME}"
+      RabbitMQ__Host: "${RABBITMQ_HOST}"
+      RabbitMQ__Port: "${RABBITMQ_PORT}"
+      RabbitMQ__User: "${RABBITMQ_USER}"
+      RabbitMQ__Pass: "${RABBITMQ_PASS}"
     ports:
       - "5200:5200"
     # RabbitMQ runs in infra/docker-compose.yml on the same network.

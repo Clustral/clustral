@@ -542,6 +542,8 @@ sequenceDiagram
 
 Deploy the full stack from pre-built images.
 
+> **For development from source:** clone the repo and edit `HOST_IP` in `.env` to your machine's IP. Both `.env` and `infra/.env` are committed with working defaults — `docker compose -f infra/docker-compose.yml up -d && docker compose up -d` works immediately.
+
 ### 1. Create `docker-compose.yml`
 
 ```yaml
@@ -1226,7 +1228,8 @@ Clustral/clustral (monorepo)
 │   └── release-cli.yml          # CLI binary release + Homebrew update
 ├── install.sh                   # Linux/macOS installer
 ├── install.ps1                  # Windows installer
-├── docker-compose.yml           # Application stack (ControlPlane + Web)
+├── .env                         # App stack env vars (committed defaults — edit HOST_IP)
+├── docker-compose.yml           # Application stack (ControlPlane + Web + AuditService)
 └── CLAUDE.md                    # Claude Code guide
 
 Clustral/homebrew-tap (separate repo)
