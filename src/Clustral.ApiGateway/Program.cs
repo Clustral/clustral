@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Clustral.Sdk.Auth;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Yarp.ReverseProxy.Transforms;
 using Serilog;
 using Serilog.Context;
 
@@ -19,7 +20,28 @@ builder.Host.UseSerilog((ctx, lc) => lc
 
 // ── YARP Reverse Proxy ───────────────────────────────────────────────────────
 builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+    .AddTransforms(ctx =>
+    {
+        // Add internal JWT as a request transform so YARP forwards it.
+        ctx.AddRequestTransform(transformCtx =>
+        {
+            if (transformCtx.HttpContext.User.Identity?.IsAuthenticated == true)
+            {
+                var jwtService = transformCtx.HttpContext.RequestServices
+                    .GetService<InternalJwtService>();
+                if (jwtService is not null)
+                {
+                    var internalToken = jwtService.Issue(
+                        transformCtx.HttpContext.User.Claims);
+                    transformCtx.ProxyRequest.Headers.Remove("X-Internal-Token");
+                    transformCtx.ProxyRequest.Headers.Add(
+                        "X-Internal-Token", internalToken);
+                }
+            }
+            return ValueTask.CompletedTask;
+        });
+    });
 
 // ── Authentication (OIDC JWT from any provider) ──────────────────────────────
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -129,20 +151,8 @@ app.Use(async (ctx, next) =>
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Internal JWT — after OIDC validation, issue ES256 token for downstream
-app.Use(async (ctx, next) =>
-{
-    if (ctx.User.Identity?.IsAuthenticated == true)
-    {
-        var jwtService = ctx.RequestServices.GetService<InternalJwtService>();
-        if (jwtService is not null)
-        {
-            var internalToken = jwtService.Issue(ctx.User.Claims);
-            ctx.Request.Headers["X-Internal-Token"] = internalToken;
-        }
-    }
-    await next();
-});
+// Internal JWT is now issued via YARP request transform (not middleware)
+// so it's correctly forwarded to downstream services.
 
 app.UseRateLimiter();
 app.MapReverseProxy();

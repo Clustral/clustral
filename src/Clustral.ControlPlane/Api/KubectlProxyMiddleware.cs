@@ -57,7 +57,7 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
                     clusterId, null, httpContext.Request.Method, k8sPath,
                     "Authorization: Bearer token required")); }
                 catch { /* best-effort */ }
-            });
+            }, ct);
             httpContext.Response.StatusCode = 401;
             await httpContext.Response.WriteAsync(
                 "Authorization: Bearer token required.", cancellationToken: ct);
