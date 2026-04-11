@@ -71,7 +71,7 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
         {
             httpContext.Response.StatusCode = authResult.Error!.Kind switch
             {
-                Clustral.Sdk.Results.ResultErrorKind.Forbidden => 403,
+                Sdk.Results.ResultErrorKind.Forbidden => 403,
                 _ => 401,
             };
             await httpContext.Response.WriteAsync(authResult.Error.Message, cancellationToken: ct);

@@ -72,8 +72,8 @@ public sealed class TunnelServiceImpl(
             cancellationToken: context.CancellationToken);
 
         // Version compatibility check.
-        var controlPlaneVersion = System.Reflection.Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+        var controlPlaneVersion = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion ?? "0.0.0-dev";
         if (!string.IsNullOrEmpty(hello.AgentVersion) && hello.AgentVersion != controlPlaneVersion)
         {
