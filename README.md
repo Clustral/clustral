@@ -376,29 +376,7 @@ flowchart TB
 
 ### Proxy Configuration
 
-The kubectl proxy is configurable via the `Proxy` section in `appsettings.json`:
-
-```json
-{
-  "Proxy": {
-    "TunnelTimeout": "00:02:00",
-    "RateLimiting": {
-      "Enabled": true,
-      "BurstSize": 200,
-      "RequestsPerSecond": 100,
-      "QueueSize": 50
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-|---|---|---|
-| `TunnelTimeout` | 2 min | Max wait for agent response (504 on timeout) |
-| `RateLimiting:Enabled` | `true` | Toggle per-credential rate limiting |
-| `RateLimiting:BurstSize` | `200` | Token bucket capacity (matches k8s client-go) |
-| `RateLimiting:RequestsPerSecond` | `100` | Sustained QPS per credential |
-| `RateLimiting:QueueSize` | `50` | Queued requests before 429 |
+The kubectl proxy (tunnel timeout + per-credential rate limiting) is tuned via the `PROXY_*` variables in `.env` — see [Configuration Options](#configuration-options) for the full table. Defaults match k8s client-go (100 QPS sustained, 200 burst).
 
 Rate limiting protects the ControlPlane and tunnel from abuse. Request body size and API timeouts are left to the k8s API server.
 
@@ -594,6 +572,92 @@ sequenceDiagram
     Note over Dev: Next kubectl call returns 403
 ```
 
+## Configuration Options
+
+All runtime configuration is exposed via environment variables wired through `.env` → `docker-compose.yml`. Appsettings files ship with sensible defaults but the docker-compose stack overrides them so a single `.env` is the source of truth.
+
+### `.env` (application stack)
+
+#### Host / infrastructure
+
+| Variable | Default | Description |
+|---|---|---|
+| `HOST_IP` | `192.168.88.4` | Your machine's IP / domain. Used in CORS origins, NextAuth URL, and OIDC authority. |
+| `MONGO_CONNECTION_STRING` | `mongodb://mongo:27017` | MongoDB connection string (shared by ControlPlane + AuditService). |
+| `MONGO_DATABASE_NAME` | `clustral` | Main database (clusters, users, credentials). |
+| `MONGO_AUDIT_DATABASE_NAME` | `clustral-audit` | Audit log database. |
+| `RABBITMQ_HOST` | `rabbitmq` | Message bus hostname. |
+| `RABBITMQ_PORT` | `5672` | AMQP port. |
+| `RABBITMQ_USER` / `RABBITMQ_PASS` | `clustral` / `clustral` | RabbitMQ credentials. |
+
+#### OIDC (consumed by API Gateway + Web UI)
+
+| Variable | Default | Description |
+|---|---|---|
+| `OIDC_AUTHORITY` | `http://${HOST_IP}:8080/realms/clustral` | External OIDC issuer URL (browser-facing). |
+| `OIDC_METADATA_ADDRESS` | `http://${HOST_IP}:8080/realms/clustral/.well-known/openid-configuration` | Override for Docker-internal JWKS fetch (container can't always reach the browser issuer URL). |
+| `OIDC_CLIENT_ID` | `clustral-control-plane` | OAuth2 client ID registered in the OIDC provider. |
+| `OIDC_AUDIENCE` | `clustral-control-plane` | Expected `aud` claim. |
+| `OIDC_REQUIRE_HTTPS` | `false` | Set `true` in production. |
+| `OIDC_NAME_CLAIM_TYPE` | `preferred_username` | Claim mapped to `User.Identity.Name`. Keycloak uses `preferred_username`; Auth0/Okta/Azure AD may use `email`, `name`, or `upn`. |
+| `OIDC_WEB_ISSUER` | `http://${HOST_IP}:8080/realms/clustral` | OIDC issuer used by NextAuth (Web UI). |
+| `OIDC_WEB_CLIENT_ID` / `OIDC_WEB_CLIENT_SECRET` | `clustral-web` / `clustral-web-secret` | NextAuth client credentials. |
+
+#### Web UI
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXTAUTH_URL` | `https://${HOST_IP}` | Browser-facing URL for NextAuth callbacks. |
+| `CONTROLPLANE_URL` | `http://api-gateway:8080` | Internal ControlPlane URL (Web UI server-side REST proxy). |
+| `CONTROLPLANE_PUBLIC_URL` | `https://${HOST_IP}` | Public ControlPlane URL returned to CLI via `.well-known`. |
+| `AUTH_SECRET` | *(random)* | NextAuth encryption key — regenerate for production. |
+| `AUDIT_SERVICE_URL` | `http://api-gateway:8080/audit-api` | Internal AuditService URL (Web UI proxy). |
+| `AUDIT_SERVICE_PUBLIC_URL` | `https://${HOST_IP}/audit-api` | Public AuditService URL returned to CLI via `.well-known`. |
+
+#### Certificate Authority (agent mTLS)
+
+| Variable | Default | Description |
+|---|---|---|
+| `CA_CERT_PATH` | `/etc/clustral/ca/ca.crt` | Inside-container path to CA certificate (mounted from `infra/ca/ca.crt`). |
+| `CA_KEY_PATH` | `/etc/clustral/ca/ca.key` | Inside-container path to CA private key. |
+
+#### Kubeconfig credential TTLs (ControlPlane)
+
+| Variable | Default | Description |
+|---|---|---|
+| `CREDENTIAL_DEFAULT_TTL` | `08:00:00` | Lifetime granted when caller doesn't request a specific TTL. |
+| `CREDENTIAL_MAX_TTL` | `08:00:00` | Maximum lifetime a caller can request (cap). |
+
+#### kubectl proxy (ControlPlane)
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROXY_TUNNEL_TIMEOUT` | `00:02:00` | Max wait for agent response over the gRPC tunnel (504 on timeout). |
+| `PROXY_RATE_LIMITING_ENABLED` | `true` | Toggle per-credential token bucket rate limiting. |
+| `PROXY_RATE_LIMITING_BURST_SIZE` | `200` | Token bucket capacity (matches k8s client-go). |
+| `PROXY_RATE_LIMITING_REQUESTS_PER_SECOND` | `100` | Sustained QPS per credential. |
+| `PROXY_RATE_LIMITING_QUEUE_SIZE` | `50` | Queued requests before 429. |
+
+### JWT key paths (mounted as volumes)
+
+These are not `.env` vars — they're bind-mounts defined directly in `docker-compose.yml` to mount ES256 key pairs from `infra/`:
+
+| Service | Config key | Container path | Host source |
+|---|---|---|---|
+| API Gateway | `InternalJwt:PrivateKeyPath` | `/etc/clustral/jwt/private.pem` | `./infra/internal-jwt/private.pem` |
+| API Gateway | `KubeconfigJwt:PublicKeyPath` | `/etc/clustral/kubeconfig-jwt/public.pem` | `./infra/kubeconfig-jwt/public.pem` |
+| ControlPlane | `InternalJwt:PublicKeyPath` | `/etc/clustral/jwt/public.pem` | `./infra/internal-jwt/public.pem` |
+| ControlPlane | `KubeconfigJwt:PrivateKeyPath` | `/etc/clustral/kubeconfig-jwt/private.pem` | `./infra/kubeconfig-jwt/private.pem` |
+| AuditService | `InternalJwt:PublicKeyPath` | `/etc/clustral/jwt/public.pem` | `./infra/internal-jwt/public.pem` |
+
+Generate the key pairs with `openssl` — see [Generate ES256 key pairs](#4-generate-es256-key-pairs) below.
+
+### `infra/.env` (infrastructure stack)
+
+Controls the backing services (Mongo, Keycloak, RabbitMQ, nginx). Committed with working defaults; edit to customize resource limits, Keycloak admin credentials, etc.
+
+---
+
 ## Quick Start (On-Prem)
 
 Deploy the full stack from pre-built images.
@@ -648,6 +712,9 @@ services:
       Oidc__ClientId: "clustral-control-plane"
       Oidc__Audience: "clustral-control-plane"
       Oidc__RequireHttpsMetadata: "false"
+      # Claim used as the user name. "preferred_username" for Keycloak;
+      # "email"/"name"/"upn" for Auth0/Okta/Azure AD.
+      Oidc__NameClaimType: "preferred_username"
       InternalJwt__PrivateKeyPath: "/etc/clustral/internal-jwt/private.pem"
       KubeconfigJwt__PublicKeyPath: "/etc/clustral/kubeconfig-jwt/public.pem"
       Cors__AllowedOrigins__0: "https://<YOUR_HOST_IP>"

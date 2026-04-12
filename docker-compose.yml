@@ -27,8 +27,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Oidc__Authority: "${OIDC_AUTHORITY}"
       Oidc__MetadataAddress: "${OIDC_METADATA_ADDRESS}"
+      Oidc__ClientId: "${OIDC_CLIENT_ID}"
       Oidc__Audience: "${OIDC_AUDIENCE}"
       Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
+      Oidc__NameClaimType: "${OIDC_NAME_CLAIM_TYPE}"
       InternalJwt__PrivateKeyPath: "/etc/clustral/jwt/private.pem"
       KubeconfigJwt__PublicKeyPath: "/etc/clustral/kubeconfig-jwt/public.pem"
       # Override Development appsettings — use Docker DNS names
@@ -70,6 +72,13 @@ services:
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
+      Credential__DefaultKubeconfigCredentialTtl: "${CREDENTIAL_DEFAULT_TTL}"
+      Credential__MaxKubeconfigCredentialTtl: "${CREDENTIAL_MAX_TTL}"
+      Proxy__TunnelTimeout: "${PROXY_TUNNEL_TIMEOUT}"
+      Proxy__RateLimiting__Enabled: "${PROXY_RATE_LIMITING_ENABLED}"
+      Proxy__RateLimiting__BurstSize: "${PROXY_RATE_LIMITING_BURST_SIZE}"
+      Proxy__RateLimiting__RequestsPerSecond: "${PROXY_RATE_LIMITING_REQUESTS_PER_SECOND}"
+      Proxy__RateLimiting__QueueSize: "${PROXY_RATE_LIMITING_QUEUE_SIZE}"
     ports:
       # gRPC mTLS — agents connect directly (not through gateway)
       - "5443:5443"
@@ -103,6 +112,7 @@ services:
       OIDC_CLIENT_SECRET: "${OIDC_WEB_CLIENT_SECRET}"
       AUTH_SECRET: "${AUTH_SECRET}"
       AUDIT_SERVICE_URL: "${AUDIT_SERVICE_URL}"
+      AUDIT_SERVICE_PUBLIC_URL: "${AUDIT_SERVICE_PUBLIC_URL}"
       NODE_ENV: "production"
     # No ports exposed — nginx handles all external traffic.
 
