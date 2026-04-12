@@ -105,13 +105,33 @@ boundary. The gateway has no gRPC routes or passthrough configuration.
 
 ---
 
+## Authentication — two strict schemes
+
+The gateway runs **two distinct JwtBearer schemes** behind a policy scheme
+(`JWT-Router`) that dispatches on the token's `kind` claim:
+
+| Scheme | Validates | Issuer | Audience | Key |
+|---|---|---|---|---|
+| `OidcJwt` | external OIDC tokens (browser, CLI, kubectl login) | `Oidc:Authority` (+ `Oidc:ValidIssuers`) | `Oidc:Audience` (+ `Oidc:ValidAudiences`) | OIDC JWKS |
+| `KubeconfigJwt` | kubeconfig credentials (ControlPlane-signed, used by `kubectl`) | `clustral-controlplane` | `clustral-kubeconfig` | ES256 public key |
+
+Both schemes enforce issuer, audience, lifetime, and signing-key validation.
+A compromised OIDC signing key cannot forge a kubeconfig token (different
+expected issuer/audience + separate trust anchor) and vice versa.
+
+Tokens without a recognized `kind` claim default to the OIDC scheme.
+
 ## Configuration
 
 | Setting | Location | Description |
 |---|---|---|
-| `Oidc:Authority` | env/appsettings | OIDC provider URL |
-| `Oidc:Audience` | env/appsettings | Expected JWT audience |
-| `Oidc:ClientId` | env/appsettings | OIDC client ID |
+| `Oidc:Authority` | env/appsettings | OIDC provider issuer URL (becomes first `ValidIssuer`) |
+| `Oidc:MetadataAddress` | env/appsettings | Optional JWKS metadata URL override (for Docker-internal DNS) |
+| `Oidc:Audience` | env/appsettings | Primary expected JWT audience (becomes first `ValidAudience`) |
+| `Oidc:ValidIssuers` | appsettings | Additional accepted issuer values (e.g., dev LAN IP vs localhost) |
+| `Oidc:ValidAudiences` | appsettings | Additional accepted audience values (e.g., multi-client setups) |
+| `Oidc:ClientId` | env/appsettings | OIDC client ID (informational) |
+| `Oidc:NameClaimType` | env/appsettings | Claim mapped to `User.Identity.Name` (default: `preferred_username`) |
 | `Oidc:RequireHttpsMetadata` | env/appsettings | Require HTTPS for OIDC metadata (default: true) |
 | `InternalJwt:PrivateKeyPath` | env | ES256 private key for signing internal JWTs |
 | `KubeconfigJwt:PublicKeyPath` | env | ES256 public key for validating kubeconfig JWTs |

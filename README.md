@@ -600,6 +600,15 @@ All runtime configuration is exposed via environment variables wired through `.e
 | `OIDC_AUDIENCE` | `clustral-control-plane` | Expected `aud` claim. |
 | `OIDC_REQUIRE_HTTPS` | `false` | Set `true` in production. |
 | `OIDC_NAME_CLAIM_TYPE` | `preferred_username` | Claim mapped to `User.Identity.Name`. Keycloak uses `preferred_username`; Auth0/Okta/Azure AD may use `email`, `name`, or `upn`. |
+
+Additional arrays (set in `appsettings.json` when needed — not `.env`):
+
+| Setting | Description |
+|---|---|
+| `Oidc:ValidIssuers` | Extra accepted issuer values. `Oidc:Authority` is always included; use this when the same provider is reached via multiple URLs (LAN IP vs localhost in dev). |
+| `Oidc:ValidAudiences` | Extra accepted audience values. `Oidc:Audience` is always included; use this when multiple OIDC clients issue tokens with different audiences. |
+
+> **Enterprise note:** the gateway runs two strict authentication schemes (OIDC and kubeconfig JWT) dispatched by the token's `kind` claim. Each scheme enforces issuer, audience, lifetime, and signing-key validation — a compromised OIDC key cannot forge a kubeconfig token and vice versa. See `src/Clustral.ApiGateway/CLAUDE.md` for details.
 | `OIDC_WEB_ISSUER` | `http://${HOST_IP}:8080/realms/clustral` | OIDC issuer used by NextAuth (Web UI). |
 | `OIDC_WEB_CLIENT_ID` / `OIDC_WEB_CLIENT_SECRET` | `clustral-web` / `clustral-web-secret` | NextAuth client credentials. |
 

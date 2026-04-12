@@ -43,45 +43,137 @@ builder.Services.AddReverseProxy()
         });
     });
 
-// ── Authentication (OIDC JWT from any provider) ──────────────────────────────
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+// ── Authentication ───────────────────────────────────────────────────────────
+//
+// Two distinct JWT types arrive at the gateway, each with its own validation:
+//
+//   1. OIDC JWT — issued by the external OIDC provider (Keycloak/Auth0/etc.)
+//      Validated with JWKS. Expected issuer = Oidc:Authority (or Oidc:ValidIssuers),
+//      expected audience = Oidc:Audience.
+//
+//   2. Kubeconfig JWT — issued by the ControlPlane (ES256-signed) for kubectl.
+//      Expected issuer = "clustral-controlplane", audience = "clustral-kubeconfig".
+//
+// A policy scheme inspects the incoming token's "kind" claim and routes to the
+// correct scheme. Each scheme enforces strict issuer + audience validation —
+// a compromised OIDC key cannot forge a kubeconfig JWT and vice versa.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const string OidcScheme = "OidcJwt";
+const string KubeconfigScheme = "KubeconfigJwt";
+
+var oidcAuthority = builder.Configuration["Oidc:Authority"];
+var oidcMetadata = builder.Configuration["Oidc:MetadataAddress"];
+var oidcAudience = builder.Configuration["Oidc:Audience"];
+var oidcRequireHttps =
+    bool.TryParse(builder.Configuration["Oidc:RequireHttpsMetadata"], out var reqHttps) && reqHttps;
+var nameClaimType = builder.Configuration["Oidc:NameClaimType"] ?? "preferred_username";
+
+// Optional: accept additional issuer values (e.g., when the same OIDC provider
+// is reached via multiple URLs in dev — LAN IP vs localhost). In production,
+// configure the OIDC provider with a canonical hostname and leave this empty.
+var extraValidIssuers = builder.Configuration.GetSection("Oidc:ValidIssuers").Get<string[]>()
+                        ?? [];
+var oidcValidIssuers = new List<string>(extraValidIssuers);
+if (!string.IsNullOrEmpty(oidcAuthority) && !oidcValidIssuers.Contains(oidcAuthority))
+    oidcValidIssuers.Add(oidcAuthority);
+
+// Audiences: accept the primary Oidc:Audience plus any additional values from
+// Oidc:ValidAudiences (e.g., when the Web UI and CLI use different OIDC clients
+// and tokens carry different audience claims).
+var extraValidAudiences = builder.Configuration.GetSection("Oidc:ValidAudiences").Get<string[]>()
+                          ?? [];
+var oidcValidAudiences = new List<string>(extraValidAudiences);
+if (!string.IsNullOrEmpty(oidcAudience) && !oidcValidAudiences.Contains(oidcAudience))
+    oidcValidAudiences.Add(oidcAudience);
+
+// Load kubeconfig JWT public key (for validating ControlPlane-signed tokens).
+var kubeconfigPublicKeyPath = builder.Configuration["KubeconfigJwt:PublicKeyPath"];
+Clustral.Sdk.Auth.KubeconfigJwtService? kubeconfigJwt = null;
+if (!string.IsNullOrEmpty(kubeconfigPublicKeyPath) && File.Exists(kubeconfigPublicKeyPath))
+{
+    var publicKeyPem = File.ReadAllText(kubeconfigPublicKeyPath);
+    kubeconfigJwt = Clustral.Sdk.Auth.KubeconfigJwtService.ForValidation(publicKeyPem);
+}
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddPolicyScheme(JwtBearerDefaults.AuthenticationScheme, "JWT-Router", options =>
     {
-        var metadataAddress = builder.Configuration["Oidc:MetadataAddress"];
-        if (!string.IsNullOrEmpty(metadataAddress))
+        // Inspect the incoming token's "kind" claim to decide which scheme validates it.
+        // Unrecognized tokens default to the OIDC scheme (which will reject them if invalid).
+        options.ForwardDefaultSelector = ctx =>
         {
-            // Use internal Docker hostname for JWKS fetch, skip issuer validation
-            // since the token issuer varies by access URL (LAN IP vs localhost).
+            var authHeader = ctx.Request.Headers.Authorization.FirstOrDefault();
+            if (!string.IsNullOrEmpty(authHeader) &&
+                authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var token = authHeader["Bearer ".Length..].Trim();
+                var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                if (handler.CanReadToken(token))
+                {
+                    var jwt = handler.ReadJwtToken(token);
+                    var kind = jwt.Claims
+                        .FirstOrDefault(c => c.Type == Clustral.Sdk.Auth.KubeconfigJwtService.KindClaim)
+                        ?.Value;
+                    if (kind == Clustral.Sdk.Auth.KubeconfigJwtService.KindValue)
+                        return KubeconfigScheme;
+                }
+            }
+            return OidcScheme;
+        };
+    })
+    .AddJwtBearer(OidcScheme, options =>
+    {
+        if (!string.IsNullOrEmpty(oidcMetadata))
+        {
+            // Use configured metadata URL (e.g., Docker-internal hostname for JWKS).
             options.Authority = null;
-            options.MetadataAddress = metadataAddress;
+            options.MetadataAddress = oidcMetadata;
         }
         else
         {
-            options.Authority = builder.Configuration["Oidc:Authority"];
+            options.Authority = oidcAuthority;
         }
 
-        options.Audience = builder.Configuration["Oidc:Audience"];
-        options.RequireHttpsMetadata =
-            bool.TryParse(builder.Configuration["Oidc:RequireHttpsMetadata"], out var v) && v;
+        options.Audience = oidcAudience;
+        options.RequireHttpsMetadata = oidcRequireHttps;
 
         options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
         {
-            ValidateIssuer = false,    // issuer varies (OIDC provider, clustral-controlplane)
-            ValidateAudience = false,  // tokens come from multiple clients (CLI, Web UI, kubeconfig)
+            ValidateIssuer = oidcValidIssuers.Count > 0,
+            ValidIssuers = oidcValidIssuers,
+            ValidateAudience = oidcValidAudiences.Count > 0,
+            ValidAudiences = oidcValidAudiences,
             ValidateLifetime = true,
-            ValidateIssuerSigningKey = true, // JWKS or ES256 key check proves authenticity
-            NameClaimType = builder.Configuration["Oidc:NameClaimType"] ?? "preferred_username",
+            ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = nameClaimType,
         };
-
-        // Add kubeconfig JWT public key as additional valid signing key.
-        // The middleware tries OIDC JWKS keys first, then this ES256 key.
-        var kubeconfigPublicKeyPath = builder.Configuration["KubeconfigJwt:PublicKeyPath"];
-        if (!string.IsNullOrEmpty(kubeconfigPublicKeyPath) && File.Exists(kubeconfigPublicKeyPath))
+    })
+    .AddJwtBearer(KubeconfigScheme, options =>
+    {
+        if (kubeconfigJwt is not null)
         {
-            var publicKeyPem = File.ReadAllText(kubeconfigPublicKeyPath);
-            var kubeconfigJwt = KubeconfigJwtService.ForValidation(publicKeyPem);
-            options.TokenValidationParameters.IssuerSigningKeys =
-                [kubeconfigJwt.GetSecurityKey()];
+            // Es256JwtService.GetValidationParameters() already enforces
+            // issuer=clustral-controlplane, audience=clustral-kubeconfig,
+            // alg=ES256, and signing key = configured public key.
+            options.TokenValidationParameters = kubeconfigJwt.GetValidationParameters();
+            options.TokenValidationParameters.NameClaimType = nameClaimType;
+        }
+        else
+        {
+            // No kubeconfig public key configured — reject all kubeconfig tokens.
+            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = Clustral.Sdk.Auth.KubeconfigJwtService.IssuerName,
+                ValidateAudience = true,
+                ValidAudience = Clustral.Sdk.Auth.KubeconfigJwtService.AudienceName,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                RequireSignedTokens = true,
+            };
         }
     });
 builder.Services.AddAuthorization();
@@ -131,8 +223,6 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 });
 
 // ── Health Checks ───────────────────────────────────────────────────────────
-var oidcMetadata = builder.Configuration["Oidc:MetadataAddress"];
-var oidcAuthority = builder.Configuration["Oidc:Authority"];
 var oidcDiscoveryUrl = !string.IsNullOrEmpty(oidcMetadata)
     ? oidcMetadata
     : !string.IsNullOrEmpty(oidcAuthority)
