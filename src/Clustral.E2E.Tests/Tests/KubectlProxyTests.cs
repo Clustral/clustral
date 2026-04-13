@@ -103,22 +103,29 @@ public sealed class KubectlProxyTests(E2EFixture fixture, ITestOutputHelper outp
     }
 
     [Fact]
-    public async Task ProxyWithInvalidClusterUuid_Returns400()
+    public async Task ProxyWithInvalidClusterUuid_AndValidToken_Returns400()
     {
         var cp = fixture.CreateControlPlaneClient();
         await cp.SignInAsync();
 
-        // Use any cluster ID — the malformed UUID is in the proxy URL.
-        // We send the request directly bypassing the helper because we want
-        // a non-Guid string in the path.
+        // Register any cluster + issue a real kubeconfig credential so we have
+        // an authentic token that passes gateway JWT validation. The gateway
+        // (defense in depth) rejects bad/missing tokens with 401 before any
+        // request body or path validation — so we must authenticate first to
+        // exercise the URL-validation 400 path on the ControlPlane side.
+        var registration = await cp.RegisterClusterAsync(
+            $"e2e-baduuid-{Guid.NewGuid():N}".Substring(0, 30));
+        var credential = await cp.IssueKubeconfigCredentialAsync(registration.ClusterId);
+
         using var http = new HttpClient { BaseAddress = cp.BaseAddress };
         var request = new HttpRequestMessage(HttpMethod.Get, "api/proxy/not-a-uuid/api/v1/namespaces");
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "any-token");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", credential.Token);
 
         using var response = await http.SendAsync(request);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
-            "malformed cluster ID is rejected at input validation, before auth");
+            "with a valid token, the ControlPlane proxy middleware rejects malformed cluster IDs");
     }
 
     [Fact]

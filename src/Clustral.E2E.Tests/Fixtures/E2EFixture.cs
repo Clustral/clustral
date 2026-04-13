@@ -50,6 +50,10 @@ public sealed class E2EFixture : IAsyncLifetime
     private string _tempCaDir = null!;
     private string _caCertPath = null!;
     private string _caKeyPath = null!;
+    private string _internalJwtPrivateKeyPath = null!;
+    private string _internalJwtPublicKeyPath = null!;
+    private string _kubeconfigJwtPrivateKeyPath = null!;
+    private string _kubeconfigJwtPublicKeyPath = null!;
     private string _k3sSaTokenPath = null!;
     private string _k3sCaCertFilePath = null!;
 
@@ -82,6 +86,18 @@ public sealed class E2EFixture : IAsyncLifetime
         _caCertPath = Path.Combine(_tempCaDir, "ca.crt");
         _caKeyPath = Path.Combine(_tempCaDir, "ca.key");
         GenerateTestCA(_caCertPath, _caKeyPath);
+
+        // Generate ES256 key pairs for internal-jwt (gateway→downstream) and
+        // kubeconfig-jwt (ControlPlane-signed kubeconfig credentials).
+        // Both key pairs are mounted into the matching containers so the
+        // gateway can sign + validate kubeconfig JWTs, and the ControlPlane
+        // can validate internal JWTs + sign kubeconfig JWTs.
+        _internalJwtPrivateKeyPath = Path.Combine(_tempCaDir, "internal-jwt-private.pem");
+        _internalJwtPublicKeyPath = Path.Combine(_tempCaDir, "internal-jwt-public.pem");
+        _kubeconfigJwtPrivateKeyPath = Path.Combine(_tempCaDir, "kubeconfig-jwt-private.pem");
+        _kubeconfigJwtPublicKeyPath = Path.Combine(_tempCaDir, "kubeconfig-jwt-public.pem");
+        GenerateEs256KeyPair(_internalJwtPrivateKeyPath, _internalJwtPublicKeyPath);
+        GenerateEs256KeyPair(_kubeconfigJwtPrivateKeyPath, _kubeconfigJwtPublicKeyPath);
 
         // Build images and start infrastructure in parallel.
         _apiGatewayImage = BuildApiGatewayImage();
@@ -232,15 +248,22 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("Oidc__Authority", $"http://{KeycloakAlias}:{KeycloakInternalPort}/realms/{KeycloakRealm}")
             .WithEnvironment("Oidc__Audience", "clustral-control-plane")
             .WithEnvironment("Oidc__RequireHttpsMetadata", "false")
+            .WithEnvironment("InternalJwt__PrivateKeyPath", "/etc/clustral/jwt/private.pem")
+            .WithEnvironment("KubeconfigJwt__PublicKeyPath", "/etc/clustral/kubeconfig-jwt/public.pem")
             .WithEnvironment("ReverseProxy__Clusters__controlplane__Destinations__default__Address",
                 $"http://{ControlPlaneAlias}:{ControlPlaneRestPort}")
-            .WithEnvironment("ReverseProxy__Clusters__controlplane-grpc__Destinations__default__Address",
-                $"https://{ControlPlaneAlias}:{ControlPlaneGrpcPort}")
+            .WithResourceMapping(
+                new FileInfo(_internalJwtPrivateKeyPath),
+                new FileInfo("/etc/clustral/jwt/private.pem"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping(
+                new FileInfo(_kubeconfigJwtPublicKeyPath),
+                new FileInfo("/etc/clustral/kubeconfig-jwt/public.pem"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
             .WithPortBinding(ApiGatewayRestPort, assignRandomHostPort: true)
-            .WithPortBinding(ApiGatewayGrpcPort, assignRandomHostPort: true)
             .WithWaitStrategy(Wait.ForUnixContainer()
                 .UntilHttpRequestIsSucceeded(req => req
-                    .ForPath("/healthz")
+                    .ForPath("/gateway/healthz")
                     .ForPort(ApiGatewayRestPort)))
             .WithCleanUp(true)
             .Build();
@@ -335,12 +358,6 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
             .WithEnvironment("MongoDB__ConnectionString", $"mongodb://{MongoAlias}:{MongoInternalPort}")
             .WithEnvironment("MongoDB__DatabaseName", $"clustral-e2e-{Guid.NewGuid():N}")
-            .WithEnvironment("Oidc__Authority", $"http://{KeycloakAlias}:{KeycloakInternalPort}/realms/{KeycloakRealm}")
-            .WithEnvironment("Oidc__MetadataAddress",
-                $"http://{KeycloakAlias}:{KeycloakInternalPort}/realms/{KeycloakRealm}/.well-known/openid-configuration")
-            .WithEnvironment("Oidc__ClientId", "clustral-control-plane")
-            .WithEnvironment("Oidc__Audience", "clustral-control-plane")
-            .WithEnvironment("Oidc__RequireHttpsMetadata", "false")
             .WithEnvironment("RabbitMQ__Host", RabbitMqAlias)
             .WithEnvironment("RabbitMQ__Port", RabbitMqInternalPort.ToString())
             .WithEnvironment("RabbitMQ__User", "clustral")
@@ -349,6 +366,8 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("CertificateAuthority__CaKeyPath", "/etc/clustral/ca.key")
             .WithEnvironment("CertificateAuthority__ClientCertValidityDays", "1")
             .WithEnvironment("CertificateAuthority__JwtValidityDays", "1")
+            .WithEnvironment("InternalJwt__PublicKeyPath", "/etc/clustral/jwt/public.pem")
+            .WithEnvironment("KubeconfigJwt__PrivateKeyPath", "/etc/clustral/kubeconfig-jwt/private.pem")
             .WithResourceMapping(
                 new FileInfo(_caCertPath),
                 new FileInfo("/etc/clustral/ca.crt"),
@@ -356,6 +375,14 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithResourceMapping(
                 new FileInfo(_caKeyPath),
                 new FileInfo("/etc/clustral/ca.key"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping(
+                new FileInfo(_internalJwtPublicKeyPath),
+                new FileInfo("/etc/clustral/jwt/public.pem"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping(
+                new FileInfo(_kubeconfigJwtPrivateKeyPath),
+                new FileInfo("/etc/clustral/kubeconfig-jwt/private.pem"),
                 UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
             .WithPortBinding(ControlPlaneRestPort, assignRandomHostPort: true)
             .WithPortBinding(ControlPlaneGrpcPort, assignRandomHostPort: true)
@@ -480,6 +507,13 @@ subjects:
         var endOfLine = rest.IndexOfAny(['\r', '\n']);
         var b64 = (endOfLine >= 0 ? rest[..endOfLine] : rest).Trim();
         return b64;
+    }
+
+    private static void GenerateEs256KeyPair(string privateKeyPath, string publicKeyPath)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        File.WriteAllText(privateKeyPath, key.ExportECPrivateKeyPem());
+        File.WriteAllText(publicKeyPath, key.ExportSubjectPublicKeyInfoPem());
     }
 
     private static void GenerateTestCA(string certPath, string keyPath)

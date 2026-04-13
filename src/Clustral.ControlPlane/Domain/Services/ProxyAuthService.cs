@@ -57,11 +57,15 @@ public sealed class ProxyAuthService(
                     return ResultError.Forbidden("Credential is not valid for this cluster.");
             }
 
-            // Check revocation by credential ID (jti)
+            // Check revocation + expiry by credential ID (jti).
+            // Defense in depth: the gateway already validated the JWT exp claim,
+            // but allows up to 30s of ClockSkew. The DB record's ExpiresAt is
+            // precise — checking it here closes the skew window so a credential
+            // becomes unusable the instant its recorded expiry passes.
             if (!string.IsNullOrEmpty(jtiClaim) && Guid.TryParse(jtiClaim, out var credentialId))
             {
                 var credential = await accessTokens.GetByIdAsync(credentialId, ct);
-                if (credential is not null && credential.IsRevoked)
+                if (credential is not null && (credential.IsRevoked || credential.IsExpired))
                     return ResultErrors.InvalidCredential();
 
                 return new ProxyIdentity(userId, clusterId, credentialId);
