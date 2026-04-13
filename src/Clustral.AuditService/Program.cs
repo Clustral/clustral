@@ -1,6 +1,8 @@
 using Clustral.AuditService.Infrastructure;
 using Clustral.Sdk.Auth;
+using Clustral.Sdk.Http;
 using Clustral.Sdk.Messaging;
+using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -16,6 +18,10 @@ try { BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.St
 catch (BsonSerializationException) { /* already registered */ }
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Error documentation base URL — RFC 7807 `type` + `Link: rel="help"` header
+// point here. Configurable via `Errors:DocsBaseUrl` for internal mirrors.
+ErrorDocumentation.SetBaseUrl(builder.Configuration["Errors:DocsBaseUrl"]);
 
 // ── Logging ──────────────────────────────────────────────────────────────
 builder.Host.UseSerilog((ctx, lc) => lc
@@ -41,6 +47,11 @@ builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,
 // ── CQS + MediatR ───────────────────────────────────────────────────────
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
+
+// ── FluentValidation ────────────────────────────────────────────────────
+// Registers all AbstractValidator<T> implementations in this assembly
+// (currently just AuditListValidator). Used directly from the controller.
+builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
 
 // ── Authentication — Internal JWT (ES256, issued by API Gateway) ─────
 var internalJwtPublicKeyPath = builder.Configuration["InternalJwt:PublicKeyPath"];
@@ -89,6 +100,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Correlation ID — first so every downstream log line + error body carries it.
+app.UseMiddleware<CorrelationIdMiddleware>();
+
+// Global exception handler — catches unhandled exceptions and writes RFC 7807.
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
 app.UseSerilogRequestLogging();
 app.UseAuthentication();

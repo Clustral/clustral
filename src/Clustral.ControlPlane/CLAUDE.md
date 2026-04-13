@@ -24,7 +24,8 @@ Clustral.ControlPlane/
 │   │   ├── AccessRequestsController.cs    ← JIT access request endpoints (request, list, approve, deny, revoke)
 │   │   ├── RolesController.cs             ← Role CRUD
 │   │   └── UsersController.cs             ← User + role assignment management
-│   ├── GlobalExceptionHandlerMiddleware.cs ← RFC 7807 Problem Details for unhandled errors
+│   ├── KubectlProxyMiddleware.cs          ← /api/proxy/* entry point; writes plain-text
+│   │                                         errors via Clustral.Sdk.Http.PlainTextErrorWriter
 │   └── Models/
 │       ├── ClusterModels.cs               ← REST request/response records
 │       ├── AuthModels.cs
@@ -154,16 +155,35 @@ Validated with `ProxyOptionsValidator` at startup. Defaults match k8s client-go.
 Controllers use `Result<T>` from `Clustral.Sdk.Results` to represent success or
 failure without throwing exceptions on expected error paths.  Error cases are
 constructed via `ResultErrors.*` factory methods (e.g. `ResultErrors.NotFound`,
-`ResultErrors.Forbidden`).
+`ResultErrors.Forbidden`, proxy-specific `ResultErrors.ClusterMismatch`,
+`ResultErrors.AgentNotConnected`, etc.).
 
 The extension method `ToActionResult()` maps a `Result<T>` to the appropriate
 HTTP status code (200, 400, 404, 403, etc.).  Controllers should return
 `result.ToActionResult()` rather than manually constructing `ObjectResult`.
 
-`GlobalExceptionHandlerMiddleware` catches any unhandled
-`ResultFailureException` (thrown when `.Value` is accessed on a failed result)
-and returns an RFC 7807 Problem Details response, ensuring consistent error
-formatting across the API.
+## Error shapes
+
+Two writers — path-aware:
+
+- **Proxy path (`/api/proxy/*`)** — `Clustral.Sdk.Http.PlainTextErrorWriter`
+  emits a self-speaking plain-text message. Wired into `KubectlProxyMiddleware`.
+  kubectl renders the body verbatim after `"error: "`. The Clustral error
+  code lives in `X-Clustral-Error-Code` for programmatic clients. (Plain
+  text rather than v1.Status — kubectl's aggregated-discovery scheme
+  doesn't register `metav1.Status`; JSON bodies fall back to the
+  hardcoded string `"unknown"`.)
+- **REST API (`/api/v1/*`)** — controllers return `result.ToActionResult()`,
+  which goes through `Clustral.Sdk.Http.ProblemDetailsWriter` and produces
+  RFC 7807 `application/problem+json`.
+- **Unhandled exceptions** — `Clustral.Sdk.Http.GlobalExceptionHandlerMiddleware`
+  (registered first in the pipeline) catches them and writes RFC 7807.
+- **Every response** echoes `X-Correlation-Id` via
+  `Clustral.Sdk.Http.CorrelationIdMiddleware`.
+
+See `docs/adr/001-error-response-shapes.md` for the rationale and the root
+README for wire examples + canonical error-code table. **Do not write
+`BadRequest("plain text")`** on the proxy path — it breaks kubectl rendering.
 
 ---
 

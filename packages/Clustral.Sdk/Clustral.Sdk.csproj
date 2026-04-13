@@ -27,6 +27,12 @@
     <!-- Messaging -->
     <PackageReference Include="MassTransit" />
     <PackageReference Include="MassTransit.RabbitMQ" />
+    <!-- Logging — LogContext for correlation-ID middleware -->
+    <PackageReference Include="Serilog" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Clustral.Sdk.Tests" />
   </ItemGroup>
 
   <ItemGroup>

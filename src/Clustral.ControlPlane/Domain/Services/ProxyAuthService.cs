@@ -9,6 +9,11 @@ namespace Clustral.ControlPlane.Domain.Services;
 /// Validates proxy requests using the internal JWT issued by the gateway.
 /// The gateway has already validated the external token (OIDC or kubeconfig JWT).
 /// This service extracts the identity and checks revocation for kubeconfig credentials.
+///
+/// Every failure path returns a distinct <see cref="ResultError"/> code from
+/// <see cref="ResultErrors"/> so the downstream writer can produce a
+/// well-described response body. See the "Error Response Shapes" section in
+/// the root README for the canonical error-code table.
 /// </summary>
 public sealed class ProxyAuthService(
     IAccessTokenRepository accessTokens)
@@ -18,17 +23,15 @@ public sealed class ProxyAuthService(
     {
         // The gateway validates all tokens (OIDC + kubeconfig JWT) and issues
         // an internal JWT with the extracted claims. Read identity from it.
-        if (!string.IsNullOrEmpty(internalToken))
-        {
-            var handler = new JwtSecurityTokenHandler();
-            if (handler.CanReadToken(internalToken))
-            {
-                var jwt = handler.ReadJwtToken(internalToken);
-                return await ValidateFromInternalJwt(jwt, clusterId, ct);
-            }
-        }
+        if (string.IsNullOrEmpty(internalToken))
+            return ResultErrors.AuthenticationRequired();
 
-        return ResultErrors.InvalidCredential();
+        var handler = new JwtSecurityTokenHandler();
+        if (!handler.CanReadToken(internalToken))
+            return ResultErrors.MalformedToken("not a parseable JWT");
+
+        var jwt = handler.ReadJwtToken(internalToken);
+        return await ValidateFromInternalJwt(jwt, clusterId, ct);
     }
 
     private async Task<Result<ProxyIdentity>> ValidateFromInternalJwt(
@@ -38,7 +41,7 @@ public sealed class ProxyAuthService(
             ?? jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
             ?? jwt.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(sub))
-            return ResultErrors.InvalidCredential();
+            return ResultErrors.MissingSubjectClaim();
 
         // Check if this is a kubeconfig credential (has cluster_id + jti claims)
         var clusterIdClaim = jwt.Claims.FirstOrDefault(c => c.Type == "cluster_id")?.Value;
@@ -49,12 +52,13 @@ public sealed class ProxyAuthService(
         {
             // Kubeconfig credential — validate cluster scope + check revocation
             if (!Guid.TryParse(sub, out var userId))
-                return ResultErrors.InvalidCredential();
+                return ResultErrors.MalformedToken("sub claim is not a valid UUID for kubeconfig credential");
 
-            if (!string.IsNullOrEmpty(clusterIdClaim) && Guid.TryParse(clusterIdClaim, out var tokenClusterId))
+            if (!string.IsNullOrEmpty(clusterIdClaim) &&
+                Guid.TryParse(clusterIdClaim, out var tokenClusterId) &&
+                tokenClusterId != clusterId)
             {
-                if (tokenClusterId != clusterId)
-                    return ResultError.Forbidden("Credential is not valid for this cluster.");
+                return ResultErrors.ClusterMismatch(tokenClusterId, clusterId);
             }
 
             // Check revocation + expiry by credential ID (jti).
@@ -65,8 +69,13 @@ public sealed class ProxyAuthService(
             if (!string.IsNullOrEmpty(jtiClaim) && Guid.TryParse(jtiClaim, out var credentialId))
             {
                 var credential = await accessTokens.GetByIdAsync(credentialId, ct);
-                if (credential is not null && (credential.IsRevoked || credential.IsExpired))
-                    return ResultErrors.InvalidCredential();
+                if (credential is not null)
+                {
+                    if (credential.IsRevoked)
+                        return ResultErrors.CredentialRevoked(credentialId);
+                    if (credential.IsExpired)
+                        return ResultErrors.CredentialExpired(credentialId, credential.ExpiresAt);
+                }
 
                 return new ProxyIdentity(userId, clusterId, credentialId);
             }
@@ -81,6 +90,6 @@ public sealed class ProxyAuthService(
         if (Guid.TryParse(sub, out var oidcUserId))
             return new ProxyIdentity(oidcUserId, clusterId, Guid.Empty);
 
-        return ResultErrors.InvalidCredential();
+        return ResultErrors.MalformedToken("sub claim not recognized as GUID or OIDC subject");
     }
 }

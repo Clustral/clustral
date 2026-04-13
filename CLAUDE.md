@@ -282,6 +282,26 @@ dotnet test src/Clustral.E2E.Tests
 
 ---
 
+## Error Response Shapes
+
+Clustral uses a **path-aware split** for HTTP error bodies:
+
+- `/api/proxy/*` → **plain text** (self-speaking message). Write via `Clustral.Sdk.Http.PlainTextErrorWriter`. Machine-readable code is in the `X-Clustral-Error-Code` response header.
+- All other HTTP endpoints → RFC 7807 Problem Details. Write via `Clustral.Sdk.Http.ProblemDetailsWriter` or `result.ToActionResult()` from a controller.
+- gRPC → `RpcException(Status)`.
+
+Every response (success and failure) echoes `X-Correlation-Id`. The Clustral-specific error code goes in `X-Clustral-Error-Code` on the proxy path and in `extensions.code` on RFC 7807 responses.
+
+**When adding a new endpoint:**
+- Behind `/api/proxy/*`? Use `PlainTextErrorWriter`. The message must be self-speaking: name what went wrong, which component is involved, and how the user fixes it (kubectl shows the body verbatim after `"error: "`).
+- Everywhere else? Use `ProblemDetailsWriter` directly, or from a controller return `result.ToActionResult()`.
+- **Never** write `BadRequest("plain text")` or `context.Response.WriteAsync(string)` directly on an error path — route through the writers so the Content-Type, `X-Clustral-Error-Code`, and `X-Correlation-Id` are always consistent.
+- **Never** introduce a third shape. If you think you need one, read [docs/adr/001-error-response-shapes.md](docs/adr/001-error-response-shapes.md) first — the choice of plain text vs RFC 7807 is deliberate (and the ADR documents why v1.Status was considered and rejected after live kubectl testing).
+
+See the "Error Response Shapes" section of the root `README.md` for the full user-facing reference (wire examples, canonical error-code table, trade-offs) and the ADR for the design rationale.
+
+---
+
 ## How Claude Code Should Approach Tasks Here
 
 - **Read before editing.** Always read the relevant file(s) before proposing changes. Do not guess at existing signatures or table schemas.

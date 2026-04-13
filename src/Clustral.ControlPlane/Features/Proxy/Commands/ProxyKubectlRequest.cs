@@ -82,11 +82,7 @@ public sealed class ProxyKubectlRequestHandler(
         // ── 3. Find tunnel session ─────────────────────────────────────────
         var session = sessions.GetSession(request.ClusterId);
         if (session is null)
-            return new ResultError
-            {
-                Kind = ResultErrorKind.Internal, Code = "AGENT_NOT_CONNECTED",
-                Message = "Cluster agent is not connected.",
-            };
+            return ResultErrors.AgentNotConnected(request.ClusterId);
 
         // ── 4. Build HttpRequestFrame ──────────────────────────────────────
         var head = new HttpRequestHead
@@ -125,29 +121,21 @@ public sealed class ProxyKubectlRequestHandler(
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             PublishAuditEvent(identity, request, 504, sw);
-            return new ResultError
-                {
-                    Kind = ResultErrorKind.Internal, Code = "GATEWAY_TIMEOUT",
-                    Message = "Gateway timeout — agent did not respond.",
-                };
+            return ResultErrors.TunnelTimeout(proxyOptions.Value.TunnelTimeout);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Tunnel proxy error for cluster {ClusterId}",
                 request.ClusterId);
             PublishAuditEvent(identity, request, 502, sw);
-            return ResultError.Internal("Tunnel proxy error.");
+            return ResultErrors.TunnelError(ex.Message);
         }
 
         // ── 6. Handle tunnel-level errors ──────────────────────────────────
         if (responseFrame.Error is { } tunnelError)
         {
             PublishAuditEvent(identity, request, 502, sw);
-            return new ResultError
-            {
-                Kind = ResultErrorKind.Internal, Code = "AGENT_ERROR",
-                Message = $"Agent error ({tunnelError.Code}): {tunnelError.Message}",
-            };
+            return ResultErrors.AgentError(tunnelError.Code.ToString(), tunnelError.Message);
         }
 
         // ── 7. Build domain response ───────────────────────────────────────

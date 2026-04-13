@@ -630,6 +630,14 @@ Additional arrays (set in `appsettings.json` when needed — not `.env`):
 | `CA_CERT_PATH` | `/etc/clustral/ca/ca.crt` | Inside-container path to CA certificate (mounted from `infra/ca/ca.crt`). |
 | `CA_KEY_PATH` | `/etc/clustral/ca/ca.key` | Inside-container path to CA private key. |
 
+#### Error documentation (all services)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ERRORS_DOCS_BASE_URL` | `https://docs.clustral.kube.it.com/errors/` | Base URL emitted in RFC 7807 `type` fields and plain-text `Link: rel="help"` response headers. Point at an internal docs mirror for air-gapped deployments (e.g., `https://internal.corp/clustral-errors/`). Trailing slash is added if you omit it. Each error's path is the kebab-cased code (e.g., `AGENT_NOT_CONNECTED` → `/agent-not-connected`). |
+
+Consumed by all three .NET services (`ApiGateway`, `ControlPlane`, `AuditService`) via the `Errors:DocsBaseUrl` config key.
+
 #### Kubeconfig credential TTLs (ControlPlane)
 
 | Variable | Default | Description |
@@ -664,6 +672,130 @@ Generate the key pairs with `openssl` — see [Generate ES256 key pairs](#4-gene
 ### `infra/.env` (infrastructure stack)
 
 Controls the backing services (Mongo, Keycloak, RabbitMQ, nginx). Committed with working defaults; edit to customize resource limits, Keycloak admin credentials, etc.
+
+---
+
+## Error Response Shapes
+
+Clustral emits **two HTTP error body shapes**, chosen by path, plus the native gRPC error model:
+
+| Path | Shape | Content-Type | Error code location | Why |
+|---|---|---|---|---|
+| `/api/proxy/*` (kubectl path) | **Plain text** (self-speaking message) | `text/plain; charset=utf-8` | `X-Clustral-Error-Code` response header | kubectl's aggregated-discovery client doesn't register `metav1.Status` in its scheme, so JSON error bodies decode as `"unknown"` in client-go's fallback. Plain text triggers the `isTextResponse` branch and the body is shown verbatim. |
+| All other HTTP endpoints | RFC 7807 Problem Details | `application/problem+json` | `extensions.code` in the body | IETF-standardized, ASP.NET Core's default, what the Web UI / CLI / general HTTP clients already understand. |
+| gRPC (agent-facing) | gRPC `Status` / `RpcException` | (gRPC trailers) | n/a | Correct for the transport; never crosses language boundaries as HTTP. |
+
+Every response — success *or* failure — echoes an `X-Correlation-Id` header. Include it in support tickets to cross-reference gateway, ControlPlane, and AuditService logs.
+
+**Why plain text on the proxy path?** We originally planned `v1.Status` JSON so kubectl would render errors natively — matching GKE/EKS/AKS. In practice, kubectl v1.30+ uses an aggregated-discovery client whose runtime scheme doesn't know about `metav1.Status`; JSON bodies decode fail and client-go falls back to the hardcoded string `"unknown"`. Plain text works because client-go's `isTextResponse` branch uses the body verbatim as the error message. The full rationale, every alternative we rejected (including v1.Status, RFC 7807 everywhere, discovery bypass, content-negotiation) is in [docs/adr/001-error-response-shapes.md](docs/adr/001-error-response-shapes.md).
+
+Error message content is **deliberately self-speaking** — every message names what went wrong, which component is involved, and how the user fixes it. kubectl renders the body verbatim after `"error: "`, so users see actionable advice right in their terminal.
+
+### Wire examples
+
+**Plain text (`/api/proxy/{clusterId}/...`)**
+
+```http
+HTTP/1.1 403 Forbidden
+Content-Type: text/plain; charset=utf-8
+X-Correlation-Id: 4c2e8b9f5a314d21b6e7c8d9a0f1b2c3
+X-Clustral-Error-Code: NO_ROLE_ASSIGNMENT
+X-Clustral-Error-Meta-user: alice@corp.com
+X-Clustral-Error-Meta-clusterName: prod
+
+alice@corp.com has no active role on cluster 'prod'. Either ask an administrator to grant you a static role, or request just-in-time access with 'clustral access request --cluster prod --role <role-name>'.
+```
+
+kubectl renders this as:
+
+```
+$ kubectl get pods
+error: alice@corp.com has no active role on cluster 'prod'. Either ask an administrator to grant you a static role, or request just-in-time access with 'clustral access request --cluster prod --role <role-name>'.
+```
+
+Programmatic clients get every structured field from `Result<T>` as a response header — the plain-text path reaches **parity with RFC 7807 Problem Details**:
+
+| Header | Meaning | Present when |
+|---|---|---|
+| `X-Clustral-Error-Code` | Machine-readable error code (e.g., `NO_ROLE_ASSIGNMENT`) | Always on error responses |
+| `X-Clustral-Error-Field` | Offending field name for validation errors | When `ResultError.Field` is set |
+| `X-Clustral-Error-Meta-<key>` | One header per `ResultError.Metadata` entry (IDs, timestamps, etc.) | When `ResultError.Metadata` is populated |
+| `Link: <url>; rel="help"` | RFC 8288 link to the error's documentation page | Always on error responses |
+| `X-Correlation-Id` | Cross-service request ID (equals the W3C trace ID when the caller sent `traceparent`) | Always |
+| `traceresponse` | W3C Trace Context response header — lets distributed-tracing clients (OpenTelemetry, Datadog, Honeycomb, X-Ray, Elastic APM) recover the trace ID from the response | When an Activity is active (i.e., in normal ASP.NET processing) |
+
+Example metadata surfaced on the proxy path: `X-Clustral-Error-Meta-tokenClusterId`, `X-Clustral-Error-Meta-credentialId`, `X-Clustral-Error-Meta-expiredAt` (ISO 8601), `X-Clustral-Error-Meta-timeout` — use the existing error-code table to know which metadata keys each code provides.
+
+### Distributed tracing (W3C Trace Context)
+
+Clustral speaks [W3C Trace Context](https://www.w3.org/TR/trace-context/) natively. Send a `traceparent` header on your request (every OpenTelemetry-instrumented client does this by default) and:
+
+- The trace ID propagates through the gateway, ControlPlane, and AuditService — every log line from the request carries `TraceId` and `SpanId` properties.
+- RFC 7807 `traceId` extension in error bodies **is** the W3C trace ID (32 hex chars), not a Clustral-specific identifier.
+- The response `traceresponse` header echoes the trace context so clients that didn't originate a trace can still pick it up.
+- `X-Correlation-Id` equals the trace ID unless the caller explicitly sent a different value (backward compat).
+
+No configuration required on your side — point your OpenTelemetry / Datadog / Honeycomb / X-Ray collector at Clustral and traces stitch together automatically.
+
+### Error documentation discovery (RFC 7807 `type` + RFC 8288 `Link`)
+
+Every error response carries a resolvable URL pointing at its documentation:
+
+- **RFC 7807** (REST API): `"type": "https://docs.clustral.kube.it.com/errors/cluster-not-found"` — IETF says the `type` field "should be a URI", and using a real HTTPS URL (the convention Stripe, Azure, Microsoft Graph use) lets a developer jump from error to docs in one click.
+- **Plain text** (proxy path): `Link: <https://docs.clustral.kube.it.com/errors/agent-not-connected>; rel="help"` — RFC 8288 standard way for any HTTP client (including `curl -I`) to discover docs from response headers without parsing the body.
+
+On-prem deployments override the base URL via config — set `Errors:DocsBaseUrl` in `appsettings.json` or the `ERRORS_DOCS_BASE_URL` environment variable (see [Configuration Options](#configuration-options) above). Every service reads the value at startup; nothing hard-coded.
+
+**RFC 7807 (`/api/v1/*` and everything else)**
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: application/problem+json
+X-Correlation-Id: 4c2e8b9f5a314d21b6e7c8d9a0f1b2c3
+
+{
+  "type": "https://docs.clustral.kube.it.com/errors/cluster-not-found",
+  "title": "NotFound",
+  "status": 404,
+  "detail": "Cluster 'abc-123' not found.",
+  "instance": "/api/v1/clusters/abc-123",
+  "code": "CLUSTER_NOT_FOUND",
+  "traceId": "00-..."
+}
+```
+
+### Canonical error codes
+
+Clustral-specific codes live in `X-Clustral-Error-Code` on the proxy path (body is plain text) and in `extensions.code` on RFC 7807 responses — same value in both places, so clients can switch on it without caring which shape they got.
+
+| Scenario | HTTP | Code |
+|---|---|---|
+| Missing / invalid token | 401 | `AUTHENTICATION_REQUIRED` |
+| Token signature / expiry / audience failure | 401 | `INVALID_TOKEN` |
+| Forbidden by policy (non-proxy) | 403 | `FORBIDDEN` |
+| Rate-limited | 429 | `RATE_LIMITED` |
+| Route not found (gateway) | 404 | `ROUTE_NOT_FOUND` |
+| Malformed cluster ID in proxy URL | 400 | `INVALID_CLUSTER_ID` |
+| Kubeconfig cluster claim mismatch | 403 | `CLUSTER_MISMATCH` |
+| Credential revoked | 401 | `CREDENTIAL_REVOKED` |
+| Credential expired (DB record) | 401 | `CREDENTIAL_EXPIRED` |
+| No role assigned on cluster | 403 | `NO_ROLE_ASSIGNMENT` |
+| Agent not connected | 502 | `AGENT_NOT_CONNECTED` |
+| Tunnel timeout | 504 | `TUNNEL_TIMEOUT` |
+| Tunnel internal error | 502 | `TUNNEL_ERROR` |
+| Agent error (e.g. can't reach k8s) | 502 | `AGENT_ERROR` |
+| Upstream service unreachable (gateway) | 502 | `UPSTREAM_UNREACHABLE` |
+| Upstream service unavailable (gateway) | 503 | `UPSTREAM_UNAVAILABLE` |
+| Upstream service timeout (gateway) | 504 | `UPSTREAM_TIMEOUT` |
+| Validation (any field) | 422 | `VALIDATION_ERROR` + `field` extension |
+| Unexpected | 500 | `INTERNAL_ERROR` |
+
+### `X-Correlation-Id` contract
+
+- Always echoed on responses. If the client sends one, the same value is returned; otherwise a fresh 32-hex-character ID is generated.
+- Propagated across the gateway → ControlPlane and gateway → AuditService hop.
+- Pushed into each service's log context (`CorrelationId` property) so a single grep finds all log lines for one request.
+- Out-of-body by design: keeps the `v1.Status` message clean so kubectl's output stays readable, and keeps RFC 7807 bodies compact.
 
 ---
 

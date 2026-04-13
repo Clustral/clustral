@@ -63,7 +63,7 @@ public class ResultExtensionsTests(ITestOutputHelper output)
         output.WriteLine($"  Field:  {problem.Extensions["field"]}");
         output.WriteLine($"  Code:   {problem.Extensions["code"]}");
 
-        Assert.Equal("urn:clustral:error:item_nf", problem.Type);
+        Assert.Equal("https://docs.clustral.kube.it.com/errors/item-nf", problem.Type);
         Assert.Equal("NotFound", problem.Title);
         Assert.Equal(404, problem.Status);
         Assert.Equal("Item not found.", problem.Detail);

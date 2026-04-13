@@ -1,9 +1,10 @@
 using System.Threading.RateLimiting;
+using Clustral.ApiGateway.Api;
 using Clustral.Sdk.Auth;
+using Clustral.Sdk.Http;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Yarp.ReverseProxy.Transforms;
 using Serilog;
-using Serilog.Context;
 
 // ── Bootstrap logger ─────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
@@ -11,6 +12,11 @@ Log.Logger = new LoggerConfiguration()
     .CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Error documentation base URL — points every RFC 7807 `type` field and
+// plain-text `Link: rel="help"` header at the canonical docs site.
+// Configurable via `Errors:DocsBaseUrl` for air-gapped / internal mirrors.
+ErrorDocumentation.SetBaseUrl(builder.Configuration["Errors:DocsBaseUrl"]);
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 builder.Host.UseSerilog((ctx, lc) => lc
@@ -150,6 +156,7 @@ builder.Services
             ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = nameClaimType,
         };
+        options.Events = GatewayJwtEvents.Create();
     })
     .AddJwtBearer(KubeconfigScheme, options =>
     {
@@ -175,6 +182,7 @@ builder.Services
                 RequireSignedTokens = true,
             };
         }
+        options.Events = GatewayJwtEvents.Create();
     });
 builder.Services.AddAuthorization();
 
@@ -214,6 +222,16 @@ builder.Services.AddRateLimiter(options =>
                 ReplenishmentPeriod = TimeSpan.FromSeconds(10),
                 AutoReplenishment = true,
             }));
+
+    // Replace ASP.NET's default empty 429 body with a path-aware error body.
+    options.OnRejected = async (ctx, _) =>
+    {
+        await GatewayErrorWriter.WriteAsync(ctx.HttpContext,
+            statusCode: StatusCodes.Status429TooManyRequests,
+            code: "RATE_LIMITED",
+            message: "Request rate limit exceeded for your identity on this gateway. " +
+                     "Wait a few seconds and retry — the per-credential token bucket refills continuously.");
+    };
 });
 
 // ── Request Size Limits ──────────────────────────────────────────────────────
@@ -240,18 +258,37 @@ var app = builder.Build();
 
 // ── Middleware Pipeline ──────────────────────────────────────────────────────
 
+// Correlation ID — first so every downstream log line and error body carries it.
+app.UseMiddleware<CorrelationIdMiddleware>();
+
 app.UseCors();
 app.UseSerilogRequestLogging();
 
-// Correlation ID — generate or preserve from incoming request
-app.Use(async (ctx, next) =>
+// Terminal status-code handler — writes a well-described body for any
+// 4xx/5xx response that reached the client with an empty body (e.g., YARP
+// 502 destination-unreachable, 404 no-route, CORS preflight rejections).
+app.UseStatusCodePages(async statusCtx =>
 {
-    var correlationId = ctx.Request.Headers["X-Correlation-Id"].FirstOrDefault()
-        ?? Guid.NewGuid().ToString("N");
-    ctx.Request.Headers["X-Correlation-Id"] = correlationId;
-    ctx.Response.Headers["X-Correlation-Id"] = correlationId;
-    using (LogContext.PushProperty("CorrelationId", correlationId))
-        await next();
+    var ctx = statusCtx.HttpContext;
+    if (ctx.Response.ContentLength > 0 || ctx.Response.HasStarted) return;
+
+    var (code, message) = ctx.Response.StatusCode switch
+    {
+        404 => ("ROUTE_NOT_FOUND",
+                $"No gateway route matches '{ctx.Request.Method} {ctx.Request.Path}'. " +
+                "Check the URL — the Clustral API lives under '/api/v1/*', kubectl traffic under '/api/proxy/<cluster-id>/*', and audit endpoints under '/audit-api/*'."),
+        502 => ("UPSTREAM_UNREACHABLE",
+                "The gateway could not reach its upstream service (ControlPlane or AuditService). " +
+                "The service may be starting up, unhealthy, or misconfigured — check 'docker compose ps' and the service logs."),
+        503 => ("UPSTREAM_UNAVAILABLE",
+                "The upstream service is temporarily unavailable. Retry in a moment; if the problem persists, check service health."),
+        504 => ("UPSTREAM_TIMEOUT",
+                "The upstream service did not respond within the gateway timeout. The service may be overloaded or stuck — check its health."),
+        _   => ("GATEWAY_ERROR",
+                $"The gateway returned HTTP {ctx.Response.StatusCode} without a body. " +
+                "This is an unexpected error; check the gateway logs and include the X-Correlation-Id in any bug report."),
+    };
+    await GatewayErrorWriter.WriteAsync(ctx, ctx.Response.StatusCode, code, message);
 });
 
 app.UseAuthentication();
