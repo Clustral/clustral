@@ -33,6 +33,7 @@ services:
       Oidc__NameClaimType: "${OIDC_NAME_CLAIM_TYPE}"
       InternalJwt__PrivateKeyPath: "/etc/clustral/jwt/private.pem"
       KubeconfigJwt__PublicKeyPath: "/etc/clustral/kubeconfig-jwt/public.pem"
+      Errors__DocsBaseUrl: "${ERRORS_DOCS_BASE_URL}"
       # Override Development appsettings — use Docker DNS names
       ReverseProxy__Clusters__controlplane__Destinations__default__Address: "http://controlplane:5100"
       ReverseProxy__Clusters__audit-service__Destinations__default__Address: "http://audit-service:5200"
@@ -79,6 +80,7 @@ services:
       Proxy__RateLimiting__BurstSize: "${PROXY_RATE_LIMITING_BURST_SIZE}"
       Proxy__RateLimiting__RequestsPerSecond: "${PROXY_RATE_LIMITING_REQUESTS_PER_SECOND}"
       Proxy__RateLimiting__QueueSize: "${PROXY_RATE_LIMITING_QUEUE_SIZE}"
+      Errors__DocsBaseUrl: "${ERRORS_DOCS_BASE_URL}"
     ports:
       # gRPC mTLS — agents connect directly (not through gateway)
       - "5443:5443"
@@ -137,6 +139,7 @@ services:
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
       InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"
+      Errors__DocsBaseUrl: "${ERRORS_DOCS_BASE_URL}"
     # No ports exposed — gateway routes audit API traffic internally.
     volumes:
       - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro

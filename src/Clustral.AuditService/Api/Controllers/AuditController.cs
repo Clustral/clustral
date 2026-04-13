@@ -1,5 +1,6 @@
 using Clustral.AuditService.Features.Audit.Queries;
 using Clustral.Sdk.Results;
+using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,11 +15,14 @@ namespace Clustral.AuditService.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/audit")]
-public sealed class AuditController(IMediator mediator) : ControllerBase
+public sealed class AuditController(
+    IMediator mediator,
+    IValidator<AuditListQuery> listValidator) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<AuditListResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> List(
         [FromQuery] string? category = null,
         [FromQuery] string? code = null,
@@ -32,8 +36,14 @@ public sealed class AuditController(IMediator mediator) : ControllerBase
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        if (page < 1) return BadRequest("Page must be >= 1.");
-        if (pageSize is < 1 or > 200) return BadRequest("PageSize must be between 1 and 200.");
+        // Validate via FluentValidation so failures surface as RFC 7807
+        // Problem Details, consistent with the rest of the app.
+        var validation = await listValidator.ValidateAsync(new AuditListQuery(page, pageSize), ct);
+        if (!validation.IsValid)
+        {
+            var first = validation.Errors[0];
+            return ResultError.Validation(first.ErrorMessage, first.PropertyName).ToActionResult();
+        }
 
         var result = await mediator.Send(new ListAuditEventsQuery(
             category, code, severity, user, clusterId, resourceId,

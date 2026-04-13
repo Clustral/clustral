@@ -1,10 +1,10 @@
-using Clustral.ControlPlane.Api;
+using Clustral.Sdk.Http;
 using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Xunit.Abstractions;
 
-namespace Clustral.ControlPlane.Tests.Api;
+namespace Clustral.Sdk.Tests.Http;
 
 public class GlobalExceptionHandlerTests(ITestOutputHelper output)
 {
@@ -39,7 +39,7 @@ public class GlobalExceptionHandlerTests(ITestOutputHelper output)
         output.WriteLine($"Status: {status}, Code: {problem.Extensions["code"]}");
 
         Assert.Equal(404, status);
-        Assert.Equal("urn:clustral:error:item_nf", problem.Type);
+        Assert.Equal("https://docs.clustral.kube.it.com/errors/item-nf", problem.Type);
         Assert.Equal("Item not found.", problem.Detail);
         Assert.Equal("ITEM_NF", problem.Extensions["code"]);
         Assert.Equal("itemId", problem.Extensions["field"]);
@@ -138,7 +138,7 @@ public class GlobalExceptionHandlerTests(ITestOutputHelper output)
 
         output.WriteLine($"Type: {problem.Type}");
 
-        Assert.StartsWith("urn:clustral:error:", problem.Type);
+        Assert.StartsWith("https://docs.clustral.kube.it.com/errors/", problem.Type);
     }
 
     [Fact]

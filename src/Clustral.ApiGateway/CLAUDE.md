@@ -105,6 +105,36 @@ boundary. The gateway has no gRPC routes or passthrough configuration.
 
 ---
 
+## Error Responses (path-aware)
+
+The gateway returns two error body shapes depending on request path, via
+`Api/GatewayErrorWriter.cs`:
+
+- `/api/proxy/*` → **plain text** (self-speaking message) + `X-Clustral-Error-Code` header.
+- Everything else → RFC 7807 `application/problem+json`.
+
+Plain text on the proxy path is deliberate: kubectl's aggregated-discovery
+client (v1.30+) can't decode a JSON `v1.Status` body as Status (its runtime
+scheme doesn't register the type) and falls back to the hardcoded message
+`"unknown"`. Plain text triggers client-go's `isTextResponse` branch, which
+uses the body verbatim — so the user sees our actual message. See
+`docs/adr/001-error-response-shapes.md` for the full story.
+
+Wired in four places:
+
+| Integration point | File | What it handles |
+|---|---|---|
+| JwtBearer `OnChallenge` + `OnForbidden` (both schemes) | `Api/GatewayJwtEvents.cs` | Auth failures — classifies the exception and writes `AUTHENTICATION_REQUIRED` or `INVALID_TOKEN` with a specific reason (expired, bad signature, bad issuer, bad audience). |
+| Rate limiter `OnRejected` | `Program.cs` (inline) | 429 responses — body includes `RATE_LIMITED` code. |
+| Terminal status-code handler (`UseStatusCodePages`) | `Program.cs` (inline) | YARP 502 destination-unreachable, 404 no-route, CORS rejections — any response that would have had an empty body. |
+| CORS / default fall-through | Handled by the terminal handler above. |
+
+Every response echoes `X-Correlation-Id`. See `docs/adr/001-error-response-shapes.md`
+for the rationale and the root `README.md` for the canonical error-code
+table.
+
+---
+
 ## Authentication — two strict schemes
 
 The gateway runs **two distinct JwtBearer schemes** behind a policy scheme

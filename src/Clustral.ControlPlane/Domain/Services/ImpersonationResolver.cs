@@ -8,6 +8,10 @@ namespace Clustral.ControlPlane.Domain.Services;
 /// Resolves the impersonation identity for a user on a cluster.
 /// Checks static role assignment first, then falls back to active JIT grant.
 /// Extracted from KubectlProxyMiddleware for testability and DDD alignment.
+///
+/// Failure paths return canonical <see cref="ResultError"/> codes
+/// (<c>USER_NOT_FOUND</c>, <c>NO_ROLE_ASSIGNMENT</c>) so the response body
+/// writer can produce a well-described error for kubectl / API clients.
 /// </summary>
 public sealed class ImpersonationResolver(
     IUserRepository users,
@@ -38,8 +42,16 @@ public sealed class ImpersonationResolver(
             var grant = await specs.GetActiveGrantAsync(userId, clusterId, ct);
             if (grant is null)
             {
-                return ResultError.Forbidden(
-                    "No role assigned for this cluster. Request access with 'clustral access request'.");
+                // Return the clusterId verbatim instead of loading the cluster
+                // aggregate just for its name. Avoids an extra DB round-trip
+                // on every failed-auth request, and — more importantly — keeps
+                // us off a failure path that would cascade through the global
+                // exception handler as a 500 (which kubectl's aggregated-
+                // discovery client renders as "unknown"). The CLI's
+                // `clustral access request --cluster <id>` accepts a UUID, and
+                // `clustral clusters list` maps UUID → name if the user wants
+                // the name.
+                return ResultErrors.NoRoleAssignment(impersonateUser, clusterId);
             }
             roleId = grant.RoleId;
         }

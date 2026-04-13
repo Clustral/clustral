@@ -22,6 +22,12 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Error documentation base URL — every RFC 7807 `type` field and plain-text
+// `Link: rel="help"` header points here. Air-gapped deployments override
+// with `Errors:DocsBaseUrl` in appsettings / env. Null/empty keeps the
+// default (https://docs.clustral.kube.it.com/errors/).
+Clustral.Sdk.Http.ErrorDocumentation.SetBaseUrl(builder.Configuration["Errors:DocsBaseUrl"]);
+
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
     .ReadFrom.Services(services)
@@ -304,8 +310,11 @@ var app = builder.Build();
 // Middleware pipeline
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Global exception handler — must be first to catch all unhandled exceptions.
-app.UseMiddleware<Clustral.ControlPlane.Api.GlobalExceptionHandlerMiddleware>();
+// Correlation ID — first so every downstream log line and error body carries it.
+app.UseMiddleware<Clustral.Sdk.Http.CorrelationIdMiddleware>();
+
+// Global exception handler — catches unhandled exceptions and writes RFC 7807.
+app.UseMiddleware<Clustral.Sdk.Http.GlobalExceptionHandlerMiddleware>();
 
 app.UseSerilogRequestLogging();
 
