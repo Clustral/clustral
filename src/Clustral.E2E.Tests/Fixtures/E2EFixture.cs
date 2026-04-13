@@ -22,6 +22,7 @@ public sealed class E2EFixture : IAsyncLifetime
     public const string MongoAlias = "mongo";
     public const string RabbitMqAlias = "rabbitmq";
     public const string K3sAlias = "k3s";
+    public const string ApiGatewayAlias = "api-gateway";
     public const string ControlPlaneAlias = "controlplane";
     public const string KeycloakRealm = "clustral";
 
@@ -31,6 +32,8 @@ public sealed class E2EFixture : IAsyncLifetime
     private const int ControlPlaneGrpcPort = 5443;
     private const int K3sInternalPort = 6443;
     private const int MongoInternalPort = 27017;
+    private const int ApiGatewayRestPort = 8080;
+    private const int ApiGatewayGrpcPort = 5443;
     private const int RabbitMqInternalPort = 5672;
 
     private INetwork _network = null!;
@@ -38,20 +41,26 @@ public sealed class E2EFixture : IAsyncLifetime
     private IContainer _rabbitmq = null!;
     private IContainer _keycloak = null!;
     private K3sContainer _k3s = null!;
+    private IContainer _apiGateway = null!;
     private IContainer _controlPlane = null!;
     private IFutureDockerImage _controlPlaneImage = null!;
+    private IFutureDockerImage _apiGatewayImage = null!;
     private IFutureDockerImage _agentImage = null!;
 
     private string _tempCaDir = null!;
     private string _caCertPath = null!;
     private string _caKeyPath = null!;
+    private string _internalJwtPrivateKeyPath = null!;
+    private string _internalJwtPublicKeyPath = null!;
+    private string _kubeconfigJwtPrivateKeyPath = null!;
+    private string _kubeconfigJwtPublicKeyPath = null!;
     private string _k3sSaTokenPath = null!;
     private string _k3sCaCertFilePath = null!;
 
     public string K3sKubeconfig { get; private set; } = string.Empty;
 
     public Uri ControlPlaneRestUrl =>
-        new($"http://{_controlPlane.Hostname}:{_controlPlane.GetMappedPublicPort(ControlPlaneRestPort)}");
+        new($"http://{_apiGateway.Hostname}:{_apiGateway.GetMappedPublicPort(ApiGatewayRestPort)}");
 
     public Uri KeycloakBaseUrl =>
         new($"http://{_keycloak.Hostname}:{_keycloak.GetMappedPublicPort(KeycloakInternalPort)}/");
@@ -78,7 +87,20 @@ public sealed class E2EFixture : IAsyncLifetime
         _caKeyPath = Path.Combine(_tempCaDir, "ca.key");
         GenerateTestCA(_caCertPath, _caKeyPath);
 
+        // Generate ES256 key pairs for internal-jwt (gateway→downstream) and
+        // kubeconfig-jwt (ControlPlane-signed kubeconfig credentials).
+        // Both key pairs are mounted into the matching containers so the
+        // gateway can sign + validate kubeconfig JWTs, and the ControlPlane
+        // can validate internal JWTs + sign kubeconfig JWTs.
+        _internalJwtPrivateKeyPath = Path.Combine(_tempCaDir, "internal-jwt-private.pem");
+        _internalJwtPublicKeyPath = Path.Combine(_tempCaDir, "internal-jwt-public.pem");
+        _kubeconfigJwtPrivateKeyPath = Path.Combine(_tempCaDir, "kubeconfig-jwt-private.pem");
+        _kubeconfigJwtPublicKeyPath = Path.Combine(_tempCaDir, "kubeconfig-jwt-public.pem");
+        GenerateEs256KeyPair(_internalJwtPrivateKeyPath, _internalJwtPublicKeyPath);
+        GenerateEs256KeyPair(_kubeconfigJwtPrivateKeyPath, _kubeconfigJwtPublicKeyPath);
+
         // Build images and start infrastructure in parallel.
+        _apiGatewayImage = BuildApiGatewayImage();
         _controlPlaneImage = BuildControlPlaneImage();
         _agentImage = BuildAgentImage();
 
@@ -88,6 +110,7 @@ public sealed class E2EFixture : IAsyncLifetime
         _k3s = BuildK3sContainer();
 
         await Task.WhenAll(
+            _apiGatewayImage.CreateAsync(),
             _controlPlaneImage.CreateAsync(),
             _agentImage.CreateAsync(),
             _mongo.StartAsync(),
@@ -107,8 +130,12 @@ public sealed class E2EFixture : IAsyncLifetime
         _controlPlane = BuildControlPlaneContainer();
         await _controlPlane.StartAsync();
 
-        // Wait for ControlPlane to be reachable.
-        await WaitForControlPlaneReadyAsync(TimeSpan.FromMinutes(1));
+        // Start API Gateway (depends on ControlPlane).
+        _apiGateway = BuildApiGatewayContainer();
+        await _apiGateway.StartAsync();
+
+        // Wait for gateway to be reachable (which means ControlPlane is also ready).
+        await WaitForGatewayReadyAsync(TimeSpan.FromMinutes(1));
     }
 
     public async Task DisposeAsync()
@@ -119,6 +146,7 @@ public sealed class E2EFixture : IAsyncLifetime
             try { await d.DisposeAsync(); } catch { /* best-effort */ }
         }
 
+        await SafeDispose(_apiGateway);
         await SafeDispose(_controlPlane);
         await SafeDispose(_k3s);
         await SafeDispose(_keycloak);
@@ -198,6 +226,45 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("RABBITMQ_DEFAULT_USER", "clustral")
             .WithEnvironment("RABBITMQ_DEFAULT_PASS", "clustral")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(RabbitMqInternalPort))
+            .WithCleanUp(true)
+            .Build();
+
+    private IFutureDockerImage BuildApiGatewayImage() =>
+        new ImageFromDockerfileBuilder()
+            .WithDockerfileDirectory(GetRepoRootPath(), string.Empty)
+            .WithDockerfile("src/Clustral.ApiGateway/Dockerfile")
+            .WithName($"clustral-api-gateway-e2e:{Guid.NewGuid():N}")
+            .WithBuildArgument("VERSION", "0.0.0-e2e")
+            .WithCleanUp(true)
+            .WithDeleteIfExists(true)
+            .Build();
+
+    private IContainer BuildApiGatewayContainer() =>
+        new ContainerBuilder()
+            .WithImage(_apiGatewayImage)
+            .WithNetwork(_network)
+            .WithNetworkAliases(ApiGatewayAlias)
+            .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+            .WithEnvironment("Oidc__Authority", $"http://{KeycloakAlias}:{KeycloakInternalPort}/realms/{KeycloakRealm}")
+            .WithEnvironment("Oidc__Audience", "clustral-control-plane")
+            .WithEnvironment("Oidc__RequireHttpsMetadata", "false")
+            .WithEnvironment("InternalJwt__PrivateKeyPath", "/etc/clustral/jwt/private.pem")
+            .WithEnvironment("KubeconfigJwt__PublicKeyPath", "/etc/clustral/kubeconfig-jwt/public.pem")
+            .WithEnvironment("ReverseProxy__Clusters__controlplane__Destinations__default__Address",
+                $"http://{ControlPlaneAlias}:{ControlPlaneRestPort}")
+            .WithResourceMapping(
+                new FileInfo(_internalJwtPrivateKeyPath),
+                new FileInfo("/etc/clustral/jwt/private.pem"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping(
+                new FileInfo(_kubeconfigJwtPublicKeyPath),
+                new FileInfo("/etc/clustral/kubeconfig-jwt/public.pem"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithPortBinding(ApiGatewayRestPort, assignRandomHostPort: true)
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .UntilHttpRequestIsSucceeded(req => req
+                    .ForPath("/gateway/healthz")
+                    .ForPort(ApiGatewayRestPort)))
             .WithCleanUp(true)
             .Build();
 
@@ -291,12 +358,6 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
             .WithEnvironment("MongoDB__ConnectionString", $"mongodb://{MongoAlias}:{MongoInternalPort}")
             .WithEnvironment("MongoDB__DatabaseName", $"clustral-e2e-{Guid.NewGuid():N}")
-            .WithEnvironment("Oidc__Authority", $"http://{KeycloakAlias}:{KeycloakInternalPort}/realms/{KeycloakRealm}")
-            .WithEnvironment("Oidc__MetadataAddress",
-                $"http://{KeycloakAlias}:{KeycloakInternalPort}/realms/{KeycloakRealm}/.well-known/openid-configuration")
-            .WithEnvironment("Oidc__ClientId", "clustral-control-plane")
-            .WithEnvironment("Oidc__Audience", "clustral-control-plane")
-            .WithEnvironment("Oidc__RequireHttpsMetadata", "false")
             .WithEnvironment("RabbitMQ__Host", RabbitMqAlias)
             .WithEnvironment("RabbitMQ__Port", RabbitMqInternalPort.ToString())
             .WithEnvironment("RabbitMQ__User", "clustral")
@@ -305,6 +366,8 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithEnvironment("CertificateAuthority__CaKeyPath", "/etc/clustral/ca.key")
             .WithEnvironment("CertificateAuthority__ClientCertValidityDays", "1")
             .WithEnvironment("CertificateAuthority__JwtValidityDays", "1")
+            .WithEnvironment("InternalJwt__PublicKeyPath", "/etc/clustral/jwt/public.pem")
+            .WithEnvironment("KubeconfigJwt__PrivateKeyPath", "/etc/clustral/kubeconfig-jwt/private.pem")
             .WithResourceMapping(
                 new FileInfo(_caCertPath),
                 new FileInfo("/etc/clustral/ca.crt"),
@@ -312,6 +375,14 @@ public sealed class E2EFixture : IAsyncLifetime
             .WithResourceMapping(
                 new FileInfo(_caKeyPath),
                 new FileInfo("/etc/clustral/ca.key"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping(
+                new FileInfo(_internalJwtPublicKeyPath),
+                new FileInfo("/etc/clustral/jwt/public.pem"),
+                UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping(
+                new FileInfo(_kubeconfigJwtPrivateKeyPath),
+                new FileInfo("/etc/clustral/kubeconfig-jwt/private.pem"),
                 UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
             .WithPortBinding(ControlPlaneRestPort, assignRandomHostPort: true)
             .WithPortBinding(ControlPlaneGrpcPort, assignRandomHostPort: true)
@@ -323,6 +394,23 @@ public sealed class E2EFixture : IAsyncLifetime
             .Build();
 
     // ─── Helpers ──────────────────────────────────────────────────────────
+
+    private async Task WaitForGatewayReadyAsync(TimeSpan timeout)
+    {
+        using var http = new HttpClient { BaseAddress = ControlPlaneRestUrl };
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                var response = await http.GetAsync("healthz");
+                if (response.IsSuccessStatusCode) return;
+            }
+            catch { }
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
+        throw new TimeoutException($"API Gateway did not become ready within {timeout}");
+    }
 
     private async Task WaitForControlPlaneReadyAsync(TimeSpan timeout)
     {
@@ -419,6 +507,13 @@ subjects:
         var endOfLine = rest.IndexOfAny(['\r', '\n']);
         var b64 = (endOfLine >= 0 ? rest[..endOfLine] : rest).Trim();
         return b64;
+    }
+
+    private static void GenerateEs256KeyPair(string privateKeyPath, string publicKeyPath)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        File.WriteAllText(privateKeyPath, key.ExportECPrivateKeyPem());
+        File.WriteAllText(publicKeyPath, key.ExportSubjectPublicKeyInfoPem());
     }
 
     private static void GenerateTestCA(string certPath, string keyPath)

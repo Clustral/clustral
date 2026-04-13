@@ -9,7 +9,8 @@ Clustral is an open-source Kubernetes access proxy (Teleport alternative) built 
 ```
 clustral/
 ├── src/
-│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB, OIDC
+│   ├── Clustral.ApiGateway/      # YARP API Gateway — auth, rate limiting, routing
+│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB
 │   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
 │   ├── clustral-agent/          # Go 1.23 service — gRPC client, kubectl reverse proxy, Helm-deployed
 │   ├── Clustral.Cli/            # System.CommandLine, NativeAOT — clustral login / clustral kube login
@@ -17,15 +18,17 @@ clustral/
 ├── packages/
 │   ├── Clustral.Sdk/            # Shared: TokenCache, KubeconfigWriter, GrpcChannelFactory, CQS
 │   ├── Clustral.Contracts/      # Shared integration event records (MassTransit)
-│   └── proto/                   # .proto contracts: ClusterService, TunnelService, AuthService
+│   └── proto/                   # .proto contracts: ClusterService, TunnelService
 ├── infra/
 │   ├── helm/                    # Agent Helm chart
 │   ├── nginx/                   # nginx gateway config (TLS termination, routing)
+│   ├── internal-jwt/            # ES256 key pair for internal JWTs (gateway → downstream)
+│   ├── kubeconfig-jwt/          # ES256 key pair for kubeconfig JWTs (ControlPlane → gateway)
 │   └── k8s/                     # Local kind cluster manifests for dev
 ├── .env                         # App stack environment variables (committed defaults)
 ├── infra/.env                   # Infrastructure environment variables (committed defaults)
 ├── Directory.Packages.props     # Central package version management
-├── docker-compose.yml           # Application stack (ControlPlane + Web + AuditService)
+├── docker-compose.yml           # Application stack (API Gateway + ControlPlane + Web + AuditService)
 └── CLAUDE.md
 ```
 
@@ -43,24 +46,34 @@ clustral/
       │  kubeconfig written via KubeconfigWriter
       ▼
   nginx  (unified gateway — HTTPS only)
-      │  :443 HTTPS  — REST API + kubectl proxy → ControlPlane :5100
-      │                Web UI pages → Web UI :3000
-      │  (gRPC NOT proxied — agents connect directly to Kestrel :5443)
+      │  :443 HTTPS  — /api/*, /healthz, /audit-api/* → API Gateway :8080
+      │                /api/auth/*, /api/audit/* → Web UI :3000
+      │                /* → Web UI :3000
+      │  (gRPC NOT proxied — agents connect directly to ControlPlane :5443)
+      ▼
+  API Gateway  (YARP, .NET)
+      │  :8080 HTTP   — REST routing (behind nginx)
+      │  OIDC JWT validation + kubeconfig JWT validation (ES256)
+      │  Issues internal JWT (ES256, 30s TTL) via X-Internal-Token header
+      │  Rate limiting, CORS, correlation IDs
+      │  Health: /gateway/healthz (liveness), /gateway/healthz/ready (readiness + OIDC)
       ▼
   ControlPlane  (ASP.NET Core)
-      │  REST :5100   — CLI + Web UI management calls (via nginx)
-      │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no nginx)
+      │  REST :5100   — CLI + Web UI calls (via gateway)
+      │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no gateway)
       │  MongoDB (clusters, users, credentials)
-      │  OIDC — token introspection / JWKS validation
+      │  Validates internal JWT (ES256 public key) from X-Internal-Token
+      │  Signs kubeconfig JWTs (ES256 private key) via KubeconfigJwtService
       │  Publishes integration events → RabbitMQ
       ▼
   RabbitMQ → AuditService  (ASP.NET Core :5200)
       │  Consumes integration events via MassTransit
       │  Persists audit logs to MongoDB (clustral-audit)
       │  REST API: GET /api/v1/audit (queryable by category, code, user, cluster)
+      │  Protected with internal JWT auth (X-Internal-Token)
       ▼
   Agent  (Go service, runs in-cluster via Helm)
-      │  gRPC client → Kestrel :5443 directly (mTLS + JWT)
+      │  gRPC client → ControlPlane :5443 directly (mTLS + JWT, no gateway)
       │  Receives proxied kubectl HTTP traffic over the tunnel
       │  Forwards locally to the Kubernetes API server
       ▼
@@ -69,7 +82,7 @@ clustral/
 
 Key flows:
 - **clustral login** — discovers ControlPlane URL and OIDC settings via Web UI's `/.well-known/clustral-configuration` (through nginx), then runs OIDC PKCE flow, writes token to `~/.clustral/token`. All subsequent CLI calls go through nginx to the ControlPlane.
-- **clustral kube login** — exchanges the stored token for a short-lived kubeconfig entry that routes through the ControlPlane tunnel.
+- **clustral kube login** — exchanges the OIDC token for a kubeconfig JWT (ES256, 8h TTL) that routes through the API Gateway → ControlPlane tunnel. The gateway validates the kubeconfig JWT alongside OIDC JWTs.
 - **Tunnel** — agent opens a persistent gRPC stream directly to Kestrel :5443 (mTLS + JWT, no nginx) to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
 
@@ -195,9 +208,8 @@ dotnet build packages/Clustral.Sdk
 ```
 
 Services:
-- **ClusterService** — CRUD for registered clusters (REST-facing, used by Web + CLI)
+- **ClusterService** — agent bootstrap, heartbeat, credential renewal (gRPC, used by agents)
 - **TunnelService** — bidirectional streaming; agent ↔ ControlPlane kubectl tunnel
-- **AuthService** — token exchange and validation helpers
 
 ---
 
@@ -242,7 +254,7 @@ dotnet test src/Clustral.E2E.Tests
 
 - **Unit tests**: `*.Tests` projects alongside each `src/` project.
 - **Integration tests**: `src/Clustral.ControlPlane.Tests/Integration/` — uses Testcontainers (MongoDB) + `WebApplicationFactory`; requires Docker running. Do not mock the database.
-- **gRPC integration tests**: `GrpcClusterServiceTests`, `GrpcAuthServiceTests`, `GrpcMtlsTests` test all gRPC endpoints using `Grpc.Net.Client` against the test server. Cover register, list, get, update status, deregister, credential issuance/validation/rotation/revocation, mTLS bootstrap, and bootstrap token single-use.
+- **gRPC integration tests**: `GrpcClusterServiceTests`, `GrpcMtlsTests` test all gRPC endpoints using `Grpc.Net.Client` against the test server. Cover register, list, get, update status, deregister, mTLS bootstrap, and bootstrap token single-use.
 - **CLI integration tests**: `CliIntegrationTests` verify CLI wire types deserialize correctly against the real ControlPlane API.
 - **End-to-end tests**: `src/Clustral.E2E.Tests/` — orchestrates Mongo + Keycloak + K3s + ControlPlane (built from Dockerfile) + the real Go agent (built from Dockerfile) on a shared Docker network. Tests the full production path including the gRPC tunnel and multi-value impersonation header forwarding. Tagged `[Trait("Category", "E2E")]` so the regular `dotnet test --filter "Category!=E2E"` skips them. Requires Docker with privileged container support (K3s needs it).
 - **Web tests**: `src/Clustral.Web` uses Vitest (`bun test`) and Playwright for e2e (`bun e2e`).
@@ -252,7 +264,7 @@ dotnet test src/Clustral.E2E.Tests
 ## Versioning
 
 - **Git tags are the sole version source** — no `VERSION` file. All components derive their version from `git describe --tags` at build time. Local dev defaults to `0.0.0-dev`.
-- **ControlPlane** exposes version via `GET /api/v1/config` (unauthenticated) and `/healthz/detail` (authenticated).
+- **ControlPlane** exposes version via `GET /api/v1/version` (unauthenticated) and `/healthz/detail` (authenticated).
 - **Agent** reports both agent version and k8s API version in `AgentHello` handshake — stored on `Cluster.AgentVersion` and `Cluster.KubernetesVersion`, shown in cluster listings. Version is discovered once at startup via `GET /version` on the k8s API server, not sent on every heartbeat.
 - **CLI** `clustral version` shows CLI + ControlPlane versions with graceful degradation.
 - **Version mismatch** — ControlPlane logs a WARNING when agent version differs. Visible in cluster list tables.
@@ -277,10 +289,10 @@ dotnet test src/Clustral.E2E.Tests
 - **EF Core migrations are append-only.** Never edit existing migration files. Add a new migration for any schema change.
 - **NativeAOT constraints apply to the CLI.** Avoid reflection, `dynamic`, and runtime code generation in `Clustral.Cli` and anything in `Clustral.Sdk` that the CLI uses. Prefer source generators.
 - **gRPC stubs are generated.** Files under `*/Generated/` must not be edited manually.
-- **OIDC provider config** — the ControlPlane reads OIDC settings from the `Oidc` section in appsettings.json (falls back to `Keycloak` for backward compatibility). If using Keycloak, the realm export in `infra/keycloak/` must be updated when adding new OAuth scopes or clients.
+- **OIDC provider config** — OIDC authentication is handled centrally by the API Gateway. The ControlPlane no longer has OIDC configuration — it validates internal JWTs (ES256) from the gateway. If using Keycloak, the realm export in `infra/keycloak/` must be updated when adding new OAuth scopes or clients.
 - **Web state management**: local/ephemeral UI state → React `useState`; server state → TanStack Query; cross-component shared state → Zustand. Do not reach for Zustand for data that TanStack Query already owns.
 - **Helm chart changes** in `infra/helm/` must keep `values.yaml` as the source of truth; do not hardcode values in templates.
-- **Security-sensitive paths** (token handling in `TokenCache`, tunnel auth in `TunnelService`) require extra care. Flag any change that touches these for explicit review rather than silently implementing.
+- **Security-sensitive paths** (token handling in `TokenCache`, tunnel auth in `TunnelService`, internal JWT signing in `InternalJwtService`, kubeconfig JWT signing in `KubeconfigJwtService`) require extra care. Flag any change that touches these for explicit review rather than silently implementing.
 - **Keep PRs focused.** Proto change, migration, and implementation should be reviewable together but should be called out as distinct layers in the PR description.
 - **Domain-Driven Design** — the ControlPlane uses DDD with aggregate roots, domain services, specifications, repositories, and domain events. `AccessRequest` is an aggregate root with state transition methods. Domain services include `UserSyncService`, `ProxyAuthService`, and `ImpersonationResolver`. Handlers are thin orchestrators — business logic lives in the domain.
 - **Kubectl proxy** uses domain services (`ProxyAuthService`, `ImpersonationResolver`) for auth and role resolution. Configurable tunnel timeout and per-credential token bucket rate limiting via `Proxy` section in appsettings.

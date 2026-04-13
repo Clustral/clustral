@@ -153,9 +153,11 @@ All API calls go through Next.js API routes at request time (not build-time rewr
 | `/api/auth/*` | NextAuth handler | OIDC auth |
 | `/.well-known/clustral-configuration` | Served directly from env vars | CLI service discovery |
 
-The `/.well-known` endpoint returns `controlPlaneUrl`, `oidcAuthority`, `oidcClientId`, and
-`oidcScopes` so the CLI can discover where to connect. After discovery, the CLI talks directly
-to the ControlPlane — it does not use the `/api/v1/*` proxy route.
+The `/.well-known` endpoint returns `controlPlaneUrl`, `oidcAuthority`, `oidcClientId`,
+`oidcScopes`, and `version` (fetched from ControlPlane's `/api/v1/version`) so the CLI can
+discover where to connect. This is the sole OIDC discovery endpoint for the CLI. After
+discovery, the CLI talks directly to nginx (which routes to the API Gateway) — it does
+not use the `/api/v1/*` proxy route.
 
 ---
 
@@ -219,5 +221,4 @@ bun run build
 | 4 | Access request notification badges in NavHeader | `components/NavHeader.tsx` |
 | 5 | Vitest + React Testing Library setup | `vitest.config.ts` |
 | 6 | Playwright e2e | `playwright.config.ts` + `e2e/` |
-| 7 | Audit log viewer page | new `app/audit/page.tsx` |
-| 8 | Cluster health metrics dashboard | new `app/clusters/[id]/metrics/page.tsx` |
+| 7 | Cluster health metrics dashboard | new `app/clusters/[id]/metrics/page.tsx` |

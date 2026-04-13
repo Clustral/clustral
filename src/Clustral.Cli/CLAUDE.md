@@ -1,7 +1,7 @@
 # Clustral.Cli — Claude Code Guide
 
 NativeAOT console application that gives developers a `clustral` binary for
-authenticating with Keycloak and writing kubeconfig credentials.
+authenticating with any OIDC provider and writing kubeconfig credentials.
 
 ---
 

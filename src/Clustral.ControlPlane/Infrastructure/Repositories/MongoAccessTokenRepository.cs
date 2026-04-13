@@ -9,6 +9,9 @@ public sealed class MongoAccessTokenRepository(ClustralDb db) : IAccessTokenRepo
     public async Task InsertAsync(AccessToken token, CancellationToken ct) =>
         await db.AccessTokens.InsertOneAsync(token, cancellationToken: ct);
 
+    public async Task<AccessToken?> GetByIdAsync(Guid id, CancellationToken ct) =>
+        await db.AccessTokens.Find(t => t.Id == id).FirstOrDefaultAsync(ct);
+
     public async Task<AccessToken?> GetByHashAsync(string tokenHash, CancellationToken ct) =>
         await db.AccessTokens.Find(t => t.TokenHash == tokenHash).FirstOrDefaultAsync(ct);
 

@@ -1,5 +1,7 @@
 using Clustral.AuditService.Infrastructure;
+using Clustral.Sdk.Auth;
 using Clustral.Sdk.Messaging;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
@@ -40,6 +42,33 @@ builder.Services.AddMassTransitWithRabbitMq(builder.Configuration,
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
 
+// ── Authentication — Internal JWT (ES256, issued by API Gateway) ─────
+var internalJwtPublicKeyPath = builder.Configuration["InternalJwt:PublicKeyPath"];
+if (!string.IsNullOrEmpty(internalJwtPublicKeyPath) && File.Exists(internalJwtPublicKeyPath))
+{
+    var publicKeyPem = File.ReadAllText(internalJwtPublicKeyPath);
+    var internalJwt = InternalJwtService.ForValidation(publicKeyPem);
+
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(opts =>
+        {
+            opts.TokenValidationParameters = internalJwt.GetValidationParameters();
+            opts.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var internalToken = context.HttpContext.Request.Headers["X-Internal-Token"]
+                        .FirstOrDefault();
+                    if (!string.IsNullOrEmpty(internalToken))
+                        context.Token = internalToken;
+                    return Task.CompletedTask;
+                },
+            };
+        });
+}
+builder.Services.AddAuthorization();
+
 // ── ASP.NET Core ─────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -62,6 +91,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();

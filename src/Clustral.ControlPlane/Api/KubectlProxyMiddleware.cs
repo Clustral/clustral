@@ -1,4 +1,3 @@
-using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Features.Proxy.Commands;
 using Clustral.Sdk.Results;
 using MediatR;
@@ -47,23 +46,6 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
         if (httpContext.Request.QueryString.HasValue)
             k8sPath += httpContext.Request.QueryString.Value;
 
-        // ── Extract bearer token ───────────────────────────────────────────
-        var bearerToken = ExtractBearerToken(httpContext.Request);
-        if (bearerToken is null)
-        {
-            _ = Task.Run(async () =>
-            {
-                try { await mediator.Publish(new ProxyAccessDenied(
-                    clusterId, null, httpContext.Request.Method, k8sPath,
-                    "Authorization: Bearer token required")); }
-                catch { /* best-effort */ }
-            });
-            httpContext.Response.StatusCode = 401;
-            await httpContext.Response.WriteAsync(
-                "Authorization: Bearer token required.", cancellationToken: ct);
-            return;
-        }
-
         // ── Collect forwarded headers ──────────────────────────────────────
         var headers = new List<ProxyHeader>();
         foreach (var (name, values) in httpContext.Request.Headers)
@@ -85,10 +67,13 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
             body = ms.ToArray();
         }
 
+        // ── Extract internal token (if request came through gateway) ──────
+        var internalToken = httpContext.Request.Headers["X-Internal-Token"].FirstOrDefault();
+
         // ── Send CQS command ──────────────────────────────────────────────
         var result = await mediator.Send(new ProxyKubectlRequestCommand(
-            clusterId, bearerToken, httpContext.Request.Method,
-            k8sPath, headers, body), ct);
+            clusterId, httpContext.Request.Method,
+            k8sPath, headers, body, internalToken), ct);
 
         // ── Write result to HTTP response ──────────────────────────────────
         if (result.IsFailure)
@@ -125,14 +110,6 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
             _                            => 500,
         },
     };
-
-    private static string? ExtractBearerToken(HttpRequest request)
-    {
-        var auth = request.Headers.Authorization.FirstOrDefault();
-        if (auth is null || !auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return null;
-        return auth["Bearer ".Length..].Trim();
-    }
 
     private static readonly HashSet<string> HopByHopHeaders =
         new(StringComparer.OrdinalIgnoreCase)

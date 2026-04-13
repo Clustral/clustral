@@ -25,6 +25,7 @@ graph TB
     subgraph "Clustral Platform"
         NGX[nginx gateway<br/>:443 HTTPS]
         WEB[Web UI<br/>Next.js 14]
+        GW[API Gateway<br/>YARP :8080]
         CP[ControlPlane<br/>ASP.NET Core]
         RMQ[RabbitMQ]
         AUDIT[AuditService<br/>ASP.NET Core]
@@ -41,22 +42,26 @@ graph TB
     CLI -.->|".well-known discovery"| NGX
     CLI -->|REST + kubectl proxy| NGX
     KB -->|kubectl proxy| NGX
-    NGX -->|"/api/*, /healthz"| CP
+    NGX -->|"/api/*, /healthz"| GW
     NGX -->|"/*"| WEB
+    GW -->|"validate OIDC JWT<br/>issue internal JWT"| GW
+    GW -->|REST| CP
+    GW -->|audit API| AUDIT
     CLI -->|OIDC PKCE| OIDC
     WEB -->|Server-side OIDC| OIDC
-    WEB -->|"REST (SSR)"| CP
+    WEB -->|"REST (SSR)"| GW
     CP --> DB
     CP -->|integration events| RMQ
     RMQ --> AUDIT
     AUDIT --> DB
-    AGENT ==>|"gRPC mTLS :5443<br/>(direct to Kestrel)"| CP
+    AGENT ==>|"gRPC mTLS :5443<br/>(direct to ControlPlane)"| CP
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
 | Component        | Stack                                       | Description                                     |
 |------------------|---------------------------------------------|-------------------------------------------------|
-| **nginx**        | nginx 1.27                                  | Unified gateway — TLS termination, routing      |
+| **nginx**        | nginx 1.27                                  | TLS termination, routes API → Gateway, UI → Web |
+| **API Gateway**  | YARP, .NET 10                               | Auth, rate limiting, CORS, routes to services   |
 | **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | Dashboard, server-side OIDC via NextAuth        |
 | **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
 | **AuditService** | ASP.NET Core, MongoDB                       | Consumes audit events, queryable REST API       |
@@ -75,6 +80,7 @@ sequenceDiagram
     participant User
     participant CLI as clustral CLI
     participant NGX as nginx :443
+    participant GW as API Gateway
     participant WEB as Web UI
     participant CP as ControlPlane
     participant OIDC as OIDC Provider
@@ -92,7 +98,9 @@ sequenceDiagram
     OIDC-->>CLI: JWT access token
     CLI->>CLI: Store JWT in ~/.clustral/token
     CLI->>NGX: GET /api/v1/users/me
-    NGX->>CP: proxy /api/v1/*
+    NGX->>GW: proxy /api/v1/*
+    GW->>GW: Validate OIDC JWT + issue internal JWT
+    GW->>CP: Forward + X-Internal-Token
     CP-->>CLI: User profile
     Note over CP: CUA001I user.synced
     CLI-->>User: "Logged in successfully"
@@ -104,15 +112,19 @@ sequenceDiagram
 sequenceDiagram
     participant kubectl
     participant NGX as nginx :443
+    participant GW as API Gateway
     participant CP as ControlPlane
     participant Agent as Agent (Go)
     participant K8S as k8s API
 
-    Note over Agent,CP: Persistent gRPC tunnel direct to Kestrel :5443 (mTLS)
+    Note over Agent,CP: Persistent gRPC tunnel direct to CP :5443 (mTLS)
 
-    kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {credential}
-    NGX->>CP: proxy /api/proxy/*
-    CP->>CP: Validate credential<br/>Look up user + role assignment
+    kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {kubeconfig JWT}
+    NGX->>GW: proxy /api/proxy/*
+    GW->>GW: Validate kubeconfig JWT (ES256) + rate limit
+    GW->>GW: Issue internal JWT
+    GW->>CP: Forward + X-Internal-Token
+    CP->>CP: Check revocation (jti → MongoDB)<br/>Resolve impersonation
     CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
     Agent->>Agent: Translate to k8s Impersonate-* headers
     Agent->>K8S: GET /api/v1/pods<br/>Impersonate-User: admin@clustral.local<br/>Impersonate-Group: system:masters<br/>Authorization: Bearer {SA token}
@@ -131,7 +143,7 @@ sequenceDiagram
     participant CP as ControlPlane :5443
     participant DB as MongoDB
 
-    Note over Agent,CP: Agent connects directly to Kestrel :5443 (mTLS)
+    Note over Agent,CP: Agent connects directly to ControlPlane :5443 (gRPC mTLS, no gateway)
 
     Agent->>CP: ClusterService.RegisterAgent (bootstrap token)
     CP->>CP: Verify token, issue cert + JWT
@@ -238,8 +250,9 @@ sequenceDiagram
 | Layer | Mechanism |
 |---|---|
 | External → nginx | TLS termination on :443 (HTTPS) — REST API, kubectl proxy, Web UI |
-| User → ControlPlane | OIDC JWT (from any provider), routed through nginx :443 |
-| kubectl → ControlPlane | Short-lived bearer token (SHA-256 hashed, never stored raw), via nginx :443 |
+| User → API Gateway | OIDC JWT validated at gateway, internal JWT (ES256) issued |
+| API Gateway → ControlPlane | Internal JWT (ES256, 30s TTL), forwarded via X-Internal-Token |
+| kubectl → API Gateway | Kubeconfig JWT (ES256, 8h TTL, ControlPlane-signed), validated at gateway |
 | Agent → ControlPlane | mTLS client certificate (RSA 2048, 395d) + RS256 JWT (30d), direct to Kestrel :5443 |
 | Agent credential revocation | tokenVersion increment invalidates all agent JWTs instantly |
 | Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
@@ -264,6 +277,7 @@ flowchart TB
         NGX["nginx gateway\n:443 HTTPS"]
 
         subgraph app ["Application Zone"]
+            GW["API Gateway (YARP)\n:8080"]
             WEB["Web UI\n:3000"]
             CP["ControlPlane\nREST :5100 | gRPC mTLS :5443"]
             RMQ["RabbitMQ\n:5672"]
@@ -285,9 +299,11 @@ flowchart TB
     BROWSER -- "HTTPS :443" --> NGX
     CLI -- "HTTPS :443" --> NGX
     KUBECTL -- "HTTPS :443" --> NGX
-    NGX -- "/api/*, /healthz" --> CP
+    NGX -- "/api/*, /healthz" --> GW
     NGX -- "/* (pages)" --> WEB
-    WEB -- "REST (SSR)" --> CP
+    GW -- "REST" --> CP
+    GW -- "audit API" --> AUDIT
+    WEB -- "REST (SSR)" --> GW
     CP --> DB
     CP -- "integration events" --> RMQ
     RMQ -- "consume" --> AUDIT
@@ -295,10 +311,10 @@ flowchart TB
 
     CLI -. "OIDC PKCE" .-> OIDC
     WEB -. "Server OIDC" .-> OIDC
-    CP -. "JWKS" .-> OIDC
+    GW -. "OIDC JWKS" .-> OIDC
 
-    AGENT_A == "gRPC mTLS :5443\n(outbound, direct)" ==> CP
-    AGENT_B == "gRPC mTLS :5443\n(outbound, direct)" ==> CP
+    AGENT_A == "gRPC mTLS :5443\n(direct)" ==> CP
+    AGENT_B == "gRPC mTLS :5443\n(direct)" ==> CP
     AGENT_A --> K8S_A
     AGENT_B --> K8S_B
 
@@ -314,6 +330,7 @@ flowchart TB
     style BROWSER fill:#fff,stroke:#666,color:#000
     style CLI fill:#fff,stroke:#666,color:#000
     style KUBECTL fill:#fff,stroke:#666,color:#000
+    style GW fill:#b39ddb,stroke:#4527a0,color:#000
     style RMQ fill:#ffab91,stroke:#d84315,color:#000
     style AUDIT fill:#90caf9,stroke:#1565c0,color:#000
 ```
@@ -323,8 +340,9 @@ flowchart TB
 | Component | Port | Protocol | Direction | Description |
 |---|---|---|---|---|
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
-| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Direct** | Agent tunnel — mTLS + JWT, no nginx |
-| **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by nginx) |
+| **API Gateway REST** | 8080 | HTTP/1.1 | Internal | YARP routes API + audit (proxied by nginx) |
+| **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by gateway) |
+| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Inbound** | Agent tunnel — mTLS + JWT (direct, no gateway) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **RabbitMQ** | 5672 | AMQP | Internal | Message broker — audit event pipeline |
 | **AuditService REST** | 5200 | HTTP/1.1 | Internal | Audit event queries (proxied by Web UI) |
@@ -337,9 +355,11 @@ flowchart TB
 
 | Port | Path | Destination | Purpose |
 |---|---|---|---|
-| `:443` | `/api/v1/*` | ControlPlane `:5100` | REST API (CLI, browser) |
-| `:443` | `/api/proxy/*` | ControlPlane `:5100` | kubectl tunnel proxy |
-| `:443` | `/healthz*` | ControlPlane `:5100` | Health checks |
+| `:443` | `/api/auth/*` | Web UI `:3000` | NextAuth authentication |
+| `:443` | `/api/audit/*` | Web UI `:3000` | Next.js audit proxy |
+| `:443` | `/api/*` | API Gateway `:8080` | REST API + kubectl proxy |
+| `:443` | `/healthz*` | API Gateway `:8080` | Health checks |
+| `:443` | `/audit-api/*` | API Gateway `:8080` | Audit event queries |
 | `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
 
 > gRPC traffic (`:5443`) is **not** routed through nginx. Agents connect directly to Kestrel to avoid tunnel drops caused by nginx restarts.
@@ -351,36 +371,48 @@ flowchart TB
 - **ControlPlane REST and Web UI are internal only** — not exposed publicly; nginx handles all HTTPS traffic on :443
 - **MongoDB** must never be exposed outside the application zone
 - **TLS**: nginx terminates TLS on :443 for REST/Web UI; Kestrel handles mTLS on :5443 for agent gRPC
-- **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the ControlPlane (JWKS key fetch)
+- **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the API Gateway (JWKS key fetch)
 - **kubectl traffic** flows: kubectl → nginx `:443` → ControlPlane → gRPC tunnel → Agent → k8s API
 
 ### Proxy Configuration
 
-The kubectl proxy is configurable via the `Proxy` section in `appsettings.json`:
-
-```json
-{
-  "Proxy": {
-    "TunnelTimeout": "00:02:00",
-    "RateLimiting": {
-      "Enabled": true,
-      "BurstSize": 200,
-      "RequestsPerSecond": 100,
-      "QueueSize": 50
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-|---|---|---|
-| `TunnelTimeout` | 2 min | Max wait for agent response (504 on timeout) |
-| `RateLimiting:Enabled` | `true` | Toggle per-credential rate limiting |
-| `RateLimiting:BurstSize` | `200` | Token bucket capacity (matches k8s client-go) |
-| `RateLimiting:RequestsPerSecond` | `100` | Sustained QPS per credential |
-| `RateLimiting:QueueSize` | `50` | Queued requests before 429 |
+The kubectl proxy (tunnel timeout + per-credential rate limiting) is tuned via the `PROXY_*` variables in `.env` — see [Configuration Options](#configuration-options) for the full table. Defaults match k8s client-go (100 QPS sustained, 200 burst).
 
 Rate limiting protects the ControlPlane and tunnel from abuse. Request body size and API timeouts are left to the k8s API server.
+
+### API Gateway
+
+All API traffic flows through the YARP-based API Gateway, which provides centralized authentication, rate limiting, and routing. The gateway sits behind nginx (TLS termination) and forwards requests to ControlPlane and AuditService.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant NGX as nginx :443
+    participant GW as API Gateway :8080
+    participant CP as ControlPlane :5100
+
+    Client->>NGX: HTTPS /api/v1/clusters
+    NGX->>GW: HTTP /api/v1/clusters
+    GW->>GW: Validate OIDC JWT (any provider)
+    GW->>GW: Rate limit check (token bucket)
+    GW->>GW: Issue internal JWT (ES256, 30s TTL)
+    GW->>GW: Add X-Correlation-Id
+    GW->>CP: Forward + X-Internal-Token + X-Correlation-Id
+    CP->>CP: Validate internal JWT (ES256 public key)
+    CP-->>GW: 200 OK
+    GW-->>NGX: 200 OK
+    NGX-->>Client: 200 OK
+```
+
+| Capability | Description |
+|---|---|
+| **Authentication** | OIDC JWT validation (any provider), issues ES256 internal JWT for downstream |
+| **Internal JWT** | Asymmetric ES256 — gateway holds private key, downstream validates with public key |
+| **Rate Limiting** | Per-user token bucket (100 burst, 50 tokens/10s replenish, 429 on exceed) |
+| **Correlation IDs** | `X-Correlation-Id` generated or preserved, forwarded to all downstream services |
+| **CORS** | Configurable origins per environment |
+| **Request Size** | 10 MB max request body |
+| **Health Checks** | `/gateway/healthz` (liveness), `/gateway/healthz/ready` (readiness + OIDC) |
 
 ### Credential Lifecycle
 
@@ -393,10 +425,12 @@ Agent credentials (mTLS + JWT):
         JWT expiry < 7 days  → RenewToken RPC → new JWT (hot-swapped, no reconnect)
     → revocation: admin increments tokenVersion → all JWTs invalidated instantly
 
-User credentials (OIDC + kubeconfig):
+User credentials (OIDC + kubeconfig JWT):
   OIDC JWT (short-lived, from Keycloak/Auth0/etc.)
-    → exchanged for kubeconfig credential (8 hours default, configurable)
-    → used by kubectl to authenticate proxy requests via nginx :443
+    → exchanged for kubeconfig JWT (ES256, 8 hours default, configurable)
+    → contains: sub (userId), cluster_id, jti (credentialId), exp
+    → validated by API Gateway (ES256 public key, same flow as OIDC JWTs)
+    → revocation checked by ControlPlane (jti → MongoDB lookup)
     → revoked on logout or access grant expiry
 ```
 
@@ -538,6 +572,101 @@ sequenceDiagram
     Note over Dev: Next kubectl call returns 403
 ```
 
+## Configuration Options
+
+All runtime configuration is exposed via environment variables wired through `.env` → `docker-compose.yml`. Appsettings files ship with sensible defaults but the docker-compose stack overrides them so a single `.env` is the source of truth.
+
+### `.env` (application stack)
+
+#### Host / infrastructure
+
+| Variable | Default | Description |
+|---|---|---|
+| `HOST_IP` | `192.168.88.4` | Your machine's IP / domain. Used in CORS origins, NextAuth URL, and OIDC authority. |
+| `MONGO_CONNECTION_STRING` | `mongodb://mongo:27017` | MongoDB connection string (shared by ControlPlane + AuditService). |
+| `MONGO_DATABASE_NAME` | `clustral` | Main database (clusters, users, credentials). |
+| `MONGO_AUDIT_DATABASE_NAME` | `clustral-audit` | Audit log database. |
+| `RABBITMQ_HOST` | `rabbitmq` | Message bus hostname. |
+| `RABBITMQ_PORT` | `5672` | AMQP port. |
+| `RABBITMQ_USER` / `RABBITMQ_PASS` | `clustral` / `clustral` | RabbitMQ credentials. |
+
+#### OIDC (consumed by API Gateway + Web UI)
+
+| Variable | Default | Description |
+|---|---|---|
+| `OIDC_AUTHORITY` | `http://${HOST_IP}:8080/realms/clustral` | External OIDC issuer URL (browser-facing). |
+| `OIDC_METADATA_ADDRESS` | `http://${HOST_IP}:8080/realms/clustral/.well-known/openid-configuration` | Override for Docker-internal JWKS fetch (container can't always reach the browser issuer URL). |
+| `OIDC_CLIENT_ID` | `clustral-control-plane` | OAuth2 client ID registered in the OIDC provider. |
+| `OIDC_AUDIENCE` | `clustral-control-plane` | Expected `aud` claim. |
+| `OIDC_REQUIRE_HTTPS` | `false` | Set `true` in production. |
+| `OIDC_NAME_CLAIM_TYPE` | `preferred_username` | Claim mapped to `User.Identity.Name`. Keycloak uses `preferred_username`; Auth0/Okta/Azure AD may use `email`, `name`, or `upn`. |
+
+Additional arrays (set in `appsettings.json` when needed — not `.env`):
+
+| Setting | Description |
+|---|---|
+| `Oidc:ValidIssuers` | Extra accepted issuer values. `Oidc:Authority` is always included; use this when the same provider is reached via multiple URLs (LAN IP vs localhost in dev). |
+| `Oidc:ValidAudiences` | Extra accepted audience values. `Oidc:Audience` is always included; use this when multiple OIDC clients issue tokens with different audiences. |
+
+> **Enterprise note:** the gateway runs two strict authentication schemes (OIDC and kubeconfig JWT) dispatched by the token's `kind` claim. Each scheme enforces issuer, audience, lifetime, and signing-key validation — a compromised OIDC key cannot forge a kubeconfig token and vice versa. See `src/Clustral.ApiGateway/CLAUDE.md` for details.
+| `OIDC_WEB_ISSUER` | `http://${HOST_IP}:8080/realms/clustral` | OIDC issuer used by NextAuth (Web UI). |
+| `OIDC_WEB_CLIENT_ID` / `OIDC_WEB_CLIENT_SECRET` | `clustral-web` / `clustral-web-secret` | NextAuth client credentials. |
+
+#### Web UI
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXTAUTH_URL` | `https://${HOST_IP}` | Browser-facing URL for NextAuth callbacks. |
+| `CONTROLPLANE_URL` | `http://api-gateway:8080` | Internal ControlPlane URL (Web UI server-side REST proxy). |
+| `CONTROLPLANE_PUBLIC_URL` | `https://${HOST_IP}` | Public ControlPlane URL returned to CLI via `.well-known`. |
+| `AUTH_SECRET` | *(random)* | NextAuth encryption key — regenerate for production. |
+| `AUDIT_SERVICE_URL` | `http://api-gateway:8080/audit-api` | Internal AuditService URL (Web UI proxy). |
+| `AUDIT_SERVICE_PUBLIC_URL` | `https://${HOST_IP}/audit-api` | Public AuditService URL returned to CLI via `.well-known`. |
+
+#### Certificate Authority (agent mTLS)
+
+| Variable | Default | Description |
+|---|---|---|
+| `CA_CERT_PATH` | `/etc/clustral/ca/ca.crt` | Inside-container path to CA certificate (mounted from `infra/ca/ca.crt`). |
+| `CA_KEY_PATH` | `/etc/clustral/ca/ca.key` | Inside-container path to CA private key. |
+
+#### Kubeconfig credential TTLs (ControlPlane)
+
+| Variable | Default | Description |
+|---|---|---|
+| `CREDENTIAL_DEFAULT_TTL` | `08:00:00` | Lifetime granted when caller doesn't request a specific TTL. |
+| `CREDENTIAL_MAX_TTL` | `08:00:00` | Maximum lifetime a caller can request (cap). |
+
+#### kubectl proxy (ControlPlane)
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROXY_TUNNEL_TIMEOUT` | `00:02:00` | Max wait for agent response over the gRPC tunnel (504 on timeout). |
+| `PROXY_RATE_LIMITING_ENABLED` | `true` | Toggle per-credential token bucket rate limiting. |
+| `PROXY_RATE_LIMITING_BURST_SIZE` | `200` | Token bucket capacity (matches k8s client-go). |
+| `PROXY_RATE_LIMITING_REQUESTS_PER_SECOND` | `100` | Sustained QPS per credential. |
+| `PROXY_RATE_LIMITING_QUEUE_SIZE` | `50` | Queued requests before 429. |
+
+### JWT key paths (mounted as volumes)
+
+These are not `.env` vars — they're bind-mounts defined directly in `docker-compose.yml` to mount ES256 key pairs from `infra/`:
+
+| Service | Config key | Container path | Host source |
+|---|---|---|---|
+| API Gateway | `InternalJwt:PrivateKeyPath` | `/etc/clustral/jwt/private.pem` | `./infra/internal-jwt/private.pem` |
+| API Gateway | `KubeconfigJwt:PublicKeyPath` | `/etc/clustral/kubeconfig-jwt/public.pem` | `./infra/kubeconfig-jwt/public.pem` |
+| ControlPlane | `InternalJwt:PublicKeyPath` | `/etc/clustral/jwt/public.pem` | `./infra/internal-jwt/public.pem` |
+| ControlPlane | `KubeconfigJwt:PrivateKeyPath` | `/etc/clustral/kubeconfig-jwt/private.pem` | `./infra/kubeconfig-jwt/private.pem` |
+| AuditService | `InternalJwt:PublicKeyPath` | `/etc/clustral/jwt/public.pem` | `./infra/internal-jwt/public.pem` |
+
+Generate the key pairs with `openssl` — see [Generate ES256 key pairs](#4-generate-es256-key-pairs) below.
+
+### `infra/.env` (infrastructure stack)
+
+Controls the backing services (Mongo, Keycloak, RabbitMQ, nginx). Committed with working defaults; edit to customize resource limits, Keycloak admin credentials, etc.
+
+---
+
 ## Quick Start (On-Prem)
 
 Deploy the full stack from pre-built images.
@@ -579,29 +708,49 @@ services:
       retries: 30
       start_period: 60s
 
+  api-gateway:
+    image: ghcr.io/clustral/clustral-api-gateway:latest
+    restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Oidc__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
+      Oidc__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
+      Oidc__ClientId: "clustral-control-plane"
+      Oidc__Audience: "clustral-control-plane"
+      Oidc__RequireHttpsMetadata: "false"
+      # Claim used as the user name. "preferred_username" for Keycloak;
+      # "email"/"name"/"upn" for Auth0/Okta/Azure AD.
+      Oidc__NameClaimType: "preferred_username"
+      InternalJwt__PrivateKeyPath: "/etc/clustral/internal-jwt/private.pem"
+      KubeconfigJwt__PublicKeyPath: "/etc/clustral/kubeconfig-jwt/public.pem"
+      Cors__AllowedOrigins__0: "https://<YOUR_HOST_IP>"
+    volumes:
+      - ./internal-jwt:/etc/clustral/internal-jwt:ro
+      - ./kubeconfig-jwt:/etc/clustral/kubeconfig-jwt:ro
+
   controlplane:
     image: ghcr.io/clustral/clustral-controlplane:latest
     restart: unless-stopped
     depends_on:
       mongo:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Clustral: "mongodb://mongo:27017"
       MongoDB__DatabaseName: "clustral"
-      Oidc__Authority: "http://<YOUR_HOST_IP>:8080/realms/clustral"
-      Oidc__MetadataAddress: "http://<YOUR_HOST_IP>:8080/realms/clustral/.well-known/openid-configuration"
-      Oidc__ClientId: "clustral-control-plane"
-      Oidc__Audience: "clustral-control-plane"
-      Oidc__RequireHttpsMetadata: "false"
+      InternalJwt__PublicKeyPath: "/etc/clustral/internal-jwt/public.pem"
+      KubeconfigJwt__PrivateKeyPath: "/etc/clustral/kubeconfig-jwt/private.pem"
       CertificateAuthority__CaCertPath: "/etc/clustral/ca/ca.crt"
       CertificateAuthority__CaKeyPath: "/etc/clustral/ca/ca.key"
     ports:
       - "5443:5443"   # gRPC mTLS — agents connect directly
     volumes:
       - ./ca:/etc/clustral/ca:ro
+      - ./internal-jwt:/etc/clustral/internal-jwt:ro
+      - ./kubeconfig-jwt:/etc/clustral/kubeconfig-jwt:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5100/healthz/ready || exit 1"]
       interval: 10s
@@ -628,6 +777,8 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
+      api-gateway:
+        condition: service_started
       controlplane:
         condition: service_healthy
     ports:
@@ -683,13 +834,27 @@ openssl req -x509 -new -nodes \
 
 > The SAN must include the IP/hostname agents use in `AGENT_CONTROL_PLANE_URL`. Replace `<YOUR_HOST_IP>` with the same IP used for Keycloak.
 
-### 4. Start
+### 4. Generate ES256 key pairs
+
+```bash
+# Internal JWT keys (gateway signs, downstream validates)
+mkdir -p internal-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out internal-jwt/private.pem
+openssl ec -in internal-jwt/private.pem -pubout -out internal-jwt/public.pem
+
+# Kubeconfig JWT keys (ControlPlane signs, gateway validates)
+mkdir -p kubeconfig-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out kubeconfig-jwt/private.pem
+openssl ec -in kubeconfig-jwt/private.pem -pubout -out kubeconfig-jwt/public.pem
+```
+
+### 5. Start
 
 ```bash
 docker compose up -d
 ```
 
-### 5. Default users (Keycloak)
+### 6. Default users (Keycloak)
 
 | Username | Password | Role             |
 |----------|----------|------------------|
@@ -1209,6 +1374,7 @@ graph TB
 ```
 Clustral/clustral (monorepo)
 ├── src/
+│   ├── Clustral.ApiGateway/      # YARP API Gateway — auth, rate limiting, routing
 │   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
 │   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
 │   ├── clustral-agent/          # Go — gRPC tunnel + kubectl proxy (16MB binary)
@@ -1220,7 +1386,9 @@ Clustral/clustral (monorepo)
 │   └── proto/                   # Protobuf contracts (shared between .NET + Go)
 ├── infra/
 │   ├── keycloak/                # Realm export with pre-configured clients
-│   ├── nginx/                   # Optional SSL termination proxy
+│   ├── nginx/                   # SSL termination proxy + routing
+│   ├── internal-jwt/            # ES256 key pair for internal JWTs (gateway → downstream)
+│   ├── kubeconfig-jwt/          # ES256 key pair for kubeconfig JWTs (ControlPlane → gateway)
 │   └── docker-compose.yml       # Infrastructure (MongoDB, Keycloak)
 ├── .github/workflows/
 │   ├── build.yml                # Build + test (.NET, Go, Web)
@@ -1229,7 +1397,7 @@ Clustral/clustral (monorepo)
 ├── install.sh                   # Linux/macOS installer
 ├── install.ps1                  # Windows installer
 ├── .env                         # App stack env vars (committed defaults — edit HOST_IP)
-├── docker-compose.yml           # Application stack (ControlPlane + Web + AuditService)
+├── docker-compose.yml           # Application stack (API Gateway + ControlPlane + Web + AuditService)
 └── CLAUDE.md                    # Claude Code guide
 
 Clustral/homebrew-tap (separate repo)
@@ -1243,6 +1411,7 @@ Clustral/homebrew-tap (separate repo)
 
 | Image | Stack | Size |
 |---|---|---|
+| `ghcr.io/clustral/clustral-api-gateway` | .NET 10, YARP | ~80MB |
 | `ghcr.io/clustral/clustral-controlplane` | .NET 10 | ~80MB |
 | `ghcr.io/clustral/clustral-audit-service` | .NET 10 | ~80MB |
 | `ghcr.io/clustral/clustral-agent` | Go 1.23 | ~16MB |
@@ -1365,10 +1534,9 @@ dotnet test src/Clustral.E2E.Tests
 > feature, with explicit `ICommand<T>` / `IQuery<T>` marker interfaces. Validation
 > only runs for commands. Domain events are dispatched after every mutation.
 >
-> **gRPC integration tests** verify the ClusterService and AuthService endpoints
-> (register, list, get, update status, deregister, credential issuance/validation/
-> rotation/revocation, bootstrap token single-use) using `Grpc.Net.Client` against
-> `WebApplicationFactory`.
+> **gRPC integration tests** verify the ClusterService endpoints
+> (register, list, get, update status, deregister, bootstrap token single-use)
+> using `Grpc.Net.Client` against `WebApplicationFactory`.
 >
 > The CLI uses **FluentValidation** for input validation and accepts shorthand
 > durations (`8H`, `30M`, `1D`) alongside full ISO 8601 (`PT8H`). Resource
@@ -1518,6 +1686,32 @@ sequenceDiagram
 | `AGENT_CERT_RENEW_THRESHOLD` | No | `720h` | Renew cert if expiry within this duration |
 | `AGENT_JWT_RENEW_THRESHOLD` | No | `168h` | Renew JWT if expiry within this duration |
 | `AGENT_RENEWAL_CHECK_INTERVAL` | No | `6h` | How often to check cert/JWT expiry |
+
+## JWT Key Pair Setup
+
+The API Gateway and ControlPlane use two ES256 (ECDSA P-256) key pairs for internal service-to-service authentication and kubeconfig credential signing. Both are committed with development defaults — regenerate for production.
+
+### Internal JWT (gateway → downstream services)
+
+```bash
+mkdir -p infra/internal-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out infra/internal-jwt/private.pem
+openssl ec -in infra/internal-jwt/private.pem -pubout -out infra/internal-jwt/public.pem
+```
+
+- **Private key** → mounted into API Gateway (signs internal JWTs, 30s TTL)
+- **Public key** → mounted into ControlPlane (validates internal JWTs)
+
+### Kubeconfig JWT (kubeconfig credential signing)
+
+```bash
+mkdir -p infra/kubeconfig-jwt
+openssl ecparam -genkey -name prime256v1 -noout -out infra/kubeconfig-jwt/private.pem
+openssl ec -in infra/kubeconfig-jwt/private.pem -pubout -out infra/kubeconfig-jwt/public.pem
+```
+
+- **Private key** → mounted into ControlPlane (signs kubeconfig JWTs, 8h TTL)
+- **Public key** → mounted into API Gateway (validates kubeconfig JWTs from kubectl)
 
 ## Certificate Authority Setup
 

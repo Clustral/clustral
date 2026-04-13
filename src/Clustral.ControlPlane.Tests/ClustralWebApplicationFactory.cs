@@ -54,10 +54,6 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
             {
                 ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
                 ["MongoDB:DatabaseName"] = "clustral-test",
-                ["Oidc:Authority"] = "http://localhost:8080/realms/clustral",
-                ["Oidc:ClientId"] = "clustral-control-plane",
-                ["Oidc:Audience"] = "clustral-control-plane",
-                ["Oidc:RequireHttpsMetadata"] = "false",
                 ["CertificateAuthority:CaCertPath"] = _caCertPath,
                 ["CertificateAuthority:CaKeyPath"] = _caKeyPath,
             });
@@ -80,6 +76,12 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
                 opts.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
                 opts.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             });
+
+            // Register KubeconfigJwtService with a test key pair.
+            using var testKey = System.Security.Cryptography.ECDsa.Create(
+                System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+            services.AddSingleton(Clustral.Sdk.Auth.KubeconfigJwtService.ForSigning(
+                testKey.ExportECPrivateKeyPem()));
 
             // Remove MassTransit's hosted service so bus startup doesn't
             // block waiting for a RabbitMQ connection that doesn't exist.

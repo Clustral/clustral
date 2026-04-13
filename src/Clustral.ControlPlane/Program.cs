@@ -4,6 +4,7 @@ using Clustral.ControlPlane.Features.Proxy;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
+using Clustral.Sdk.Auth;
 using Clustral.Sdk.Messaging;
 using Clustral.ControlPlane.Protos;
 using FluentValidation;
@@ -32,7 +33,7 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 // If any required config is missing, the app aborts immediately with a clear error.
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services.AddOptionsWithValidation<OidcOptions, OidcOptionsValidator>(OidcOptions.SectionName);
+builder.Services.AddOptionsWithValidation<CredentialOptions, CredentialOptionsValidator>(CredentialOptions.SectionName);
 
 builder.Services.AddOptionsWithValidation<MongoDbOptions, MongoDbOptionsValidator>(MongoDbOptions.SectionName);
 
@@ -40,8 +41,6 @@ builder.Services.AddOptionsWithValidation<ProxyOptions, ProxyOptionsValidator>(P
 
 builder.Services.AddOptionsWithValidation<Clustral.Sdk.Crypto.CertificateAuthorityOptions,
     CertificateAuthorityOptionsValidator>(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName);
-
-var oidcOpts = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MongoDB — resolved lazily via IOptions<MongoDbOptions>.
@@ -56,59 +55,57 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
 builder.Services.AddSingleton<ClustralDb>();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Authentication — OIDC (JWT Bearer)
+// Authentication — Internal JWT (ES256, issued by API Gateway)
+//
+// The API Gateway validates external OIDC JWTs and issues short-lived
+// internal JWTs (ES256) forwarded via X-Internal-Token header.
+// The ControlPlane validates using only the public key.
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(opts =>
-    {
-        opts.RequireHttpsMetadata = oidcOpts.RequireHttpsMetadata;
-        opts.Audience = string.IsNullOrEmpty(oidcOpts.Audience)
-            ? oidcOpts.ClientId
-            : oidcOpts.Audience;
+var internalJwtPublicKeyPath = builder.Configuration["InternalJwt:PublicKeyPath"];
+if (!string.IsNullOrEmpty(internalJwtPublicKeyPath) && File.Exists(internalJwtPublicKeyPath))
+{
+    var publicKeyPem = File.ReadAllText(internalJwtPublicKeyPath);
+    var internalJwt = InternalJwtService.ForValidation(publicKeyPem);
+    builder.Services.AddSingleton(internalJwt);
 
-        if (!string.IsNullOrEmpty(oidcOpts.MetadataAddress))
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(opts =>
         {
-            // When MetadataAddress is set, the ControlPlane fetches JWKS from
-            // an internal URL but the token issuer varies depending on how the
-            // user accessed the OIDC provider (localhost vs LAN IP vs hostname).
-            // Set Authority to null and use MetadataAddress only — this
-            // prevents the JwtBearer middleware from doing its own issuer
-            // validation against the Authority URL.
-            opts.Authority = null;
-            opts.MetadataAddress = oidcOpts.MetadataAddress;
-        }
-        else
-        {
-            opts.Authority = oidcOpts.Authority;
-        }
+            opts.TokenValidationParameters = internalJwt.GetValidationParameters();
 
-        opts.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = false, // issuer varies by access URL
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true, // JWKS key check proves authenticity
-            ClockSkew = TimeSpan.FromSeconds(30),
-        };
-
-        // Skip OIDC JWT validation for requests on the mTLS port (:5443).
-        // Agent auth on that port is handled by AgentAuthInterceptor, not OIDC.
-        opts.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = context =>
+            // Read token from X-Internal-Token header instead of Authorization
+            opts.Events = new JwtBearerEvents
             {
-                if (context.HttpContext.Connection.LocalPort == 5443)
+                OnMessageReceived = context =>
                 {
-                    context.NoResult(); // skip OIDC validation
-                }
-                return Task.CompletedTask;
-            },
-        };
-    });
+                    // Skip for gRPC port — agent auth handled by AgentAuthInterceptor
+                    if (context.HttpContext.Connection.LocalPort == 5443)
+                    {
+                        context.NoResult();
+                        return Task.CompletedTask;
+                    }
+
+                    var internalToken = context.HttpContext.Request.Headers["X-Internal-Token"].FirstOrDefault();
+                    if (!string.IsNullOrEmpty(internalToken))
+                        context.Token = internalToken;
+
+                    return Task.CompletedTask;
+                },
+            };
+        });
+}
 
 builder.Services.AddAuthorization();
+
+// ── Kubeconfig JWT service (ES256 — signs kubeconfig credential JWTs) ────────
+var kubeconfigJwtPrivateKeyPath = builder.Configuration["KubeconfigJwt:PrivateKeyPath"];
+if (!string.IsNullOrEmpty(kubeconfigJwtPrivateKeyPath) && File.Exists(kubeconfigJwtPrivateKeyPath))
+{
+    var privateKeyPem = File.ReadAllText(kubeconfigJwtPrivateKeyPath);
+    builder.Services.AddSingleton(KubeconfigJwtService.ForSigning(privateKeyPem));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MVC Controllers + OpenAPI
@@ -226,14 +223,8 @@ builder.Services.AddHostedService<AccessRequestCleanupService>();
 // Health checks
 // ─────────────────────────────────────────────────────────────────────────────
 
-var oidcDiscoveryUrl = !string.IsNullOrEmpty(oidcOpts.MetadataAddress)
-    ? oidcOpts.MetadataAddress
-    : $"{oidcOpts.Authority.TrimEnd('/')}/.well-known/openid-configuration";
-
 builder.Services.AddHealthChecks()
-    .AddMongoDb(tags: ["ready"], name: "mongodb", timeout: TimeSpan.FromSeconds(5))
-    .AddUrlGroup(new Uri(oidcDiscoveryUrl), "oidc", tags: ["ready"],
-        timeout: TimeSpan.FromSeconds(5));
+    .AddMongoDb(tags: ["ready"], name: "mongodb", timeout: TimeSpan.FromSeconds(5));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate limiting (proxy traffic, per-credential token bucket)
@@ -345,7 +336,6 @@ app.MapControllers();
 // gRPC endpoints
 app.MapGrpcService<ClusterServiceImpl>();
 app.MapGrpcService<TunnelServiceImpl>();
-app.MapGrpcService<AuthServiceImpl>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health check endpoints
@@ -369,20 +359,13 @@ app.MapHealthChecks("/healthz/detail", new HealthCheckOptions
     ResponseWriter = WriteDetailedHealthResponse,
 }).RequireAuthorization();
 
-// Public config endpoint — CLI auto-discovers OIDC settings from here
-// so users only need to know the ControlPlane URL, not the OIDC provider URL.
-app.MapGet("/api/v1/config", (IOptions<OidcOptions> oidc) =>
+// Public version endpoint — CLI uses this for version checks and health probes.
+// OIDC discovery is served by the Web UI via /.well-known/clustral-configuration.
+app.MapGet("/api/v1/version", () =>
 {
-    var o = oidc.Value;
     var version = Assembly.GetExecutingAssembly()
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-dev";
-    return Results.Ok(new
-    {
-        version,
-        oidcAuthority = o.Authority,
-        oidcClientId = "clustral-cli",
-        oidcScopes = "openid email profile",
-    });
+    return Results.Ok(new { version });
 }).AllowAnonymous();
 
 // ─────────────────────────────────────────────────────────────────────────────

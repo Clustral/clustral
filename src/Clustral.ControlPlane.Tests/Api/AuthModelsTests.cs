@@ -109,25 +109,17 @@ public class AuthModelsTests(ITestOutputHelper output)
         Assert.NotEqual(hash1, hash2);
     }
 
-    // ── OidcOptions defaults ────────────────────────────────────────────
+    // ── CredentialOptions defaults ────────────────────────────────────────
 
     [Fact]
-    public void OidcOptions_Defaults()
+    public void CredentialOptions_Defaults()
     {
-        var opts = new OidcOptions();
+        var opts = new CredentialOptions();
 
-        output.WriteLine($"=== OidcOptions Defaults ===");
-        output.WriteLine($"  Authority:          \"{opts.Authority}\"");
-        output.WriteLine($"  ClientId:           \"{opts.ClientId}\"");
-        output.WriteLine($"  Audience:           \"{opts.Audience}\"");
-        output.WriteLine($"  RequireHttpsMeta:   {opts.RequireHttpsMetadata}");
-        output.WriteLine($"  MetadataAddress:    \"{opts.MetadataAddress}\"");
+        output.WriteLine($"=== CredentialOptions Defaults ===");
         output.WriteLine($"  DefaultCredTtl:     {opts.DefaultKubeconfigCredentialTtl}");
         output.WriteLine($"  MaxCredTtl:         {opts.MaxKubeconfigCredentialTtl}");
 
-        Assert.Equal(string.Empty, opts.Authority);
-        Assert.Equal(string.Empty, opts.ClientId);
-        Assert.True(opts.RequireHttpsMetadata);
         Assert.Equal(TimeSpan.FromHours(8), opts.DefaultKubeconfigCredentialTtl);
         Assert.Equal(TimeSpan.FromHours(8), opts.MaxKubeconfigCredentialTtl);
     }
@@ -135,7 +127,7 @@ public class AuthModelsTests(ITestOutputHelper output)
     [Fact]
     public void CredentialTtl_CappedAtMax()
     {
-        var opts = new OidcOptions
+        var opts = new CredentialOptions
         {
             DefaultKubeconfigCredentialTtl = TimeSpan.FromHours(8),
             MaxKubeconfigCredentialTtl = TimeSpan.FromHours(8),
@@ -156,7 +148,7 @@ public class AuthModelsTests(ITestOutputHelper output)
     [Fact]
     public void CredentialTtl_UnderMax_UsesRequested()
     {
-        var opts = new OidcOptions
+        var opts = new CredentialOptions
         {
             MaxKubeconfigCredentialTtl = TimeSpan.FromHours(8),
         };

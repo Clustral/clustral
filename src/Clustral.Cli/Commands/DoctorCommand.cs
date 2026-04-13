@@ -153,7 +153,7 @@ internal static class DoctorCommand
         var cpCheck = await RunTimedCheckAsync("ControlPlane health", async () =>
         {
             using var http = CliHttp.CreateClient(config.ControlPlaneUrl, insecure);
-            var json = await http.GetStringAsync("api/v1/config", ct);
+            var json = await http.GetStringAsync("api/v1/version", ct);
             var cpConfig = JsonSerializer.Deserialize(json, CliJsonContext.Default.ControlPlaneConfig);
             return $"v{cpConfig?.Version}, 200 OK";
         });

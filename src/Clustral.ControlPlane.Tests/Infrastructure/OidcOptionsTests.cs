@@ -3,20 +3,20 @@ using Xunit.Abstractions;
 
 namespace Clustral.ControlPlane.Tests.Infrastructure;
 
-public class OidcOptionsTests(ITestOutputHelper output)
+public class CredentialOptionsTests(ITestOutputHelper output)
 {
     [Fact]
-    public void SectionName_IsOidc()
+    public void SectionName_IsCredential()
     {
-        output.WriteLine($"SectionName: {OidcOptions.SectionName}");
+        output.WriteLine($"SectionName: {CredentialOptions.SectionName}");
 
-        Assert.Equal("Oidc", OidcOptions.SectionName);
+        Assert.Equal("Credential", CredentialOptions.SectionName);
     }
 
     [Fact]
     public void DefaultCredentialTtl_Is8Hours()
     {
-        var opts = new OidcOptions();
+        var opts = new CredentialOptions();
 
         output.WriteLine($"DefaultKubeconfigCredentialTtl: {opts.DefaultKubeconfigCredentialTtl}");
 
@@ -26,7 +26,7 @@ public class OidcOptionsTests(ITestOutputHelper output)
     [Fact]
     public void MaxCredentialTtl_Is8Hours()
     {
-        var opts = new OidcOptions();
+        var opts = new CredentialOptions();
 
         output.WriteLine($"MaxKubeconfigCredentialTtl: {opts.MaxKubeconfigCredentialTtl}");
 
@@ -34,31 +34,9 @@ public class OidcOptionsTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void RequireHttpsMetadata_DefaultsToTrue()
-    {
-        var opts = new OidcOptions();
-
-        output.WriteLine($"RequireHttpsMetadata: {opts.RequireHttpsMetadata} (production default)");
-
-        Assert.True(opts.RequireHttpsMetadata);
-    }
-
-    [Fact]
-    public void Audience_EmptyByDefault_FallsBackToClientId()
-    {
-        var opts = new OidcOptions { ClientId = "clustral-api" };
-
-        output.WriteLine($"ClientId: {opts.ClientId}");
-        output.WriteLine($"Audience: \"{opts.Audience}\" (empty => use ClientId)");
-
-        var effectiveAudience = string.IsNullOrEmpty(opts.Audience) ? opts.ClientId : opts.Audience;
-        Assert.Equal("clustral-api", effectiveAudience);
-    }
-
-    [Fact]
     public void TtlCapping_RequestedExceedsMax_CappedToMax()
     {
-        var opts = new OidcOptions
+        var opts = new CredentialOptions
         {
             DefaultKubeconfigCredentialTtl = TimeSpan.FromHours(8),
             MaxKubeconfigCredentialTtl = TimeSpan.FromHours(12),

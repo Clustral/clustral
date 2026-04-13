@@ -44,8 +44,8 @@ public sealed class HealthAndConfigTests(
     [Fact]
     public async Task HealthzReady_Returns200_WhenDependenciesUp()
     {
-        // MongoDB is up via Testcontainers; OIDC discovery will fail (no real
-        // Keycloak in tests) but the readiness result depends on both checks.
+        // MongoDB is up via Testcontainers. Readiness checks only MongoDB now
+        // (OIDC health check moved to API Gateway).
         var client = factory.CreateClient();
         var response = await client.GetAsync("/healthz/ready");
 
@@ -53,8 +53,7 @@ public sealed class HealthAndConfigTests(
         var body = await response.Content.ReadAsStringAsync();
         output.WriteLine($"Body: {body}");
 
-        // OIDC discovery is unreachable in the test environment, so readiness
-        // returns 503. This is expected — it proves the check actually runs.
+        // May return 503 if Serilog bootstrap logger conflicts between test factories.
         response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.ServiceUnavailable);
     }
 
@@ -111,11 +110,7 @@ public sealed class HealthAndConfigTests(
         mongo.TryGetProperty("status", out _).Should().BeTrue("mongodb check should have 'status'");
         mongo.TryGetProperty("duration", out _).Should().BeTrue("mongodb check should have 'duration'");
 
-        checks.TryGetProperty("oidc", out var oidc).Should().BeTrue("checks should include 'oidc'");
-        oidc.TryGetProperty("status", out _).Should().BeTrue("oidc check should have 'status'");
-
         output.WriteLine($"MongoDB status: {mongo.GetProperty("status").GetString()}");
-        output.WriteLine($"OIDC status: {oidc.GetProperty("status").GetString()}");
     }
 
     [Fact]
@@ -137,30 +132,28 @@ public sealed class HealthAndConfigTests(
         mongoStatus.Should().Be("Healthy");
     }
 
-    // ── Config endpoint (unchanged) ─────────────────────────────────────────
+    // ── Version endpoint ─────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Config_Returns200_NoAuth()
+    public async Task Version_Returns200_NoAuth()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/api/v1/config");
+        var response = await client.GetAsync("/api/v1/version");
 
-        output.WriteLine($"GET /api/v1/config => {(int)response.StatusCode}");
+        output.WriteLine($"GET /api/v1/version => {(int)response.StatusCode}");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("oidcAuthority");
     }
 
     [Fact]
-    public async Task Config_IncludesVersion()
+    public async Task Version_IncludesVersionField()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/api/v1/config");
+        var response = await client.GetAsync("/api/v1/version");
         var body = await response.Content.ReadAsStringAsync();
 
         var json = JsonDocument.Parse(body);
-        json.RootElement.TryGetProperty("version", out var version).Should().BeTrue("config should include 'version'");
+        json.RootElement.TryGetProperty("version", out var version).Should().BeTrue("response should include 'version'");
 
         output.WriteLine($"ControlPlane version: {version.GetString()}");
         version.GetString().Should().NotBeNullOrEmpty();

@@ -12,6 +12,43 @@
 services:
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Clustral API Gateway (YARP — routes API + gRPC to downstream services)
+  # ──────────────────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: src/Clustral.ApiGateway/Dockerfile
+    restart: unless-stopped
+    labels:
+      - "service=api-gateway"
+    networks:
+      - clustral
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Oidc__Authority: "${OIDC_AUTHORITY}"
+      Oidc__MetadataAddress: "${OIDC_METADATA_ADDRESS}"
+      Oidc__ClientId: "${OIDC_CLIENT_ID}"
+      Oidc__Audience: "${OIDC_AUDIENCE}"
+      Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
+      Oidc__NameClaimType: "${OIDC_NAME_CLAIM_TYPE}"
+      InternalJwt__PrivateKeyPath: "/etc/clustral/jwt/private.pem"
+      KubeconfigJwt__PublicKeyPath: "/etc/clustral/kubeconfig-jwt/public.pem"
+      # Override Development appsettings — use Docker DNS names
+      ReverseProxy__Clusters__controlplane__Destinations__default__Address: "http://controlplane:5100"
+      ReverseProxy__Clusters__audit-service__Destinations__default__Address: "http://audit-service:5200"
+      Cors__AllowedOrigins__0: "https://${HOST_IP}"
+      Cors__AllowedOrigins__1: "http://localhost:5173"
+    volumes:
+      - ./infra/internal-jwt/private.pem:/etc/clustral/jwt/private.pem:ro
+      - ./infra/kubeconfig-jwt/public.pem:/etc/clustral/kubeconfig-jwt/public.pem:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/healthz || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Clustral ControlPlane (ASP.NET Core — REST + gRPC)
   # ──────────────────────────────────────────────────────────────────────────
   controlplane:
@@ -27,23 +64,28 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       MongoDB__ConnectionString: "${MONGO_CONNECTION_STRING}"
       MongoDB__DatabaseName: "${MONGO_DATABASE_NAME}"
-      Oidc__Authority: "${OIDC_AUTHORITY}"
-      Oidc__MetadataAddress: "${OIDC_METADATA_ADDRESS}"
-      Oidc__ClientId: "${OIDC_CLIENT_ID}"
-      Oidc__Audience: "${OIDC_AUDIENCE}"
-      Oidc__RequireHttpsMetadata: "${OIDC_REQUIRE_HTTPS}"
       CertificateAuthority__CaCertPath: "${CA_CERT_PATH}"
       CertificateAuthority__CaKeyPath: "${CA_KEY_PATH}"
+      InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"
+      KubeconfigJwt__PrivateKeyPath: "/etc/clustral/kubeconfig-jwt/private.pem"
       RabbitMQ__Host: "${RABBITMQ_HOST}"
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
+      Credential__DefaultKubeconfigCredentialTtl: "${CREDENTIAL_DEFAULT_TTL}"
+      Credential__MaxKubeconfigCredentialTtl: "${CREDENTIAL_MAX_TTL}"
+      Proxy__TunnelTimeout: "${PROXY_TUNNEL_TIMEOUT}"
+      Proxy__RateLimiting__Enabled: "${PROXY_RATE_LIMITING_ENABLED}"
+      Proxy__RateLimiting__BurstSize: "${PROXY_RATE_LIMITING_BURST_SIZE}"
+      Proxy__RateLimiting__RequestsPerSecond: "${PROXY_RATE_LIMITING_REQUESTS_PER_SECOND}"
+      Proxy__RateLimiting__QueueSize: "${PROXY_RATE_LIMITING_QUEUE_SIZE}"
     ports:
-      # gRPC mTLS — agents connect directly (not through nginx)
+      # gRPC mTLS — agents connect directly (not through gateway)
       - "5443:5443"
     volumes:
       - ./infra/ca:/etc/clustral/ca:ro
-    # REST :5100 and legacy gRPC :5101 are internal — nginx handles REST via :443.
+      - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro
+      - ./infra/kubeconfig-jwt/private.pem:/etc/clustral/kubeconfig-jwt/private.pem:ro
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:5100/healthz/ready || exit 1" ]
       interval: 10s
@@ -70,11 +112,9 @@ services:
       OIDC_CLIENT_SECRET: "${OIDC_WEB_CLIENT_SECRET}"
       AUTH_SECRET: "${AUTH_SECRET}"
       AUDIT_SERVICE_URL: "${AUDIT_SERVICE_URL}"
+      AUDIT_SERVICE_PUBLIC_URL: "${AUDIT_SERVICE_PUBLIC_URL}"
       NODE_ENV: "production"
     # No ports exposed — nginx handles all external traffic.
-    # Uncomment for direct access during local dev without nginx:
-    # ports:
-    #   - "3000:3000"
 
   # ──────────────────────────────────────────────────────────────────────────
   # Clustral Audit Service (ASP.NET Core — event consumer + REST API)
@@ -96,10 +136,10 @@ services:
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__User: "${RABBITMQ_USER}"
       RabbitMQ__Pass: "${RABBITMQ_PASS}"
-    ports:
-      - "5200:5200"
-    # RabbitMQ runs in infra/docker-compose.yml on the same network.
-    # MassTransit retries connection automatically if RabbitMQ isn't ready yet.
+      InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"
+    # No ports exposed — gateway routes audit API traffic internally.
+    volumes:
+      - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5200/swagger || exit 1"]
       interval: 10s
