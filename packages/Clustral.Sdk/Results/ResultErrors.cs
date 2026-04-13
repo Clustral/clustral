@@ -41,6 +41,104 @@ public static class ResultErrors
     public static ResultError InvalidCredential() =>
         ResultError.Unauthorized("Invalid or expired credential.");
 
+    // ── Proxy / Auth (kubectl path) ───────────────────────────────────────
+    // These factories are the canonical error codes surfaced on the
+    // /api/proxy/* path. Keep in sync with the "Error Response Shapes" table
+    // in the root README so integrators can switch on `code` programmatically.
+
+    public static ResultError AuthenticationRequired() =>
+        new()
+        {
+            Kind = ResultErrorKind.Unauthorized,
+            Code = "AUTHENTICATION_REQUIRED",
+            Message = "Authentication required — provide a valid kubeconfig credential.",
+        };
+
+    public static ResultError MalformedToken(string detail) =>
+        new()
+        {
+            Kind = ResultErrorKind.Unauthorized,
+            Code = "INVALID_TOKEN",
+            Message = $"Token rejected: {detail}.",
+        };
+
+    public static ResultError MissingSubjectClaim() =>
+        new()
+        {
+            Kind = ResultErrorKind.Unauthorized,
+            Code = "INVALID_TOKEN",
+            Message = "Token rejected: missing sub claim.",
+        };
+
+    public static ResultError ClusterMismatch(Guid tokenCluster, Guid requestedCluster) =>
+        new()
+        {
+            Kind = ResultErrorKind.Forbidden,
+            Code = "CLUSTER_MISMATCH",
+            Message = $"Credential issued for cluster {tokenCluster}, request is for cluster {requestedCluster}.",
+        };
+
+    public static ResultError CredentialRevoked(Guid credentialId) =>
+        new()
+        {
+            Kind = ResultErrorKind.Unauthorized,
+            Code = "CREDENTIAL_REVOKED",
+            Message = $"Credential {credentialId} has been revoked.",
+        };
+
+    public static ResultError CredentialExpired(Guid credentialId, DateTimeOffset expiredAt) =>
+        new()
+        {
+            Kind = ResultErrorKind.Unauthorized,
+            Code = "CREDENTIAL_EXPIRED",
+            Message = $"Credential {credentialId} expired at {expiredAt:O}.",
+        };
+
+    public static ResultError NoRoleAssignment(string identifier, string clusterName) =>
+        new()
+        {
+            Kind = ResultErrorKind.Forbidden,
+            Code = "NO_ROLE_ASSIGNMENT",
+            Message = $"{identifier} has no active role on cluster {clusterName}. " +
+                      "Request access with 'clustral access request'.",
+        };
+
+    public static ResultError InvalidClusterId(string raw) =>
+        ResultError.BadRequest("INVALID_CLUSTER_ID",
+            $"Cluster ID '{raw}' is not a valid UUID.", "clusterId");
+
+    public static ResultError AgentNotConnected(Guid clusterId) =>
+        new()
+        {
+            Kind = ResultErrorKind.Internal,
+            Code = "AGENT_NOT_CONNECTED",
+            Message = $"Agent for cluster {clusterId} is not connected.",
+        };
+
+    public static ResultError TunnelTimeout(TimeSpan timeout) =>
+        new()
+        {
+            Kind = ResultErrorKind.Internal,
+            Code = "TUNNEL_TIMEOUT",
+            Message = $"Agent did not respond within {timeout}.",
+        };
+
+    public static ResultError TunnelError(string detail) =>
+        new()
+        {
+            Kind = ResultErrorKind.Internal,
+            Code = "TUNNEL_ERROR",
+            Message = $"Tunnel proxy error: {detail}.",
+        };
+
+    public static ResultError AgentError(string agentCode, string detail) =>
+        new()
+        {
+            Kind = ResultErrorKind.Internal,
+            Code = "AGENT_ERROR",
+            Message = $"Agent error ({agentCode}): {detail}.",
+        };
+
     // ── Access Request ───────────────────────────────────────────────────
 
     public static ResultError StaticAssignmentExists() =>

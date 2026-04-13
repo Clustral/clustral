@@ -282,6 +282,26 @@ dotnet test src/Clustral.E2E.Tests
 
 ---
 
+## Error Response Shapes
+
+Clustral uses a **path-aware split** for HTTP error bodies:
+
+- `/api/proxy/*` → Kubernetes `v1.Status` JSON (kubectl's native shape). Write via `Clustral.Sdk.Http.K8sStatusWriter`.
+- All other HTTP endpoints → RFC 7807 Problem Details. Write via `Clustral.Sdk.Http.ProblemDetailsWriter` or `result.ToActionResult()` from a controller.
+- gRPC → `RpcException(Status)`.
+
+Every response (success and failure) echoes `X-Correlation-Id`. The Clustral-specific error code goes in `extensions.code` (RFC 7807) or `details.causes[0].reason` (v1.Status).
+
+**When adding a new endpoint:**
+- Behind `/api/proxy/*`? Use `K8sStatusWriter`.
+- Everywhere else? Use `ProblemDetailsWriter` directly, or from a controller return `result.ToActionResult()`.
+- **Never** write `BadRequest("plain text")` or `context.Response.WriteAsync(string)` on an error path — that bypasses the shape contract and breaks consumers.
+- **Never** introduce a third shape. If you think you need one, read [docs/adr/001-error-response-shapes.md](docs/adr/001-error-response-shapes.md) first — the choice of two shapes is deliberate.
+
+See the "Error Response Shapes" section of the root `README.md` for the full user-facing reference (wire examples, canonical error-code table, trade-offs) and the ADR for the design rationale.
+
+---
+
 ## How Claude Code Should Approach Tasks Here
 
 - **Read before editing.** Always read the relevant file(s) before proposing changes. Do not guess at existing signatures or table schemas.

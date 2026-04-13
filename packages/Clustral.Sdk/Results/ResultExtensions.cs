@@ -1,3 +1,4 @@
+using Clustral.Sdk.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Clustral.Sdk.Results;
@@ -60,26 +61,14 @@ public static class ResultExtensions
 
     private static ObjectResult ToProblemResult(ResultError error)
     {
-        var statusCode = error.Kind.ToHttpStatusCode();
-        var problem = new ProblemDetails
+        // Delegate body construction to ProblemDetailsWriter so MVC actions
+        // and direct-write middleware produce byte-identical RFC 7807 bodies.
+        var problem = ProblemDetailsWriter.BuildProblem(error);
+        return new ObjectResult(problem)
         {
-            Type   = $"urn:clustral:error:{error.Code.ToLowerInvariant()}",
-            Title  = error.Kind.ToString(),
-            Status = statusCode,
-            Detail = error.Message,
+            StatusCode = error.Kind.ToHttpStatusCode(),
+            ContentTypes = { ProblemDetailsWriter.ProblemJsonContentType },
         };
-
-        if (error.Field is not null)
-            problem.Extensions["field"] = error.Field;
-        if (error.Code is not null)
-            problem.Extensions["code"] = error.Code;
-        if (error.Metadata is not null)
-        {
-            foreach (var kv in error.Metadata)
-                problem.Extensions[kv.Key] = kv.Value;
-        }
-
-        return new ObjectResult(problem) { StatusCode = statusCode };
     }
 
     private static global::Grpc.Core.RpcException ToRpcException(this ResultError error)

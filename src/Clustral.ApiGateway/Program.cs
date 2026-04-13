@@ -1,9 +1,10 @@
 using System.Threading.RateLimiting;
+using Clustral.ApiGateway.Api;
 using Clustral.Sdk.Auth;
+using Clustral.Sdk.Http;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Yarp.ReverseProxy.Transforms;
 using Serilog;
-using Serilog.Context;
 
 // ── Bootstrap logger ─────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
@@ -150,6 +151,7 @@ builder.Services
             ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = nameClaimType,
         };
+        options.Events = GatewayJwtEvents.Create();
     })
     .AddJwtBearer(KubeconfigScheme, options =>
     {
@@ -175,6 +177,7 @@ builder.Services
                 RequireSignedTokens = true,
             };
         }
+        options.Events = GatewayJwtEvents.Create();
     });
 builder.Services.AddAuthorization();
 
@@ -214,6 +217,15 @@ builder.Services.AddRateLimiter(options =>
                 ReplenishmentPeriod = TimeSpan.FromSeconds(10),
                 AutoReplenishment = true,
             }));
+
+    // Replace ASP.NET's default empty 429 body with a path-aware error body.
+    options.OnRejected = async (ctx, _) =>
+    {
+        await GatewayErrorWriter.WriteAsync(ctx.HttpContext,
+            statusCode: StatusCodes.Status429TooManyRequests,
+            code: "RATE_LIMITED",
+            message: "Request rate limit exceeded. Please retry later.");
+    };
 });
 
 // ── Request Size Limits ──────────────────────────────────────────────────────
@@ -240,18 +252,29 @@ var app = builder.Build();
 
 // ── Middleware Pipeline ──────────────────────────────────────────────────────
 
+// Correlation ID — first so every downstream log line and error body carries it.
+app.UseMiddleware<CorrelationIdMiddleware>();
+
 app.UseCors();
 app.UseSerilogRequestLogging();
 
-// Correlation ID — generate or preserve from incoming request
-app.Use(async (ctx, next) =>
+// Terminal status-code handler — writes a well-described body for any
+// 4xx/5xx response that reached the client with an empty body (e.g., YARP
+// 502 destination-unreachable, 404 no-route, CORS preflight rejections).
+app.UseStatusCodePages(async statusCtx =>
 {
-    var correlationId = ctx.Request.Headers["X-Correlation-Id"].FirstOrDefault()
-        ?? Guid.NewGuid().ToString("N");
-    ctx.Request.Headers["X-Correlation-Id"] = correlationId;
-    ctx.Response.Headers["X-Correlation-Id"] = correlationId;
-    using (LogContext.PushProperty("CorrelationId", correlationId))
-        await next();
+    var ctx = statusCtx.HttpContext;
+    if (ctx.Response.ContentLength > 0 || ctx.Response.HasStarted) return;
+
+    var (code, message) = ctx.Response.StatusCode switch
+    {
+        404 => ("ROUTE_NOT_FOUND",     "No route matches this request."),
+        502 => ("UPSTREAM_UNREACHABLE", "Upstream service is unreachable."),
+        503 => ("UPSTREAM_UNAVAILABLE", "Upstream service is unavailable."),
+        504 => ("UPSTREAM_TIMEOUT",     "Upstream service did not respond in time."),
+        _   => ("GATEWAY_ERROR",        $"Gateway returned status {ctx.Response.StatusCode}."),
+    };
+    await GatewayErrorWriter.WriteAsync(ctx, ctx.Response.StatusCode, code, message);
 });
 
 app.UseAuthentication();

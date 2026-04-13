@@ -1,10 +1,10 @@
-using Clustral.ControlPlane.Api;
+using Clustral.Sdk.Http;
 using Clustral.Sdk.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Xunit.Abstractions;
 
-namespace Clustral.ControlPlane.Tests.Api;
+namespace Clustral.Sdk.Tests.Http;
 
 public class GlobalExceptionHandlerTests(ITestOutputHelper output)
 {

@@ -257,17 +257,24 @@ public sealed class AuditControllerTests(MongoFixture mongo, ITestOutputHelper o
     }
 
     [Fact]
-    public async Task List_InvalidPage_ReturnsBadRequest()
+    public async Task List_InvalidPage_ReturnsUnprocessableEntity_AsRfc7807()
     {
         var response = await _client.GetAsync("/api/v1/audit?page=0");
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // FluentValidation → ResultError.Validation → ResultErrorKind.Validation
+        // → HTTP 422 per RFC 7807. Body is application/problem+json with
+        // extensions.code = "VALIDATION_ERROR".
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
     }
 
     [Fact]
-    public async Task List_InvalidPageSize_ReturnsBadRequest()
+    public async Task List_InvalidPageSize_ReturnsUnprocessableEntity_AsRfc7807()
     {
         var response = await _client.GetAsync("/api/v1/audit?pageSize=201");
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
     }
 
     [Fact]

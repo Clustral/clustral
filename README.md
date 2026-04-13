@@ -667,6 +667,107 @@ Controls the backing services (Mongo, Keycloak, RabbitMQ, nginx). Committed with
 
 ---
 
+## Error Response Shapes
+
+Clustral emits **two HTTP error body shapes**, chosen by path, plus the native gRPC error model:
+
+| Path | Shape | Content-Type | Why |
+|---|---|---|---|
+| `/api/proxy/*` (kubectl path) | Kubernetes `v1.Status` | `application/json` | kubectl natively renders `status.message` as `"error: <message>"` — same shape every k8s-compatible endpoint uses. |
+| All other HTTP endpoints | RFC 7807 Problem Details | `application/problem+json` | IETF-standardized, ASP.NET Core's default, what the Web UI / CLI / general HTTP clients already understand. |
+| gRPC (agent-facing) | gRPC `Status` / `RpcException` | (gRPC trailers) | Correct for the transport; never crosses language boundaries as HTTP. |
+
+Every response — success *or* failure — echoes an `X-Correlation-Id` header. Include it in support tickets to cross-reference gateway, ControlPlane, and AuditService logs.
+
+**Why two shapes?** Consumer ergonomics. kubectl and Kubernetes operators expect `v1.Status` and will display RFC 7807 as a raw JSON blob. Web UI / CLI / integrators expect RFC 7807 and would have to special-case a Kubernetes-specific shape for non-Kubernetes errors. Every managed-Kubernetes vendor (GKE, EKS, AKS, OpenShift, Rancher) does the same path-aware split. See [docs/adr/001-error-response-shapes.md](docs/adr/001-error-response-shapes.md) for the full rationale, alternatives considered, and trade-offs.
+
+### Wire examples
+
+**v1.Status (`/api/proxy/{clusterId}/...`)**
+
+```http
+HTTP/1.1 502 Bad Gateway
+Content-Type: application/json
+X-Correlation-Id: 4c2e8b9f5a314d21b6e7c8d9a0f1b2c3
+
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "Agent for cluster 7b3f... is not connected.",
+  "reason": "ServiceUnavailable",
+  "code": 502,
+  "details": {
+    "group": "clustral.io",
+    "kind": "proxy",
+    "causes": [
+      { "reason": "AGENT_NOT_CONNECTED", "message": "Agent for cluster 7b3f... is not connected." }
+    ]
+  }
+}
+```
+
+kubectl renders this as:
+
+```
+$ kubectl get pods
+error: Agent for cluster 7b3f... is not connected.
+```
+
+**RFC 7807 (`/api/v1/*` and everything else)**
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: application/problem+json
+X-Correlation-Id: 4c2e8b9f5a314d21b6e7c8d9a0f1b2c3
+
+{
+  "type": "urn:clustral:error:cluster_not_found",
+  "title": "NotFound",
+  "status": 404,
+  "detail": "Cluster 'abc-123' not found.",
+  "instance": "/api/v1/clusters/abc-123",
+  "code": "CLUSTER_NOT_FOUND",
+  "traceId": "00-..."
+}
+```
+
+### Canonical error codes
+
+Clustral-specific codes live in `extensions.code` (RFC 7807) or `details.causes[0].reason` (v1.Status) — same value in both shapes, so clients can switch on it without caring which shape they got.
+
+| Scenario | HTTP | Code |
+|---|---|---|
+| Missing / invalid token | 401 | `AUTHENTICATION_REQUIRED` |
+| Token signature / expiry / audience failure | 401 | `INVALID_TOKEN` |
+| Forbidden by policy (non-proxy) | 403 | `FORBIDDEN` |
+| Rate-limited | 429 | `RATE_LIMITED` |
+| Route not found (gateway) | 404 | `ROUTE_NOT_FOUND` |
+| Malformed cluster ID in proxy URL | 400 | `INVALID_CLUSTER_ID` |
+| Kubeconfig cluster claim mismatch | 403 | `CLUSTER_MISMATCH` |
+| Credential revoked | 401 | `CREDENTIAL_REVOKED` |
+| Credential expired (DB record) | 401 | `CREDENTIAL_EXPIRED` |
+| No role assigned on cluster | 403 | `NO_ROLE_ASSIGNMENT` |
+| Agent not connected | 502 | `AGENT_NOT_CONNECTED` |
+| Tunnel timeout | 504 | `TUNNEL_TIMEOUT` |
+| Tunnel internal error | 502 | `TUNNEL_ERROR` |
+| Agent error (e.g. can't reach k8s) | 502 | `AGENT_ERROR` |
+| Upstream service unreachable (gateway) | 502 | `UPSTREAM_UNREACHABLE` |
+| Upstream service unavailable (gateway) | 503 | `UPSTREAM_UNAVAILABLE` |
+| Upstream service timeout (gateway) | 504 | `UPSTREAM_TIMEOUT` |
+| Validation (any field) | 422 | `VALIDATION_ERROR` + `field` extension |
+| Unexpected | 500 | `INTERNAL_ERROR` |
+
+### `X-Correlation-Id` contract
+
+- Always echoed on responses. If the client sends one, the same value is returned; otherwise a fresh 32-hex-character ID is generated.
+- Propagated across the gateway → ControlPlane and gateway → AuditService hop.
+- Pushed into each service's log context (`CorrelationId` property) so a single grep finds all log lines for one request.
+- Out-of-body by design: keeps the `v1.Status` message clean so kubectl's output stays readable, and keeps RFC 7807 bodies compact.
+
+---
+
 ## Quick Start (On-Prem)
 
 Deploy the full stack from pre-built images.

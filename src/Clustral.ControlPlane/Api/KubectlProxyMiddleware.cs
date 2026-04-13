@@ -1,4 +1,5 @@
 using Clustral.ControlPlane.Features.Proxy.Commands;
+using Clustral.Sdk.Http;
 using Clustral.Sdk.Results;
 using MediatR;
 
@@ -10,6 +11,11 @@ namespace Clustral.ControlPlane.Api;
 /// (auth, impersonation, tunnel proxying, audit) lives in the handler.
 ///
 /// Path format: <c>/api/proxy/{clusterId}/{k8s-api-path}</c>
+///
+/// Error responses are written as Kubernetes <c>v1.Status</c> JSON via
+/// <see cref="K8sStatusWriter"/> so <c>kubectl</c> natively renders them.
+/// See the "Error Response Shapes" section of the root README for the
+/// rationale behind the path-aware split.
 /// </summary>
 public sealed class KubectlProxyMiddleware(RequestDelegate next)
 {
@@ -38,8 +44,7 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
 
         if (!Guid.TryParse(clusterIdStr, out var clusterId))
         {
-            httpContext.Response.StatusCode = 400;
-            await httpContext.Response.WriteAsync("Invalid cluster ID.", cancellationToken: ct);
+            await K8sStatusWriter.WriteAsync(httpContext, ResultErrors.InvalidClusterId(clusterIdStr));
             return;
         }
 
@@ -78,8 +83,7 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
         // ── Write result to HTTP response ──────────────────────────────────
         if (result.IsFailure)
         {
-            httpContext.Response.StatusCode = MapErrorToStatusCode(result.Error!);
-            await httpContext.Response.WriteAsync(result.Error!.Message, cancellationToken: ct);
+            await K8sStatusWriter.WriteAsync(httpContext, result.Error!);
             return;
         }
 
@@ -91,25 +95,6 @@ public sealed class KubectlProxyMiddleware(RequestDelegate next)
         if (response.Body.Length > 0)
             await httpContext.Response.Body.WriteAsync(response.Body, ct);
     }
-
-    /// <summary>
-    /// Maps proxy-specific error codes to HTTP status codes. The handler
-    /// uses <c>ResultErrorKind.Internal</c> for tunnel errors, but the
-    /// middleware distinguishes 401/403/502/504 based on the error code.
-    /// </summary>
-    private static int MapErrorToStatusCode(ResultError error) => error.Code switch
-    {
-        "GATEWAY_TIMEOUT"     => 504,
-        "AGENT_NOT_CONNECTED" => 502,
-        "AGENT_ERROR"         => 502,
-        "TUNNEL_ERROR"        => 502,
-        _ => error.Kind switch
-        {
-            ResultErrorKind.Unauthorized => 401,
-            ResultErrorKind.Forbidden    => 403,
-            _                            => 500,
-        },
-    };
 
     private static readonly HashSet<string> HopByHopHeaders =
         new(StringComparer.OrdinalIgnoreCase)

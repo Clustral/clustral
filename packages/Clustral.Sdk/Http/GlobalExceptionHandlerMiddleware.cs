@@ -1,14 +1,23 @@
 using System.Diagnostics;
-using System.Text.Json;
 using Clustral.Sdk.Results;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace Clustral.ControlPlane.Api;
+namespace Clustral.Sdk.Http;
 
 /// <summary>
-/// Global exception handler that catches unhandled exceptions and returns
-/// RFC 7807 Problem Details JSON responses. Environment-aware: development
-/// mode includes exception details and stack traces, production does not.
+/// Catches unhandled exceptions and returns RFC 7807 Problem Details via
+/// <see cref="ProblemDetailsWriter"/>.
+///
+/// This middleware is shared across every .NET service in Clustral
+/// (ControlPlane, AuditService, ApiGateway) so unhandled exceptions produce
+/// a consistent response body regardless of which service throws.
+///
+/// Development mode (<see cref="IHostEnvironment.IsDevelopment"/>) adds
+/// <c>exception</c> and <c>stackTrace</c> extensions for debugging; those
+/// are stripped in production.
 /// </summary>
 public sealed class GlobalExceptionHandlerMiddleware
 {
@@ -53,10 +62,13 @@ public sealed class GlobalExceptionHandlerMiddleware
                 problem.Extensions["stackTrace"] = ex.StackTrace;
             }
 
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/problem+json";
+            var correlationId = ProblemDetailsWriter.EnsureCorrelationId(context);
+            if (!problem.Extensions.ContainsKey("traceId"))
+                problem.Extensions["traceId"] = correlationId;
 
-            await context.Response.WriteAsJsonAsync(problem, (JsonSerializerOptions?)null, context.RequestAborted);
+            context.Response.StatusCode = statusCode;
+            await context.Response.WriteAsJsonAsync(problem, (System.Text.Json.JsonSerializerOptions?)null,
+                ProblemDetailsWriter.ProblemJsonContentType, context.RequestAborted);
         }
     }
 

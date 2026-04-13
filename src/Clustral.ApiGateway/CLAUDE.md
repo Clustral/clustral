@@ -105,6 +105,29 @@ boundary. The gateway has no gRPC routes or passthrough configuration.
 
 ---
 
+## Error Responses (path-aware)
+
+The gateway returns two error body shapes depending on request path, via
+`Api/GatewayErrorWriter.cs`:
+
+- `/api/proxy/*` → Kubernetes `v1.Status` JSON (kubectl's native shape).
+- Everything else → RFC 7807 `application/problem+json`.
+
+Wired in four places:
+
+| Integration point | File | What it handles |
+|---|---|---|
+| JwtBearer `OnChallenge` + `OnForbidden` (both schemes) | `Api/GatewayJwtEvents.cs` | Auth failures — classifies the exception and writes `AUTHENTICATION_REQUIRED` or `INVALID_TOKEN` with a specific reason (expired, bad signature, bad issuer, bad audience). |
+| Rate limiter `OnRejected` | `Program.cs` (inline) | 429 responses — body includes `RATE_LIMITED` code. |
+| Terminal status-code handler (`UseStatusCodePages`) | `Program.cs` (inline) | YARP 502 destination-unreachable, 404 no-route, CORS rejections — any response that would have had an empty body. |
+| CORS / default fall-through | Handled by the terminal handler above. |
+
+Every response echoes `X-Correlation-Id`. See `docs/adr/001-error-response-shapes.md`
+for the rationale and the root `README.md` for the canonical error-code
+table.
+
+---
+
 ## Authentication — two strict schemes
 
 The gateway runs **two distinct JwtBearer schemes** behind a policy scheme
