@@ -1,0 +1,34 @@
+name: Docs Error-Catalog Drift Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/Clustral.Sdk/Results/ResultErrors.cs"
+      - "packages/Clustral.Sdk/Results/ResultError.cs"
+      - "packages/Clustral.Sdk/Http/GlobalExceptionHandlerMiddleware.cs"
+      - "src/Clustral.ApiGateway/Program.cs"
+      - "tools/docs-gen/**"
+      - "docs-site/errors/**"
+
+jobs:
+  drift-check:
+    name: Error catalog drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Run docs-gen in verify mode
+        run: dotnet run --project tools/docs-gen -- --verify
+
+      - name: Check for uncommitted changes
+        run: |
+          git diff --exit-code docs-site/errors/ || {
+            echo "::error::Error catalog pages are out of date. Run 'dotnet run --project tools/docs-gen' and commit the results."
+            exit 1
+          }
