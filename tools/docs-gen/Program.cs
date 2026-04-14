@@ -145,7 +145,8 @@ internal static class Program
                 }
                 else if (p.ParameterType == typeof(DateTimeOffset))
                 {
-                    args[i] = DateTimeOffset.UtcNow;
+                    // Fixed timestamp so output is deterministic across runs.
+                    args[i] = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
                 }
                 else if (p.ParameterType == typeof(TimeSpan))
                 {
