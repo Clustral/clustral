@@ -1,0 +1,23 @@
+# GitBook space configuration.
+#
+# This file is read by GitBook Git-Sync. The docs-site/ directory is the root
+# of the space; SUMMARY.md defines the navigation tree; README.md is the
+# landing page.
+#
+# Reference: https://gitbook.com/docs/getting-started/git-sync
+
+root: .
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
+
+# URL-stability redirects.
+#
+# The platform emits error documentation URLs of the form
+# https://docs.clustral.kube.it.com/errors/<kebab-code> via
+# ErrorDocumentation.UrlFor() (packages/Clustral.Sdk/Http/ErrorDocumentation.cs).
+# Those URLs are a public contract with external clients; if a page ever
+# moves, add its old path here to preserve the contract.
+redirects:
+  # /errors/old-code: /errors/new-code
