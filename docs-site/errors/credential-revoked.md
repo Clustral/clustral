@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 401** | `Unauthorized` | Category: User & Credential
 
-<!-- AUTO-GEN-START -->
 **Default message:** Your kubeconfig credential (00000000-0000-0000-0000-000000000000) has been revoked. Run 'clustral kube login <cluster>' to obtain a new one.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/credential-revoked`](https://docs.clustral.kube.it.com/errors/credential-revoked)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

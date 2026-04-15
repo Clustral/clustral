@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 504** | `Internal` | Category: Exception Handler
 
-<!-- AUTO-GEN-START -->
 **Default message:** The operation timed out before completing.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/timeout`](https://docs.clustral.kube.it.com/errors/timeout)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

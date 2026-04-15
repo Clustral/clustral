@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 500** | `Internal` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** The Clustral agent did not respond within 00:02:00. The Kubernetes API server may be slow or the agent's network connectivity may be degraded. Try again shortly; if the problem persists, check the agent pod logs.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/tunnel-timeout`](https://docs.clustral.kube.it.com/errors/tunnel-timeout)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

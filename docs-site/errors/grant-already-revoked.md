@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** Grant has already been revoked.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/grant-already-revoked`](https://docs.clustral.kube.it.com/errors/grant-already-revoked)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

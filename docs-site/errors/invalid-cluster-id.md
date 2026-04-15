@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 400** | `BadRequest` | Category: Other
 
-<!-- AUTO-GEN-START -->
 **Default message:** The cluster ID '<placeholder>' in the proxy URL is not a valid UUID. Your kubeconfig may be corrupt — re-run 'clustral kube login <cluster>' to regenerate it.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/invalid-cluster-id`](https://docs.clustral.kube.it.com/errors/invalid-cluster-id)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

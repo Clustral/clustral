@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 403** | `Forbidden` | Category: Cluster & Role
 
-<!-- AUTO-GEN-START -->
 **Default message:** This kubeconfig credential was issued for cluster 00000000-0000-0000-0000-000000000000 but the request is for cluster 00000000-0000-0000-0000-000000000000. Run 'clustral kube login 00000000-0000-0000-0000-000000000000' to switch credentials.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/cluster-mismatch`](https://docs.clustral.kube.it.com/errors/cluster-mismatch)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

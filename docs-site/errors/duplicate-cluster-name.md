@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Cluster & Role
 
-<!-- AUTO-GEN-START -->
 **Default message:** Cluster named '<placeholder>' already exists.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/duplicate-cluster-name`](https://docs.clustral.kube.it.com/errors/duplicate-cluster-name)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

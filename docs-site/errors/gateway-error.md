@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 500** | `Internal` | Category: Gateway
 
-<!-- AUTO-GEN-START -->
 **Default message:** An unexpected error occurred in the API Gateway.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/gateway-error`](https://docs.clustral.kube.it.com/errors/gateway-error)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

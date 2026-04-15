@@ -19,11 +19,9 @@ emitted_by:
 
 > **HTTP 401** | `Unauthorized` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** Your bearer token has expired. Run 'clustral kube login <cluster>' to obtain a fresh kubeconfig credential.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/invalid-token`](https://docs.clustral.kube.it.com/errors/invalid-token)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

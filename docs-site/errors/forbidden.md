@@ -12,11 +12,9 @@ emitted_by:
 
 > **HTTP 403** | `Forbidden` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** You can only revoke your own credentials.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/forbidden`](https://docs.clustral.kube.it.com/errors/forbidden)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

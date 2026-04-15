@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** You already have an active JIT grant for this cluster.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/grant-already-active`](https://docs.clustral.kube.it.com/errors/grant-already-active)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

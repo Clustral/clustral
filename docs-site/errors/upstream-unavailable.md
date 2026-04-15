@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 503** | `Internal` | Category: Gateway
 
-<!-- AUTO-GEN-START -->
 **Default message:** The upstream service is temporarily unavailable (e.g. during a rolling restart).
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/upstream-unavailable`](https://docs.clustral.kube.it.com/errors/upstream-unavailable)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

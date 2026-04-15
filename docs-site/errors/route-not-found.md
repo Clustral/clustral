@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 404** | `NotFound` | Category: Gateway
 
-<!-- AUTO-GEN-START -->
 **Default message:** No route matches the requested path. Check the URL and try again.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/route-not-found`](https://docs.clustral.kube.it.com/errors/route-not-found)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

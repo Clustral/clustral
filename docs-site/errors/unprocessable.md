@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 422** | `BadRequest` | Category: Exception Handler
 
-<!-- AUTO-GEN-START -->
 **Default message:** The request is syntactically valid but semantically incorrect.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/unprocessable`](https://docs.clustral.kube.it.com/errors/unprocessable)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

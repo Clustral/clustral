@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 422** | `Validation` | Category: Validation & Generic
 
-<!-- AUTO-GEN-START -->
 **Default message:** '<placeholder>' is required.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/validation-error`](https://docs.clustral.kube.it.com/errors/validation-error)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

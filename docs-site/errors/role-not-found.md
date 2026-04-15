@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 404** | `NotFound` | Category: Cluster & Role
 
-<!-- AUTO-GEN-START -->
 **Default message:** Role '<placeholder>' not found.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/role-not-found`](https://docs.clustral.kube.it.com/errors/role-not-found)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** Only approved grants can be revoked. Current status: <placeholder>.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/grant-not-approved`](https://docs.clustral.kube.it.com/errors/grant-not-approved)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

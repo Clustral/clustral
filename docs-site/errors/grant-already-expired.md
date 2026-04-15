@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** Grant has already expired.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/grant-already-expired`](https://docs.clustral.kube.it.com/errors/grant-already-expired)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

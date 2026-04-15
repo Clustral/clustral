@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 500** | `Internal` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** An internal error occurred while forwarding the request through the agent tunnel: <placeholder>. This is typically transient — retry the command.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/tunnel-error`](https://docs.clustral.kube.it.com/errors/tunnel-error)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 401** | `Unauthorized` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** Authentication required: this request is missing the 'Authorization: Bearer <token>' header. Run 'clustral kube login <cluster>' to obtain a fresh kubeconfig credential.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/authentication-required`](https://docs.clustral.kube.it.com/errors/authentication-required)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

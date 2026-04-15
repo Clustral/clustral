@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** Request has expired.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/request-expired`](https://docs.clustral.kube.it.com/errors/request-expired)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

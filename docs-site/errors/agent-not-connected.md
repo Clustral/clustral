@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 500** | `Internal` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** The Clustral agent for cluster 00000000-0000-0000-0000-000000000000 is not currently connected to the ControlPlane. The cluster may be offline or the agent deployment may be unhealthy. Check 'clustral clusters list' for the cluster's status, and verify the agent pod is running in-cluster.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/agent-not-connected`](https://docs.clustral.kube.it.com/errors/agent-not-connected)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

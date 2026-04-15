@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 400** | `BadRequest` | Category: Exception Handler
 
-<!-- AUTO-GEN-START -->
 **Default message:** The request is malformed or contains invalid arguments.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/bad-request`](https://docs.clustral.kube.it.com/errors/bad-request)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

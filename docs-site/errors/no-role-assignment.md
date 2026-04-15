@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 403** | `Forbidden` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** <placeholder> has no active role on cluster 00000000-0000-0000-0000-000000000000. Either ask an administrator to grant you a static role, or request just-in-time access with 'clustral access request --cluster 00000000-0000-0000-0000-000000000000 --role <role-name>' (run 'clustral clusters list' to map the cluster ID to its name).
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/no-role-assignment`](https://docs.clustral.kube.it.com/errors/no-role-assignment)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

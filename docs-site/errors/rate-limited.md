@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 429** | `Forbidden` | Category: Gateway
 
-<!-- AUTO-GEN-START -->
 **Default message:** Too many requests. Slow down and retry after the period indicated in the Retry-After header.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/rate-limited`](https://docs.clustral.kube.it.com/errors/rate-limited)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

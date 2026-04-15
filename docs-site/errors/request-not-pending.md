@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 409** | `Conflict` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** Request is already <placeholder>.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/request-not-pending`](https://docs.clustral.kube.it.com/errors/request-not-pending)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

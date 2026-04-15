@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 401** | `Unauthorized` | Category: User & Credential
 
-<!-- AUTO-GEN-START -->
 **Default message:** Your kubeconfig credential (00000000-0000-0000-0000-000000000000) expired at 2025-01-01T00:00:00.0000000+00:00. Run 'clustral kube login <cluster>' to refresh it.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/credential-expired`](https://docs.clustral.kube.it.com/errors/credential-expired)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

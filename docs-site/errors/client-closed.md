@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 499** | `Internal` | Category: Exception Handler
 
-<!-- AUTO-GEN-START -->
 **Default message:** The client closed the connection before the server could respond.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/client-closed`](https://docs.clustral.kube.it.com/errors/client-closed)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

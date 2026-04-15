@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 404** | `NotFound` | Category: User & Credential
 
-<!-- AUTO-GEN-START -->
 **Default message:** User not found.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/user-not-found`](https://docs.clustral.kube.it.com/errors/user-not-found)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

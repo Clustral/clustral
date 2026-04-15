@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 500** | `Internal` | Category: Auth & Proxy
 
-<!-- AUTO-GEN-START -->
 **Default message:** The Clustral agent reported an error while proxying to the Kubernetes API (<placeholder>): <placeholder>. This usually means the agent cannot reach the Kubernetes API server — check the agent pod's network access.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/agent-error`](https://docs.clustral.kube.it.com/errors/agent-error)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

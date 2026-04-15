@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 400** | `BadRequest` | Category: Validation & Generic
 
-<!-- AUTO-GEN-START -->
 **Default message:** <placeholder>
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/invalid-format`](https://docs.clustral.kube.it.com/errors/invalid-format)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

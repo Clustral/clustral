@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 400** | `BadRequest` | Category: Access Request
 
-<!-- AUTO-GEN-START -->
 **Default message:** Invalid ISO 8601 duration: '<placeholder>'.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/invalid-duration`](https://docs.clustral.kube.it.com/errors/invalid-duration)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

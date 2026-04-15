@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 502** | `Internal` | Category: Gateway
 
-<!-- AUTO-GEN-START -->
 **Default message:** The upstream service (ControlPlane or AuditService) is not reachable. It may be starting up or has crashed.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/upstream-unreachable`](https://docs.clustral.kube.it.com/errors/upstream-unreachable)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

@@ -11,11 +11,9 @@ emitted_by:
 
 > **HTTP 504** | `Internal` | Category: Gateway
 
-<!-- AUTO-GEN-START -->
 **Default message:** The upstream service did not respond within the configured timeout.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/upstream-timeout`](https://docs.clustral.kube.it.com/errors/upstream-timeout)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

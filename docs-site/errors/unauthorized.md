@@ -12,11 +12,9 @@ emitted_by:
 
 > **HTTP 401** | `Unauthorized` | Category: User & Credential
 
-<!-- AUTO-GEN-START -->
 **Default message:** Authentication required.
 
 **Documentation URL:** [`https://docs.clustral.kube.it.com/errors/unauthorized`](https://docs.clustral.kube.it.com/errors/unauthorized)
-<!-- AUTO-GEN-END -->
 
 ## What this means
 

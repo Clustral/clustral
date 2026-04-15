@@ -15,7 +15,6 @@ on:
       - "Clustral.slnx"
       - "Directory.Packages.props"
       - ".github/workflows/build.yml"
-      - "tools/**"
   pull_request:
     branches: [main]
     paths:
@@ -29,7 +28,6 @@ on:
       - "Clustral.slnx"
       - "Directory.Packages.props"
       - ".github/workflows/build.yml"
-      - "tools/**"
 
 jobs:
   changes:
