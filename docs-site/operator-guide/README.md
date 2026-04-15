@@ -1,3 +1,7 @@
+---
+description: Deploy, upgrade, monitor, and troubleshoot Clustral in production.
+---
+
 # Operator Guide
 
 Guides for deploying, upgrading, monitoring, and troubleshooting Clustral in production.

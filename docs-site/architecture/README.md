@@ -1,3 +1,7 @@
+---
+description: How Clustral's four components fit together — authentication flows, gRPC tunnels, and the events that connect them.
+---
+
 # Architecture
 
 Clustral is composed of four main services: the ControlPlane (ASP.NET Core), the API Gateway (YARP), the Web UI (Next.js), and per-cluster Agents (Go). They communicate via REST, gRPC tunnels, and an event bus (RabbitMQ).

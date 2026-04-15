@@ -123,5 +123,5 @@ clusters:
 
 - [`clustral login`](login.md) — prerequisite: obtain the OIDC token.
 - [`clustral access`](access.md) — request the role you need first.
-- [`NO_ROLE_ASSIGNMENT`](../errors/NO_ROLE_ASSIGNMENT.md) — when the cluster refuses authorization.
+- [`NO_ROLE_ASSIGNMENT`](../errors/no-role-assignment.md) — when the cluster refuses authorization.
 - [Authentication Flows](../architecture/authentication-flows.md) — how the kubeconfig JWT is signed and validated.

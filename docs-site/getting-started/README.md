@@ -1,3 +1,7 @@
+---
+description: Stand up Clustral — run it locally against a kind cluster, or deploy the full stack on-prem with Docker Compose.
+---
+
 # Getting Started
 
 Set up Clustral for local development or deploy it on-prem with Docker Compose. Follow one of the guides below to get a working instance with Keycloak, MongoDB, and the full application stack.

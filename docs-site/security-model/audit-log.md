@@ -108,13 +108,13 @@ The most commonly needed codes. For the full current list, query the audit endpo
 | `category` | string | `AccessRequest`, `Credential`, `Cluster`, `Proxy`, `User`, `Role`, `Agent` |
 | `code` | string | Exact event code (e.g. `CAR002I`) |
 | `userId` | GUID | Actor |
-| `userEmail` | string | Actor email (exact match) |
+| `user` | string | Actor email (exact match) |
 | `clusterId` | GUID | Resource cluster |
-| `from` | ISO-8601 | Inclusive lower bound on `time` |
-| `to` | ISO-8601 | Exclusive upper bound on `time` |
-| `correlationId` | string | Trace a single request across events |
-| `limit` | int | Page size (default 100, max 1000) |
-| `cursor` | string | Opaque pagination token from the previous response |
+| `resourceId` | GUID | Resource (non-cluster, e.g. role, credential) |
+| `from` | ISO-8601 | Inclusive lower bound on event time |
+| `to` | ISO-8601 | Exclusive upper bound on event time |
+| `page` | int | Page number (1-based, default 1) |
+| `pageSize` | int | Page size (default 50, max 200) |
 
 Example — every credential event since 2026-01-01, through the gateway:
 
@@ -123,12 +123,9 @@ curl -H "Authorization: Bearer $(cat ~/.clustral/token)" \
   "https://clustral.example.com/audit-api/api/v1/audit?category=Credential&from=2026-01-01T00:00:00Z"
 ```
 
-Example — every event tied to a single correlation ID (useful when debugging a user-reported failure):
-
-```bash
-curl -H "Authorization: Bearer $(cat ~/.clustral/token)" \
-  "https://clustral.example.com/audit-api/api/v1/audit?correlationId=01J9XZK7QH3ZNW8G4V5YTQ8M1A"
-```
+{% hint style="info" %}
+The query API does not currently filter by `correlationId`. To trace a single request, narrow by `user` + time range, then grep the paged results or your log aggregator by correlation ID.
+{% endhint %}
 
 A single event by id:
 
@@ -142,22 +139,25 @@ curl -H "Authorization: Bearer $(cat ~/.clustral/token)" \
 The CLI wraps the REST API:
 
 ```bash
-clustral audit                                         # last 100 events
-clustral audit --category AccessRequest --limit 20
+clustral audit                                                # last 50 events
+clustral audit --category access_requests --page-size 20
 clustral audit --code CAR002I
 clustral audit --user alice@example.com --from 2026-01-01
-clustral audit --correlation-id 01J9XZK7QH3ZNW8G4V5YTQ8M1A
+clustral audit --severity Warning --from 2026-01-01 --to 2026-01-02
 ```
 
-See the [CLI Reference](../cli-reference/README.md) for the full flag list and output format.
+Flags: `--category`, `--code`, `--severity`, `--user`, `--cluster`, `--from`, `--to`, `--page`, `--page-size`. See the [CLI Reference](../cli-reference/README.md) for details.
 
 ## Correlation
 
-Every audit event carries `correlationId` matching the `X-Correlation-Id` header Clustral writes on every HTTP response. When debugging a failed operation, grab the correlation ID from the user's error message or response headers and filter the audit log by it to see the full event chain.
+Every audit event carries `correlationId` matching the `X-Correlation-Id` header Clustral writes on every HTTP response. The correlation ID is the stitching key across the ControlPlane logs, Gateway logs, and audit events.
+
+The audit query API does not currently filter by `correlationId` — filter by `user`, `cluster`, and time range to narrow the event window, then grep the resulting events in your log aggregator (or run `docker compose logs` piped to `jq`) to find the line with the correlation ID you're looking for.
 
 ```bash
-# User reports: "kubectl get pods failed with correlation ID 01J9XZ..."
-clustral audit --correlation-id 01J9XZK7QH3ZNW8G4V5YTQ8M1A
+# Grep every component's logs for a single correlation ID
+docker compose logs api-gateway controlplane audit-service --since 15m \
+  | jq 'select(.CorrelationId == "01J9XZK7QH3ZNW8G4V5YTQ8M1A")'
 ```
 
 A typical chain for a failed kubectl call reads: `CPR002W` (proxy denied) with a `reason` in metadata, optionally preceded by `CCR003W` or `CAR005I` if the credential was revoked or the underlying grant expired.

@@ -1,3 +1,7 @@
+---
+description: Reference for every `clustral` command — authentication, kubeconfig issuance, JIT access requests, configuration, and diagnostics.
+---
+
 # CLI Reference
 
 The `clustral` CLI provides commands for authentication, kubeconfig management, access requests, and cluster administration.
