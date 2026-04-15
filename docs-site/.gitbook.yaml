@@ -19,5 +19,11 @@ structure:
 # ErrorDocumentation.UrlFor() (packages/Clustral.Sdk/Http/ErrorDocumentation.cs).
 # Those URLs are a public contract with external clients; if a page ever
 # moves, add its old path here to preserve the contract.
-redirects:
-  # /errors/old-code: /errors/new-code
+#
+# When you need to add entries, replace the empty mapping with block form:
+#
+#   redirects:
+#     /errors/old-code: /errors/new-code
+#
+# GitBook rejects `redirects:` as null, so leave the `{}` when empty.
+redirects: {}
