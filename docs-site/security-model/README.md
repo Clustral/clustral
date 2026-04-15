@@ -1,3 +1,7 @@
+---
+description: OIDC, three-JWT architecture, mTLS for agents, kubeconfig credential lifecycle, and the audit trail — Clustral's security reference.
+---
+
 # Security Model
 
 Clustral's security architecture covers OIDC authentication, mTLS for agent-to-ControlPlane communication, short-lived kubeconfig credentials, and a full audit trail of all access.
