@@ -32,10 +32,24 @@
 
 * [Overview](cli-reference/README.md)
 * [clustral login](cli-reference/login.md)
-* [clustral kube login](cli-reference/kube-login.md)
-* [clustral access](cli-reference/access.md)
-* [clustral config](cli-reference/config.md)
+* [clustral logout](cli-reference/logout.md)
+* [clustral whoami](cli-reference/whoami.md)
 * [clustral status](cli-reference/status.md)
+* [clustral doctor](cli-reference/doctor.md)
+* [clustral kube login](cli-reference/kube-login.md)
+* [clustral kube logout](cli-reference/kube-logout.md)
+* [clustral kube list](cli-reference/kube-list.md)
+* [clustral access](cli-reference/access.md)
+* [clustral clusters](cli-reference/clusters.md)
+* [clustral roles](cli-reference/roles.md)
+* [clustral users](cli-reference/users.md)
+* [clustral audit](cli-reference/audit.md)
+* [clustral profiles](cli-reference/profiles.md)
+* [clustral accounts](cli-reference/accounts.md)
+* [clustral config](cli-reference/config.md)
+* [clustral version](cli-reference/version.md)
+* [clustral update](cli-reference/update.md)
+* [clustral completion](cli-reference/completion.md)
 
 ## API Reference
 
