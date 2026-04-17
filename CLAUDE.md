@@ -217,7 +217,7 @@ Services:
 
 ## Helm Charts
 
-Two Helm charts live in `charts/`: `agent/` (Go agent for target clusters) and `clustral/` (full platform stack). Published as OCI artifacts to `oci://ghcr.io/clustral/helm/` on every git tag.
+Two Helm charts live in `charts/`: `agent/` (Go agent for target clusters) and `clustral/` (full platform stack). Published to GitHub Pages at `https://clustral.github.io/clustral` via `chart-releaser-action` on every git tag.
 
 ### Key conventions
 
@@ -301,7 +301,7 @@ dotnet test src/Clustral.E2E.Tests
 - **Docker tags** — `latest` only on stable releases. Pre-releases get channel floating tags (`alpha`, `beta`, `rc`). Stable releases get `version`, `major.minor`, `major`, and `latest`.
 - **CI path filtering** — only affected components are built/tested. `.github/workflows/build.yml` uses `dorny/paths-filter` to detect which components changed.
 - **Test reporting** — `.trx` results uploaded to GitHub Checks via `dorny/test-reporter`. Code coverage artifacts uploaded for both .NET and Go.
-- **Helm charts** — `.github/workflows/helm.yml` lints on PRs touching `charts/`, publishes to `oci://ghcr.io/clustral/helm/` on `v*` tag push.
+- **Helm charts** — `.github/workflows/helm.yml` lints on PRs touching `charts/`, publishes to GitHub Pages (`https://clustral.github.io/clustral`) on `v*` tag push.
 
 ---
 

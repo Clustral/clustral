@@ -2,10 +2,10 @@
 
 Two Helm charts for deploying Clustral on Kubernetes.
 
-| Chart | What it deploys | Registry |
-|---|---|---|
-| `clustral` | The full platform (ControlPlane, API Gateway, AuditService, Web UI, MongoDB, RabbitMQ) | `oci://ghcr.io/clustral/helm/clustral` |
-| `clustral-agent` | The Go agent into a target cluster | `oci://ghcr.io/clustral/helm/clustral-agent` |
+| Chart | What it deploys |
+|---|---|
+| `clustral` | The full platform (ControlPlane, API Gateway, AuditService, Web UI, MongoDB, RabbitMQ) |
+| `clustral-agent` | The Go agent into a target cluster |
 
 ## Prerequisites
 
@@ -13,10 +13,17 @@ Two Helm charts for deploying Clustral on Kubernetes.
 - kubectl with cluster-admin access
 - [cert-manager](https://cert-manager.io) installed on the target cluster (default install generates all TLS/JWT secrets automatically). If you don't use cert-manager, see [Without cert-manager](#without-cert-manager) below.
 
+## Add the Helm repository
+
+```bash
+helm repo add clustral https://clustral.github.io/clustral
+helm repo update
+```
+
 ## Install the platform
 
 ```bash
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   --set global.domain=clustral.example.com \
   --set oidc.authority=https://idp.example.com \
@@ -48,7 +55,7 @@ clustral clusters register my-cluster
 # → bootstrap token: bst_ey...
 
 # Install the agent
-helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+helm install clustral-agent clustral/clustral-agent \
   --namespace clustral-system --create-namespace \
   --set controlPlaneUrl=clustral.example.com:5443 \
   --set clusterId=<cluster-id> \
@@ -60,8 +67,8 @@ helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
 Full values documentation:
 
 ```bash
-helm show values oci://ghcr.io/clustral/helm/clustral
-helm show values oci://ghcr.io/clustral/helm/clustral-agent
+helm show values clustral/clustral
+helm show values clustral/clustral-agent
 ```
 
 ### Most commonly changed values (platform)
@@ -103,7 +110,7 @@ If your cluster does not run cert-manager, generate the secrets manually:
 Then install with cert-manager disabled:
 
 ```bash
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   --set certManager.enabled=false \
   --set global.domain=clustral.example.com \
@@ -119,7 +126,7 @@ helm install clustral oci://ghcr.io/clustral/helm/clustral \
 To use Gateway API instead of nginx Ingress:
 
 ```bash
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --set ingress.enabled=false \
   --set gatewayApi.enabled=true \
   --set gatewayApi.gatewayRef.name=my-gateway \
@@ -131,7 +138,7 @@ The chart creates `HTTPRoute` and `GRPCRoute` resources attached to your Gateway
 ## Upgrading
 
 ```bash
-helm upgrade clustral oci://ghcr.io/clustral/helm/clustral \
+helm upgrade clustral clustral/clustral \
   --namespace clustral --reuse-values
 ```
 

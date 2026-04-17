@@ -115,7 +115,7 @@ clustral clusters register my-cluster
 # → new bootstrap token
 
 # In the target cluster
-helm upgrade clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+helm upgrade clustral-agent clustral/clustral-agent \
   --namespace clustral-system \
   --reuse-values \
   --set bootstrapToken=bst_ey... \
