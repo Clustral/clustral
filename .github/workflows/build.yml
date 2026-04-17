@@ -158,3 +158,24 @@ jobs:
       - name: Build
         working-directory: src/Clustral.Web
         run: bun run build
+
+  # Gate job — always runs, always reports a status. Branch protection
+  # requires this job (not the conditional build jobs above) so PRs that
+  # only touch docs, workflows, or charts aren't stuck waiting forever.
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs: [build-dotnet, build-agent, build-web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          # Fail if any needed job failed (not just skipped).
+          results=("${{ needs.build-dotnet.result }}" "${{ needs.build-agent.result }}" "${{ needs.build-web.result }}")
+          for r in "${results[@]}"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "Job failed or was cancelled: $r"
+              exit 1
+            fi
+          done
+          echo "All jobs passed or were skipped — CI gate OK"
