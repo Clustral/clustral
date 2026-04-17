@@ -68,6 +68,176 @@ graph TB
 
 The double arrow on `AGENT → CP_GRPC` is the only link that crosses a network boundary into the target cluster — and it's agent-initiated. No traffic ever enters the cluster from the control plane side.
 
+## Kubernetes deployment topology
+
+When you deploy Clustral on Kubernetes (via the Helm chart), nginx is replaced by an Ingress or Gateway API resource. Internal communication stays HTTP. TLS terminates at the Ingress controller or Gateway, and gRPC mTLS always runs on its own dedicated Service (never through the Ingress).
+
+### Ingress + in-cluster dependencies
+
+The default Helm install: Bitnami MongoDB + RabbitMQ run as subchart Pods in the same namespace. The Ingress controller handles TLS termination.
+
+```mermaid
+graph TB
+    subgraph Internet
+        USER[Developer laptop<br/>CLI + kubectl + browser]
+    end
+
+    subgraph "Kubernetes cluster (clustral namespace)"
+        ING[Ingress controller<br/>:443 HTTPS]
+        GW[API Gateway Pod<br/>:8080 HTTP]
+        WEB[Web UI Pod<br/>:3000]
+        CP_HTTP[ControlPlane Pod<br/>:5100 HTTP]
+        CP_GRPC_SVC["ControlPlane gRPC Service<br/>:5443 LoadBalancer<br/>(mTLS, NOT through Ingress)"]
+        AUDIT[AuditService Pod<br/>:5200 HTTP]
+        MONGO[(MongoDB Pod :27017)]
+        MQ[(RabbitMQ Pod :5672)]
+    end
+
+    subgraph "Target cluster"
+        AGENT[clustral-agent Pod]
+        K8S[k8s API Server]
+    end
+
+    USER -- "HTTPS :443" --> ING
+    ING -- "/api/* HTTP" --> GW
+    ING -- "/* HTTP" --> WEB
+    GW -- "X-Internal-Token" --> CP_HTTP
+    GW -- "X-Internal-Token" --> AUDIT
+    CP_HTTP --> MONGO
+    AUDIT --> MONGO
+    CP_HTTP -- "AMQP" --> MQ
+    MQ -- "AMQP" --> AUDIT
+    AGENT == "outbound gRPC mTLS :5443" ==> CP_GRPC_SVC
+    AGENT -- "in-cluster HTTPS" --> K8S
+```
+
+Key differences from Docker Compose:
+- The Ingress controller replaces nginx. It terminates TLS using the `clustral-tls` Secret (created by cert-manager or manually).
+- The gRPC port (`:5443`) is exposed via a **separate LoadBalancer Service**, bypassing the Ingress entirely. Agents connect directly to it. This preserves the persistent bidirectional stream that breaks on L7 proxies.
+- MongoDB and RabbitMQ run as Bitnami subchart Pods in the same namespace. Communication is in-cluster ClusterIP — no TLS needed.
+
+### Ingress + external dependencies
+
+For production: point at managed MongoDB (Atlas, DocumentDB) and RabbitMQ (CloudAMQP, Amazon MQ) outside the cluster. Set `mongodb.enabled: false` + `externalMongodb.connectionString` and `rabbitmq.enabled: false` + `externalRabbitmq.*` in Helm values.
+
+```mermaid
+graph TB
+    subgraph Internet
+        USER[Developer laptop]
+    end
+
+    subgraph "Kubernetes cluster"
+        ING[Ingress :443 HTTPS]
+        GW[API Gateway :8080]
+        WEB[Web UI :3000]
+        CP_HTTP[ControlPlane :5100]
+        CP_GRPC_SVC["gRPC Service :5443<br/>LoadBalancer (mTLS)"]
+        AUDIT[AuditService :5200]
+    end
+
+    subgraph "Managed services"
+        MONGO[(MongoDB Atlas<br/>mongodb+srv://)]
+        MQ[(CloudAMQP<br/>amqps://)]
+    end
+
+    subgraph "Target cluster"
+        AGENT[clustral-agent]
+        K8S[k8s API]
+    end
+
+    USER -- "HTTPS :443" --> ING
+    ING --> GW --> CP_HTTP
+    ING --> WEB
+    GW --> AUDIT
+    CP_HTTP -- "TLS" --> MONGO
+    AUDIT -- "TLS" --> MONGO
+    CP_HTTP -- "AMQPS" --> MQ
+    MQ -- "AMQPS" --> AUDIT
+    AGENT == "gRPC mTLS :5443" ==> CP_GRPC_SVC
+    AGENT --> K8S
+```
+
+The difference is the egress path: ControlPlane and AuditService need egress to the managed service endpoints (typically over TLS/AMQPS). The `NetworkPolicy` templates allow this — configure `externalMongodb` and `externalRabbitmq` CIDRs if you run default-deny policies.
+
+### Gateway API + in-cluster dependencies
+
+Set `ingress.enabled: false` and `gatewayApi.enabled: true` in Helm values. You must deploy a Gateway resource separately (Envoy Gateway, Istio, Cilium, etc.).
+
+```mermaid
+graph TB
+    subgraph Internet
+        USER[Developer laptop]
+    end
+
+    subgraph "Kubernetes cluster (clustral namespace)"
+        GWAPI["Gateway (operator-managed)<br/>listener: https :443<br/>listener: grpc-mtls :5443"]
+        HTTP_ROUTE[HTTPRoute]
+        GRPC_ROUTE[GRPCRoute]
+        GW[API Gateway :8080]
+        WEB[Web UI :3000]
+        CP_HTTP[ControlPlane :5100]
+        CP_GRPC[ControlPlane :5443]
+        AUDIT[AuditService :5200]
+        MONGO[(MongoDB Pod :27017)]
+        MQ[(RabbitMQ Pod :5672)]
+    end
+
+    subgraph "Target cluster"
+        AGENT[clustral-agent]
+        K8S[k8s API]
+    end
+
+    USER -- "HTTPS :443" --> GWAPI
+    GWAPI -- "HTTPRoute" --> HTTP_ROUTE
+    HTTP_ROUTE -- "/api/*" --> GW
+    HTTP_ROUTE -- "/*" --> WEB
+    GW --> CP_HTTP
+    GW --> AUDIT
+    AGENT -- "gRPC mTLS :5443" --> GWAPI
+    GWAPI -- "GRPCRoute" --> GRPC_ROUTE
+    GRPC_ROUTE --> CP_GRPC
+    CP_HTTP --> MONGO
+    AUDIT --> MONGO
+    CP_HTTP --> MQ
+    MQ --> AUDIT
+    AGENT --> K8S
+```
+
+{% hint style="info" %}
+With Gateway API, the gRPC agent traffic can optionally route through the Gateway (via `GRPCRoute` attached to a `grpc-mtls` listener). This works with Gateway implementations that handle gRPC natively (Envoy Gateway, Istio). Alternatively, disable `gatewayApi.grpcRoute.enabled` and use the standalone LoadBalancer Service — same as the Ingress topology.
+{% endhint %}
+
+The Gateway must have two listeners:
+
+| Listener name | Port | Protocol | TLS mode | Purpose |
+|---|---|---|---|---|
+| `https` | 443 | HTTPS | Terminate | User traffic (CLI, Web UI, kubectl) |
+| `grpc-mtls` | 5443 | TLS | Passthrough | Agent mTLS tunnel (the Gateway passes TLS through to the ControlPlane, which does its own mTLS handshake) |
+
+These listener names are configurable via `gatewayApi.httpListenerName` and `gatewayApi.grpcListenerName` in Helm values.
+
+### Gateway API + external dependencies
+
+Same as the Ingress + external diagram, but replace the Ingress with a Gateway and HTTPRoute/GRPCRoute. The external dependency traffic (MongoDB Atlas, CloudAMQP) is identical — it exits the cluster over TLS/AMQPS regardless of how the user-facing traffic enters.
+
+### Internal communication — always HTTP
+
+Regardless of topology, services talk HTTP inside the cluster:
+
+| From | To | URL | Protocol |
+|---|---|---|---|
+| Ingress/Gateway | API Gateway | `http://clustral-api-gateway:8080` | HTTP |
+| Ingress/Gateway | Web UI | `http://clustral-web:3000` | HTTP |
+| API Gateway | ControlPlane | `http://clustral-controlplane:5100` | HTTP |
+| API Gateway | AuditService | `http://clustral-audit-service:5200` | HTTP |
+| Web UI | API Gateway | `http://clustral-api-gateway:8080` | HTTP |
+| ControlPlane | MongoDB | `mongodb://clustral-mongodb:27017` | MongoDB wire |
+| ControlPlane | RabbitMQ | `amqp://clustral-rabbitmq:5672` | AMQP |
+| AuditService | MongoDB | `mongodb://clustral-mongodb:27017` | MongoDB wire |
+| AuditService | RabbitMQ | `amqp://clustral-rabbitmq:5672` | AMQP |
+
+TLS terminates at the boundary (Ingress/Gateway for users, the ControlPlane's Kestrel for agent mTLS). Everything behind that is plaintext inside the cluster network. If your security model requires encryption in transit for internal traffic, enable a service mesh (Istio/Linkerd mTLS) — the Clustral chart is mesh-compatible out of the box.
+
 ## Outbound from agents
 
 An agent needs exactly one outbound connection:
@@ -138,4 +308,5 @@ If you run the control plane on Kubernetes, translate these into `NetworkPolicy`
 - [Authentication Flows](authentication-flows.md) — what authenticates on each port.
 - [Tunnel Lifecycle](tunnel-lifecycle.md) — how the `:5443` connection is opened and maintained.
 - [Agent Deployment](../agent-deployment/README.md) — install the agent with the right egress rules.
-- [On-Prem Docker Compose](../getting-started/on-prem-docker-compose.md) — the reference single-VM topology that matches this map.
+- [Kubernetes Deployment](../operator-guide/kubernetes-deployment.md) — deploy the platform with Helm (Ingress or Gateway API).
+- [On-Prem Docker Compose](../getting-started/on-prem-docker-compose.md) — the reference single-VM topology that matches the Docker Compose diagram.
