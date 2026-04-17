@@ -993,6 +993,30 @@ docker compose up -d
 | `admin`  | `admin`  | `clustral-admin` |
 | `dev`    | `dev`    | `clustral-user`  |
 
+### Helm Installation (Kubernetes)
+
+Deploy Clustral on Kubernetes with Helm. Requires [cert-manager](https://cert-manager.io) (installed on the cluster).
+
+```bash
+# Platform (all components + MongoDB + RabbitMQ)
+helm install clustral oci://ghcr.io/clustral/helm/clustral \
+  --namespace clustral --create-namespace \
+  --set global.domain=clustral.example.com \
+  --set oidc.authority=https://idp.example.com \
+  --set oidc.clientId=clustral-control-plane \
+  --set oidc.web.clientId=clustral-web \
+  --set oidc.web.clientSecret=<secret> \
+  --set web.env.authSecret=$(openssl rand -base64 32)
+
+# Agent (per target cluster)
+helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+  --namespace clustral-system --create-namespace \
+  --set controlPlaneUrl=clustral.example.com:5443 \
+  --set clusterId=<id> --set bootstrapToken=<token>
+```
+
+See [charts/README.md](charts/README.md) for the full values reference, Gateway API support, and operating without cert-manager.
+
 ## Install the CLI
 
 ### macOS / Linux (one-liner)
@@ -1516,6 +1540,9 @@ Clustral/clustral (monorepo)
 │   ├── Clustral.Sdk/            # Shared .NET: TokenCache, KubeconfigWriter
 │   ├── Clustral.Contracts/      # Shared integration event records (MassTransit)
 │   └── proto/                   # Protobuf contracts (shared between .NET + Go)
+├── charts/
+│   ├── agent/               # Agent Helm chart (target clusters)
+│   └── clustral/            # Platform Helm chart (full stack)
 ├── infra/
 │   ├── keycloak/                # Realm export with pre-configured clients
 │   ├── nginx/                   # SSL termination proxy + routing

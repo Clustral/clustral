@@ -1,0 +1,90 @@
+name: Helm Charts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm.yml"
+      - "ct.yaml"
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm.yml"
+      - "ct.yaml"
+
+jobs:
+  lint:
+    name: Lint & template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Add Bitnami repo
+        run: helm repo add bitnami https://charts.bitnami.com/bitnami
+
+      - name: Build dependencies
+        run: helm dependency build charts/clustral
+
+      - name: Lint agent chart
+        run: helm lint charts/agent
+
+      - name: Lint platform chart
+        run: helm lint charts/clustral
+
+      - name: Template agent chart
+        run: |
+          helm template test-agent charts/agent \
+            -f charts/agent/ci/test-values.yaml \
+            | kubectl apply --dry-run=client -f -
+
+      - name: Template platform chart
+        run: |
+          helm template test-platform charts/clustral \
+            -f charts/clustral/ci/test-values.yaml \
+            | kubectl apply --dry-run=client -f -
+
+  publish:
+    name: Publish to GHCR
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: Package and push agent chart
+        run: |
+          sed -i "s/^version:.*/version: $VERSION/" charts/agent/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" charts/agent/Chart.yaml
+          helm package charts/agent
+          helm push clustral-agent-$VERSION.tgz oci://ghcr.io/${{ github.repository_owner }}/helm
+
+      - name: Package and push platform chart
+        run: |
+          sed -i "s/^version:.*/version: $VERSION/" charts/clustral/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" charts/clustral/Chart.yaml
+          helm dependency build charts/clustral
+          helm package charts/clustral
+          helm push clustral-$VERSION.tgz oci://ghcr.io/${{ github.repository_owner }}/helm

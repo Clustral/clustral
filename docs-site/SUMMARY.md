@@ -18,6 +18,7 @@
 ## Operator Guide
 
 * [Deployment](operator-guide/README.md)
+* [Kubernetes Deployment](operator-guide/kubernetes-deployment.md)
 * [Upgrade](operator-guide/upgrade.md)
 * [Monitoring](operator-guide/monitoring.md)
 * [Troubleshooting](operator-guide/troubleshooting.md)
