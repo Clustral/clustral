@@ -152,12 +152,16 @@ gatewayApi:
   gatewayRef:
     name: clustral
     namespace: ""
+  # -- Gateway listener section names (must match your Gateway spec)
+  httpListenerName: https
+  grpcListenerName: grpc-mtls
   tls:
     certificateRef:
       name: clustral-tls
   httpRoute:
     annotations: {}
   grpcRoute:
+    # -- Create a GRPCRoute for agent mTLS traffic on port 5443
     enabled: true
     annotations: {}
 

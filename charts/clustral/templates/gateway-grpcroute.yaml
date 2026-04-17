@@ -15,7 +15,7 @@ spec:
       {{- if .Values.gatewayApi.gatewayRef.namespace }}
       namespace: {{ .Values.gatewayApi.gatewayRef.namespace }}
       {{- end }}
-      port: {{ .Values.controlplane.grpcService.port }}
+      sectionName: {{ .Values.gatewayApi.grpcListenerName }}
   rules:
     - backendRefs:
         - name: {{ include "clustral.fullname" . }}-controlplane-grpc

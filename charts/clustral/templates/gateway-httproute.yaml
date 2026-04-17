@@ -15,6 +15,7 @@ spec:
       {{- if .Values.gatewayApi.gatewayRef.namespace }}
       namespace: {{ .Values.gatewayApi.gatewayRef.namespace }}
       {{- end }}
+      sectionName: {{ .Values.gatewayApi.httpListenerName }}
   hostnames:
     - {{ .Values.global.domain }}
   rules:
