@@ -41,17 +41,22 @@ jobs:
       - name: Lint platform chart
         run: helm lint charts/clustral
 
-      - name: Template agent chart
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: Template + validate agent chart
         run: |
           helm template test-agent charts/agent \
             -f charts/agent/ci/test-values.yaml \
-            | kubectl apply --dry-run=client --validate=false -f -
+            | kubeconform -strict -summary -ignore-missing-schemas
 
-      - name: Template platform chart
+      - name: Template + validate platform chart
         run: |
           helm template test-platform charts/clustral \
             -f charts/clustral/ci/test-values.yaml \
-            | kubectl apply --dry-run=client --validate=false -f -
+            | kubeconform -strict -summary -ignore-missing-schemas
 
   publish:
     name: Publish to GHCR
