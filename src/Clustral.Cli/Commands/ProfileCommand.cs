@@ -280,6 +280,9 @@ internal static class ProfileCommand
     /// </summary>
     private static string SafeCombine(string baseDir, string userSegment)
     {
+        if (Path.IsPathRooted(userSegment))
+            throw new ArgumentException($"Invalid name '{userSegment}' — absolute paths are not allowed.");
+
         var fullPath = Path.GetFullPath(Path.Combine(baseDir, userSegment));
         var fullBase = Path.GetFullPath(baseDir) + Path.DirectorySeparatorChar;
         if (!fullPath.StartsWith(fullBase, StringComparison.Ordinal))
