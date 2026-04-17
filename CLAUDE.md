@@ -19,8 +19,10 @@ clustral/
 │   ├── Clustral.Sdk/            # Shared: TokenCache, KubeconfigWriter, GrpcChannelFactory, CQS
 │   ├── Clustral.Contracts/      # Shared integration event records (MassTransit)
 │   └── proto/                   # .proto contracts: ClusterService, TunnelService
+├── charts/
+│   ├── agent/               # Agent Helm chart (target clusters)
+│   └── clustral/            # Platform Helm chart (full stack)
 ├── infra/
-│   ├── helm/                    # Agent Helm chart
 │   ├── nginx/                   # nginx gateway config (TLS termination, routing)
 │   ├── internal-jwt/            # ES256 key pair for internal JWTs (gateway → downstream)
 │   ├── kubeconfig-jwt/          # ES256 key pair for kubeconfig JWTs (ControlPlane → gateway)
@@ -213,6 +215,26 @@ Services:
 
 ---
 
+## Helm Charts
+
+Two Helm charts live in `charts/`: `agent/` (Go agent for target clusters) and `clustral/` (full platform stack). Published as OCI artifacts to `oci://ghcr.io/clustral/helm/` on every git tag.
+
+### Key conventions
+
+- **`values.yaml` is the source of truth.** Never hardcode defaults in templates — always reference `{{ .Values.* }}`. Every env var the app consumes must be surfaced as a value.
+- **Template naming:** `<service>-deployment.yaml`, `<service>-service.yaml` per app service.
+- **Enterprise toggles** (ServiceMonitor, PrometheusRule, cert-manager, NetworkPolicy, Gateway API) are gated with `{{- if .Values.<feature>.enabled }}`. Default to enabled only if the feature works on vanilla k8s.
+- **Ingress vs Gateway API** are mutually exclusive, validated in `_helpers.tpl` with `fail`.
+- **Secrets:** the chart never generates cryptographic material in templates. cert-manager generates Secrets when enabled (default); `generate-secrets.sh` is the manual fallback.
+- **cert-manager is enabled by default** — generates all 4 secrets (CA, internal JWT, kubeconfig JWT, TLS) automatically. `Es256JwtService.LoadKey` in `packages/Clustral.Sdk/Auth/Es256JwtService.cs` accepts both raw EC PEM and X.509 certificate PEM to support both paths.
+- **gRPC port 5443** is exposed via its own Service (not through Ingress/Gateway), because persistent gRPC streams break on L7 proxies.
+- **Versioning:** `version` and `appVersion` in Chart.yaml are stamped by CI from the git tag. Do not bump manually.
+- **Testing:** `helm lint` + `helm template --dry-run` in CI (`helm.yml`). `helm test` runs a health-check pod. `ci/test-values.yaml` provides minimum values.
+
+See `charts/CLAUDE.md` for the full contributor guide.
+
+---
+
 ## Naming Conventions
 
 | Scope | Convention |
@@ -279,6 +301,7 @@ dotnet test src/Clustral.E2E.Tests
 - **Docker tags** — `latest` only on stable releases. Pre-releases get channel floating tags (`alpha`, `beta`, `rc`). Stable releases get `version`, `major.minor`, `major`, and `latest`.
 - **CI path filtering** — only affected components are built/tested. `.github/workflows/build.yml` uses `dorny/paths-filter` to detect which components changed.
 - **Test reporting** — `.trx` results uploaded to GitHub Checks via `dorny/test-reporter`. Code coverage artifacts uploaded for both .NET and Go.
+- **Helm charts** — `.github/workflows/helm.yml` lints on PRs touching `charts/`, publishes to `oci://ghcr.io/clustral/helm/` on `v*` tag push.
 
 ---
 
@@ -311,7 +334,7 @@ See the "Error Response Shapes" section of the root `README.md` for the full use
 - **gRPC stubs are generated.** Files under `*/Generated/` must not be edited manually.
 - **OIDC provider config** — OIDC authentication is handled centrally by the API Gateway. The ControlPlane no longer has OIDC configuration — it validates internal JWTs (ES256) from the gateway. If using Keycloak, the realm export in `infra/keycloak/` must be updated when adding new OAuth scopes or clients.
 - **Web state management**: local/ephemeral UI state → React `useState`; server state → TanStack Query; cross-component shared state → Zustand. Do not reach for Zustand for data that TanStack Query already owns.
-- **Helm chart changes** in `infra/helm/` must keep `values.yaml` as the source of truth; do not hardcode values in templates.
+- **Helm chart changes** in `charts/` must keep `values.yaml` as the source of truth; do not hardcode values in templates. Enterprise toggles (ServiceMonitor, PrometheusRule, cert-manager, NetworkPolicy) are gated on `{{- if .Values.<feature>.enabled }}` — always use this pattern for features requiring CRDs.
 - **Security-sensitive paths** (token handling in `TokenCache`, tunnel auth in `TunnelService`, internal JWT signing in `InternalJwtService`, kubeconfig JWT signing in `KubeconfigJwtService`) require extra care. Flag any change that touches these for explicit review rather than silently implementing.
 - **Keep PRs focused.** Proto change, migration, and implementation should be reviewable together but should be called out as distinct layers in the PR description.
 - **Domain-Driven Design** — the ControlPlane uses DDD with aggregate roots, domain services, specifications, repositories, and domain events. `AccessRequest` is an aggregate root with state transition methods. Domain services include `UserSyncService`, `ProxyAuthService`, and `ImpersonationResolver`. Handlers are thin orchestrators — business logic lives in the domain.

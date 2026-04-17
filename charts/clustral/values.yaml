@@ -1,0 +1,249 @@
+# -- Clustral Platform Helm Chart
+# -- See README.md for full documentation.
+
+global:
+  # -- Domain for Ingress/Gateway TLS and CORS origins.
+  domain: clustral.example.com
+
+# ── ControlPlane ────────────────────────────────────────────────────────────
+controlplane:
+  image:
+    repository: ghcr.io/clustral/clustral-controlplane
+    # -- Overrides appVersion from Chart.yaml
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # -- gRPC mTLS service for agent connections (direct, not through gateway)
+  grpcService:
+    # -- Service type — LoadBalancer exposes the port externally for agents
+    type: LoadBalancer
+    # -- Port for agent gRPC mTLS connections
+    port: 5443
+    # -- Annotations (e.g., cloud LB config, external-dns)
+    annotations: {}
+  env:
+    # -- MongoDB database name for the ControlPlane
+    mongoDatabaseName: clustral
+    # -- Default kubeconfig credential TTL (TimeSpan format)
+    credentialDefaultTtl: "08:00:00"
+    # -- Maximum kubeconfig credential TTL (TimeSpan format)
+    credentialMaxTtl: "08:00:00"
+    # -- Max wait for agent response over gRPC tunnel
+    proxyTunnelTimeout: "00:02:00"
+    proxyRateLimiting:
+      # -- Enable per-credential token bucket rate limiting
+      enabled: true
+      # -- Token bucket capacity
+      burstSize: 200
+      # -- Sustained refill rate (requests/second)
+      requestsPerSecond: 100
+      # -- Queued requests before 429
+      queueSize: 50
+    # -- Base URL for error documentation links in RFC 7807 responses
+    errorsDocsBaseUrl: "https://docs.clustral.kube.it.com/errors/"
+
+# ── API Gateway ─────────────────────────────────────────────────────────────
+apiGateway:
+  image:
+    repository: ghcr.io/clustral/clustral-api-gateway
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    # -- Additional CORS allowed origins (global.domain is always included)
+    corsAllowedOrigins: []
+
+# ── Audit Service ───────────────────────────────────────────────────────────
+auditService:
+  image:
+    repository: ghcr.io/clustral/clustral-audit-service
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    # -- MongoDB database name for the Audit Service
+    mongoDatabaseName: clustral-audit
+
+# ── Web UI ──────────────────────────────────────────────────────────────────
+web:
+  image:
+    repository: ghcr.io/clustral/clustral-web
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 256m
+      memory: 256Mi
+  env:
+    # -- (required) Random 32-byte base64 string for NextAuth session encryption
+    authSecret: ""
+
+# ── OIDC ────────────────────────────────────────────────────────────────────
+oidc:
+  # -- (required) OIDC provider issuer URL
+  authority: ""
+  # -- OIDC metadata URL (defaults to authority + /.well-known/openid-configuration)
+  metadataAddress: ""
+  # -- (required) OIDC client ID (audience for API tokens)
+  clientId: ""
+  # -- Audience claim expected in tokens (defaults to clientId)
+  audience: ""
+  # -- Require HTTPS for OIDC metadata endpoint
+  requireHttps: true
+  # -- JWT claim mapped to user identity
+  nameClaimType: preferred_username
+  web:
+    # -- OIDC issuer for Web UI (defaults to oidc.authority)
+    issuer: ""
+    # -- (required) Web UI OIDC client ID
+    clientId: ""
+    # -- (required) Web UI OIDC client secret
+    clientSecret: ""
+
+# ── Secrets ─────────────────────────────────────────────────────────────────
+# Names of Kubernetes Secrets. When certManager.enabled=true, these are
+# created automatically as Certificate resources. When false, create them
+# manually before installing (see scripts/generate-secrets.sh).
+secrets:
+  # -- Secret containing CA cert + key (tls.crt/tls.key or ca.crt/ca.key)
+  ca: clustral-ca
+  # -- Secret containing internal JWT ES256 keypair
+  internalJwt: clustral-internal-jwt
+  # -- Secret containing kubeconfig JWT ES256 keypair
+  kubeconfigJwt: clustral-kubeconfig-jwt
+  # -- TLS Secret for Ingress/Gateway
+  tls: clustral-tls
+
+# ── Ingress ─────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  tls: true
+
+# ── Gateway API ─────────────────────────────────────────────────────────────
+gatewayApi:
+  enabled: false
+  gatewayRef:
+    name: clustral
+    namespace: ""
+  # -- Gateway listener section names (must match your Gateway spec)
+  httpListenerName: https
+  grpcListenerName: grpc-mtls
+  tls:
+    certificateRef:
+      name: clustral-tls
+  httpRoute:
+    annotations: {}
+  grpcRoute:
+    # -- Create a GRPCRoute for agent mTLS traffic on port 5443
+    enabled: true
+    annotations: {}
+
+# ── MongoDB (Bitnami subchart) ──────────────────────────────────────────────
+mongodb:
+  enabled: true
+  auth:
+    enabled: false
+
+# -- External MongoDB connection string (used when mongodb.enabled=false)
+externalMongodb:
+  connectionString: ""
+
+# ── RabbitMQ (Bitnami subchart) ─────────────────────────────────────────────
+rabbitmq:
+  enabled: true
+  auth:
+    username: clustral
+    password: clustral
+
+# -- External RabbitMQ settings (used when rabbitmq.enabled=false)
+externalRabbitmq:
+  host: ""
+  port: 5672
+  user: ""
+  pass: ""
+
+# ── Security ────────────────────────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# ── Network Policy ──────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  # -- CIDR of the OIDC provider for egress rules (leave empty to allow all)
+  oidcCidr: ""
+
+# ── Pod Disruption Budget ──────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# ── Prometheus Operator ────────────────────────────────────────────────────
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+  prometheusRule:
+    enabled: false
+    labels: {}
+
+# ── cert-manager ───────────────────────────────────────────────────────────
+certManager:
+  enabled: true
+  # -- Issuer reference for the TLS certificate. If name is empty, the
+  # self-signed issuer is used. Set to a real ClusterIssuer (e.g., letsencrypt)
+  # for production.
+  issuerRef:
+    name: ""
+    kind: ClusterIssuer
+  ca:
+    duration: 87600h    # 10 years
+    renewBefore: 8760h  # 1 year
+  jwt:
+    duration: 8760h     # 1 year
+    renewBefore: 720h   # 30 days
+  tls:
+    duration: 8760h     # 1 year
+    renewBefore: 720h   # 30 days
+
+# ── Scheduling (applied to all deployments) ────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}

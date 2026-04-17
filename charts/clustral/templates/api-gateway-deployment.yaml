@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clustral.fullname" . }}-api-gateway
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.apiGateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clustral.labels" . | nindent 8 }}
+        {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api-gateway
+          image: "{{ .Values.apiGateway.image.repository }}:{{ include "clustral.imageTag" (dict "tag" .Values.apiGateway.image.tag "chartAppVersion" .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.apiGateway.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            - name: Oidc__Authority
+              value: {{ include "clustral.oidcAuthority" . | quote }}
+            - name: Oidc__MetadataAddress
+              value: {{ include "clustral.oidcMetadataAddress" . | quote }}
+            - name: Oidc__ClientId
+              value: {{ .Values.oidc.clientId | quote }}
+            - name: Oidc__Audience
+              value: {{ .Values.oidc.audience | default .Values.oidc.clientId | quote }}
+            - name: Oidc__RequireHttpsMetadata
+              value: {{ .Values.oidc.requireHttps | quote }}
+            - name: Oidc__NameClaimType
+              value: {{ .Values.oidc.nameClaimType | quote }}
+            - name: InternalJwt__PrivateKeyPath
+              value: /etc/clustral/jwt/private.pem
+            - name: KubeconfigJwt__PublicKeyPath
+              value: /etc/clustral/kubeconfig-jwt/public.pem
+            - name: Errors__DocsBaseUrl
+              value: {{ .Values.controlplane.env.errorsDocsBaseUrl | quote }}
+            - name: ReverseProxy__Clusters__controlplane__Destinations__default__Address
+              value: "http://{{ include "clustral.fullname" . }}-controlplane:5100"
+            - name: ReverseProxy__Clusters__audit-service__Destinations__default__Address
+              value: "http://{{ include "clustral.fullname" . }}-audit-service:5200"
+            - name: Cors__AllowedOrigins__0
+              value: "https://{{ .Values.global.domain }}"
+            {{- range $i, $origin := .Values.apiGateway.env.corsAllowedOrigins }}
+            - name: Cors__AllowedOrigins__{{ add $i 1 }}
+              value: {{ $origin | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: internal-jwt-private
+              mountPath: /etc/clustral/jwt
+              readOnly: true
+            - name: kubeconfig-jwt-public
+              mountPath: /etc/clustral/kubeconfig-jwt
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /gateway/healthz/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /gateway/healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.apiGateway.resources | nindent 12 }}
+      volumes:
+        - name: internal-jwt-private
+          secret:
+            secretName: {{ .Values.secrets.internalJwt }}
+            items:
+              - key: {{ include "clustral.jwtSecretPrivateKey" . }}
+                path: private.pem
+        - name: kubeconfig-jwt-public
+          secret:
+            secretName: {{ .Values.secrets.kubeconfigJwt }}
+            items:
+              - key: {{ include "clustral.jwtSecretPublicKey" . }}
+                path: public.pem
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

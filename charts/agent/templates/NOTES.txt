@@ -1,0 +1,21 @@
+Clustral agent deployed to namespace {{ .Release.Namespace }}.
+
+Check agent logs:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "clustral-agent.fullname" . }} --tail=50
+
+Verify tunnel is connected:
+  clustral clusters list
+  # Look for your cluster with status "Connected"
+
+{{- if .Values.bootstrapToken }}
+
+NOTE: The bootstrap token is single-use. After the first successful
+registration, the agent persists its mTLS credentials to an emptyDir
+volume. On pod restart, it reconnects using the saved credentials —
+no new bootstrap token is needed.
+
+To re-bootstrap (e.g., after a CA rotation):
+  clustral clusters deregister <cluster-name>
+  clustral clusters register <cluster-name>
+  helm upgrade {{ .Release.Name }} ... --set bootstrapToken=<new-token>
+{{- end }}

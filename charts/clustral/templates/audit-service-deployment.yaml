@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clustral.fullname" . }}-audit-service
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "audit-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.auditService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "audit-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clustral.labels" . | nindent 8 }}
+        {{- include "clustral.selectorLabels" (dict "root" . "component" "audit-service") | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: audit-service
+          image: "{{ .Values.auditService.image.repository }}:{{ include "clustral.imageTag" (dict "tag" .Values.auditService.image.tag "chartAppVersion" .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.auditService.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 5200
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            - name: MongoDB__ConnectionString
+              value: {{ include "clustral.mongoConnectionString" . | quote }}
+            - name: MongoDB__DatabaseName
+              value: {{ .Values.auditService.env.mongoDatabaseName | quote }}
+            - name: RabbitMQ__Host
+              value: {{ include "clustral.rabbitmqHost" . | quote }}
+            - name: RabbitMQ__Port
+              value: {{ include "clustral.rabbitmqPort" . | quote }}
+            - name: RabbitMQ__User
+              value: {{ include "clustral.rabbitmqUser" . | quote }}
+            - name: RabbitMQ__Pass
+              value: {{ include "clustral.rabbitmqPass" . | quote }}
+            - name: InternalJwt__PublicKeyPath
+              value: /etc/clustral/jwt/public.pem
+            - name: Errors__DocsBaseUrl
+              value: {{ .Values.controlplane.env.errorsDocsBaseUrl | quote }}
+          volumeMounts:
+            - name: internal-jwt-public
+              mountPath: /etc/clustral/jwt
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /swagger
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /swagger
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.auditService.resources | nindent 12 }}
+      volumes:
+        - name: internal-jwt-public
+          secret:
+            secretName: {{ .Values.secrets.internalJwt }}
+            items:
+              - key: {{ include "clustral.jwtSecretPublicKey" . }}
+                path: public.pem
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

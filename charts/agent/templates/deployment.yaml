@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clustral-agent.fullname" . }}
+  labels:
+    {{- include "clustral-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clustral-agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "clustral-agent.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "clustral-agent.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: AGENT_CLUSTER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "clustral-agent.fullname" . }}-config
+                  key: cluster-id
+            - name: AGENT_CONTROL_PLANE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "clustral-agent.fullname" . }}-config
+                  key: control-plane-url
+            {{- if .Values.bootstrapToken }}
+            - name: AGENT_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "clustral-agent.fullname" . }}-config
+                  key: bootstrap-token
+            {{- end }}
+            - name: AGENT_CREDENTIAL_PATH
+              value: {{ .Values.agent.credentialPath | quote }}
+            - name: AGENT_KUBERNETES_API_URL
+              value: {{ .Values.agent.kubernetesApiUrl | quote }}
+            - name: AGENT_KUBERNETES_SKIP_TLS_VERIFY
+              value: {{ .Values.agent.kubernetesSkipTlsVerify | quote }}
+            - name: AGENT_HEARTBEAT_INTERVAL
+              value: {{ .Values.agent.heartbeatInterval | quote }}
+            - name: AGENT_CERT_RENEW_THRESHOLD
+              value: {{ .Values.agent.certRenewThreshold | quote }}
+            - name: AGENT_JWT_RENEW_THRESHOLD
+              value: {{ .Values.agent.jwtRenewThreshold | quote }}
+            - name: AGENT_RENEWAL_CHECK_INTERVAL
+              value: {{ .Values.agent.renewalCheckInterval | quote }}
+            - name: AGENT_RECONNECT_INITIAL_DELAY
+              value: {{ .Values.agent.reconnect.initialDelay | quote }}
+            - name: AGENT_RECONNECT_MAX_DELAY
+              value: {{ .Values.agent.reconnect.maxDelay | quote }}
+            - name: AGENT_RECONNECT_BACKOFF_MULTIPLIER
+              value: {{ .Values.agent.reconnect.backoffMultiplier | quote }}
+            - name: AGENT_RECONNECT_MAX_JITTER
+              value: {{ .Values.agent.reconnect.maxJitter | quote }}
+            - name: AGENT_VERSION
+              value: {{ .Chart.AppVersion | quote }}
+          volumeMounts:
+            - name: credential
+              mountPath: /etc/clustral
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: credential
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,112 @@
+# -- Number of agent replicas. >1 provides failover but each replica
+# maintains its own tunnel session.
+replicaCount: 1
+
+image:
+  # -- Agent container image repository
+  repository: ghcr.io/clustral/clustral-agent
+  # -- Image tag. Defaults to the chart appVersion.
+  tag: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Secrets for pulling images from private registries
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+# ── Required values (set at install time) ────────────────────────────
+# -- (required) Control plane gRPC mTLS endpoint (e.g., clustral.example.com:5443)
+controlPlaneUrl: ""
+# -- (required) Cluster ID returned by `clustral clusters register`
+clusterId: ""
+# -- (required on first install) Single-use bootstrap token
+bootstrapToken: ""
+
+# ── Agent tuning ─────────────────────────────────────────────────────
+agent:
+  # -- Path for credential persistence inside the pod
+  credentialPath: /etc/clustral/agent.token
+  # -- Kubernetes API server URL (in-cluster default)
+  kubernetesApiUrl: https://kubernetes.default.svc
+  # -- Skip TLS verification on the k8s API (dev only, never in production)
+  kubernetesSkipTlsVerify: false
+  # -- Heartbeat interval
+  heartbeatInterval: "30s"
+  # -- Cert renewal threshold (renew when less than this remains)
+  certRenewThreshold: "720h"
+  # -- JWT renewal threshold
+  jwtRenewThreshold: "168h"
+  # -- How often to check cert/JWT expiry
+  renewalCheckInterval: "6h"
+  reconnect:
+    # -- Initial reconnect delay
+    initialDelay: "2s"
+    # -- Maximum reconnect delay
+    maxDelay: "60s"
+    # -- Backoff multiplier
+    backoffMultiplier: "2.0"
+    # -- Maximum jitter
+    maxJitter: "5s"
+
+# ── Service Account ──────────────────────────────────────────────────
+serviceAccount:
+  # -- Create a ServiceAccount
+  create: true
+  # -- ServiceAccount name (defaults to fullname)
+  name: ""
+  # -- Annotations (e.g., for IRSA / GKE Workload Identity)
+  annotations: {}
+
+# ── RBAC ─────────────────────────────────────────────────────────────
+rbac:
+  # -- Create ClusterRole + ClusterRoleBinding for user impersonation
+  create: true
+
+# ── Resources ────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 64Mi
+
+# ── Security Context (hardened by default) ───────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# ── Network Policy ───────────────────────────────────────────────────
+networkPolicy:
+  # -- Create a NetworkPolicy restricting egress to controlPlane + k8s API + DNS
+  enabled: true
+  # -- CIDR of the control plane (if controlPlaneUrl is a hostname, set this to the resolved IP/CIDR)
+  controlPlaneCidr: ""
+
+# ── Pod Disruption Budget ────────────────────────────────────────────
+podDisruptionBudget:
+  # -- Create a PDB (useful with replicaCount > 1)
+  enabled: false
+  # -- Minimum available replicas
+  minAvailable: 1
+
+# ── Scheduling ───────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+podAnnotations: {}
+podLabels: {}

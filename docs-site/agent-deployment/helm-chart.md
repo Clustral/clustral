@@ -10,10 +10,6 @@ The Clustral agent is a single Go binary deployed as a `Deployment` in the targe
 
 Nothing else runs inside the cluster. No inbound ports. No sidecars. No operator. The installed resources are a `ServiceAccount`, a `ClusterRole` + `ClusterRoleBinding` that grant the `impersonate` verb, a `Deployment`, and a `Secret` holding the bootstrap token and control-plane URL.
 
-{% hint style="warning" %}
-The Helm chart is on the roadmap and is not yet published. For now, deploy using the raw manifests under `src/clustral-agent/k8s/` (see [Using the raw manifests today](#using-the-raw-manifests-today) below). This page documents the intended chart surface so you can plan for it.
-{% endhint %}
-
 ## Prerequisites
 
 - Helm 3.12 or newer.
@@ -45,27 +41,7 @@ helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
 The bootstrap token is single-use. The first successful `RegisterAgent` consumes it and replay attempts fail with `TOKEN_ALREADY_USED`. Don't put the token in a values file that gets checked in — pass it on the command line or pipe it from a secret store.
 {% endhint %}
 
-## Using the raw manifests today
-
-Until the Helm chart ships, apply the raw Kubernetes manifests from a repository checkout. They install the same resource set (ServiceAccount, ClusterRole, ClusterRoleBinding, Deployment) in a `clustral-system` namespace:
-
-```bash
-kubectl create namespace clustral-system
-
-# Create a Secret holding the bootstrap token + control-plane URL
-kubectl -n clustral-system create secret generic clustral-agent \
-  --from-literal=AGENT_CONTROL_PLANE_URL=clustral.example.com:5443 \
-  --from-literal=AGENT_CLUSTER_ID=a3f7c1e0-2b4d-4a3f-8c9e-1b2d3f4a5c6d \
-  --from-literal=AGENT_BOOTSTRAP_TOKEN=bst_ey...
-
-kubectl apply -n clustral-system -f src/clustral-agent/k8s/
-```
-
-Review `src/clustral-agent/k8s/deployment.yaml` to pin `image.tag` to a specific version for production; the committed default is `main`.
-
 ## Values reference
-
-The chart in `infra/helm/` is still being finalized — until it lands, this table describes the supported surface. Values not yet in the chart are marked *(planned)*. The committed Kubernetes manifests under `src/clustral-agent/k8s/` are the current source of truth for image, resources, and RBAC.
 
 | Value | Required | Default | Description |
 |---|---|---|---|
@@ -84,17 +60,17 @@ The chart in `infra/helm/` is still being finalized — until it lands, this tab
 | `serviceAccount.name` | no | `clustral-agent` | |
 | `rbac.create` | no | `true` | Creates the `ClusterRole` + `ClusterRoleBinding` granting `impersonate`. |
 | `namespace` | no | `clustral-system` | Target namespace. Created by `--create-namespace`. |
-| `logLevel` *(planned)* | no | `info` | `debug` / `info` / `warn` / `error`. |
-| `env.agentHeartbeatInterval` *(planned)* | no | `30s` | Maps to `AGENT_HEARTBEAT_INTERVAL`. |
-| `env.agentCertRenewThreshold` *(planned)* | no | `720h` | Maps to `AGENT_CERT_RENEW_THRESHOLD`. |
-| `env.agentJwtRenewThreshold` *(planned)* | no | `168h` | Maps to `AGENT_JWT_RENEW_THRESHOLD`. |
-| `env.agentKubernetesSkipTlsVerify` *(planned)* | no | `false` | Dev-only. Maps to `AGENT_KUBERNETES_SKIP_TLS_VERIFY`. |
-| `caCertConfigMap` *(planned)* | no | — | Override the embedded control-plane CA for custom-PKI deployments. |
-| `nodeSelector` *(planned)* | no | `{}` | |
-| `tolerations` *(planned)* | no | `[]` | |
-| `affinity` *(planned)* | no | `{}` | |
+| `logLevel` | no | `info` | `debug` / `info` / `warn` / `error`. |
+| `env.agentHeartbeatInterval` | no | `30s` | Maps to `AGENT_HEARTBEAT_INTERVAL`. |
+| `env.agentCertRenewThreshold` | no | `720h` | Maps to `AGENT_CERT_RENEW_THRESHOLD`. |
+| `env.agentJwtRenewThreshold` | no | `168h` | Maps to `AGENT_JWT_RENEW_THRESHOLD`. |
+| `env.agentKubernetesSkipTlsVerify` | no | `false` | Dev-only. Maps to `AGENT_KUBERNETES_SKIP_TLS_VERIFY`. |
+| `caCertConfigMap` | no | — | Override the embedded control-plane CA for custom-PKI deployments. |
+| `nodeSelector` | no | `{}` | |
+| `tolerations` | no | `[]` | |
+| `affinity` | no | `{}` | |
 
-See `src/clustral-agent/CLAUDE.md` for the full `AGENT_*` environment-variable reference the binary consumes.
+Run `helm show values oci://ghcr.io/clustral/helm/clustral-agent` to see the full values file. See `src/clustral-agent/CLAUDE.md` for the full `AGENT_*` environment-variable reference the binary consumes.
 
 ## RBAC
 
@@ -182,7 +158,7 @@ If your registry requires authentication, create an `imagePullSecret` and refere
 
 ### Custom CA for the control-plane endpoint
 
-If your control plane uses a certificate issued by your enterprise PKI (not a public CA), mount the trust anchor via `caCertConfigMap` *(planned)*. The control plane's server cert must chain to that CA.
+If your control plane uses a certificate issued by your enterprise PKI (not a public CA), mount the trust anchor via `caCertConfigMap`. The control plane's server cert must chain to that CA.
 
 ### NetworkPolicy
 
@@ -225,7 +201,7 @@ Not supported today. The agent is a single-container pod. If you need to route i
 |---|---|---|
 | Pod CrashLoopBackOff, logs show `TOKEN_ALREADY_USED` | Bootstrap token already consumed by a previous install. | Deregister the cluster (`clustral clusters deregister`), re-register to get a fresh token, `helm upgrade --set bootstrapToken=<new>`. |
 | Pod CrashLoopBackOff, logs show `context deadline exceeded` on `RegisterAgent` | Control plane unreachable on `:5443`. | Verify DNS for `controlPlaneUrl` from inside the pod, check firewall rules, confirm the control plane is healthy. |
-| Logs show `tls: unknown authority` | Control plane's server certificate is not trusted. | Deploy a cert chained to a CA the agent trusts, or set `caCertConfigMap` *(planned)* to mount the correct trust anchor. |
+| Logs show `tls: unknown authority` | Control plane's server certificate is not trusted. | Deploy a cert chained to a CA the agent trusts, or set `caCertConfigMap` to mount the correct trust anchor. |
 | `kubectl` returns `AGENT_NOT_CONNECTED` | Agent pod not running or tunnel broken. | `kubectl -n clustral-system logs deploy/clustral-agent` and check for reconnect loops. |
 | `kubectl` returns 403 despite correct Clustral role | `ClusterRoleBinding` inside the cluster does not map the impersonated group to real RBAC. | Create a `ClusterRoleBinding` binding the impersonated group (e.g., `clustral:sre`) to a Kubernetes `ClusterRole`. |
 | `ClusterRole` missing after install | `--set rbac.create=false` during install. | `helm upgrade --set rbac.create=true` or apply `src/clustral-agent/k8s/clusterrole.yaml` manually. |

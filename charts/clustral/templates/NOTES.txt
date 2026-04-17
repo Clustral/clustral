@@ -1,0 +1,48 @@
+Clustral has been installed.
+
+1. Verify all pods are ready:
+
+   kubectl get pods -l "app.kubernetes.io/instance={{ .Release.Name }}" -n {{ .Release.Namespace }}
+
+2. Run the Helm test:
+
+   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+3. Secrets:
+{{- if .Values.certManager.enabled }}
+   cert-manager is managing the following Secrets (auto-generated):
+{{- else }}
+   The following Secrets must exist before the pods will start:
+{{- end }}
+   - {{ .Values.secrets.ca }}           (CA certificate + key)
+   - {{ .Values.secrets.internalJwt }}  (Internal JWT ES256 keypair)
+   - {{ .Values.secrets.kubeconfigJwt }} (Kubeconfig JWT ES256 keypair)
+   - {{ .Values.secrets.tls }}          (TLS certificate for Ingress/Gateway)
+{{- if not .Values.certManager.enabled }}
+
+   Create them manually or run:
+     charts/clustral/scripts/generate-secrets.sh --namespace {{ .Release.Namespace }} --domain {{ .Values.global.domain }}
+{{- end }}
+
+4. Access the Web UI:
+{{- if .Values.ingress.enabled }}
+   https://{{ .Values.global.domain }}
+{{- else if .Values.gatewayApi.enabled }}
+   https://{{ .Values.global.domain }}
+{{- else }}
+   kubectl port-forward svc/{{ include "clustral.fullname" . }}-web 3000:3000 -n {{ .Release.Namespace }}
+   http://localhost:3000
+{{- end }}
+
+5. Deploy your first agent:
+
+   helm install my-agent charts/agent \
+     --set controlPlane.url=<CONTROLPLANE_GRPC_URL>:{{ .Values.controlplane.grpcService.port }} \
+     --set controlPlane.bootstrapToken=<TOKEN_FROM_REGISTER>
+
+   The ControlPlane gRPC endpoint for agents:
+{{- if eq .Values.controlplane.grpcService.type "LoadBalancer" }}
+   kubectl get svc {{ include "clustral.fullname" . }}-controlplane-grpc -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+{{- else }}
+   kubectl get svc {{ include "clustral.fullname" . }}-controlplane-grpc -n {{ .Release.Namespace }}
+{{- end }}

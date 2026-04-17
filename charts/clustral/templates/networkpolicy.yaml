@@ -1,0 +1,195 @@
+{{- if .Values.networkPolicy.enabled }}
+# ── ControlPlane NetworkPolicy ──────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "clustral.fullname" . }}-controlplane
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from API Gateway
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 14 }}
+      ports:
+        - port: 5100
+          protocol: TCP
+    # Allow gRPC from agents (any source — agents are external)
+    - ports:
+        - port: 5443
+          protocol: TCP
+  egress:
+    # MongoDB
+    - ports:
+        - port: 27017
+          protocol: TCP
+    # RabbitMQ
+    - ports:
+        - port: 5672
+          protocol: TCP
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ── API Gateway NetworkPolicy ──────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "clustral.fullname" . }}-api-gateway
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from ingress controller (any namespace)
+    - ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    # ControlPlane
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 14 }}
+      ports:
+        - port: 5100
+          protocol: TCP
+    # Audit Service
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "audit-service") | nindent 14 }}
+      ports:
+        - port: 5200
+          protocol: TCP
+    # OIDC provider
+    {{- if .Values.networkPolicy.oidcCidr }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.oidcCidr }}
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+    {{- else }}
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+    {{- end }}
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ── Audit Service NetworkPolicy ────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "clustral.fullname" . }}-audit-service
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "audit-service") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from API Gateway
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 14 }}
+      ports:
+        - port: 5200
+          protocol: TCP
+  egress:
+    # MongoDB
+    - ports:
+        - port: 27017
+          protocol: TCP
+    # RabbitMQ
+    - ports:
+        - port: 5672
+          protocol: TCP
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ── Web UI NetworkPolicy ──────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "clustral.fullname" . }}-web
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from ingress controller (any namespace)
+    - ports:
+        - port: 3000
+          protocol: TCP
+  egress:
+    # API Gateway (server-side API calls)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "api-gateway") | nindent 14 }}
+      ports:
+        - port: 8080
+          protocol: TCP
+    # OIDC provider (NextAuth server-side)
+    {{- if .Values.networkPolicy.oidcCidr }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.oidcCidr }}
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+    {{- else }}
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+    {{- end }}
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+{{- end }}

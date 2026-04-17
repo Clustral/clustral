@@ -1,0 +1,70 @@
+{{- if .Values.gatewayApi.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "clustral.fullname" . }}
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+  {{- with .Values.gatewayApi.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gatewayApi.gatewayRef.name }}
+      {{- if .Values.gatewayApi.gatewayRef.namespace }}
+      namespace: {{ .Values.gatewayApi.gatewayRef.namespace }}
+      {{- end }}
+      sectionName: {{ .Values.gatewayApi.httpListenerName }}
+  hostnames:
+    - {{ .Values.global.domain }}
+  rules:
+    # NextAuth server-side callbacks — before /api catch-all
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/auth
+      backendRefs:
+        - name: {{ include "clustral.fullname" . }}-web
+          port: 3000
+    # Web UI SSR audit page — before /api catch-all
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/audit
+      backendRefs:
+        - name: {{ include "clustral.fullname" . }}-web
+          port: 3000
+    # API Gateway — ControlPlane REST API
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: {{ include "clustral.fullname" . }}-api-gateway
+          port: 8080
+    # API Gateway — health checks
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /healthz
+      backendRefs:
+        - name: {{ include "clustral.fullname" . }}-api-gateway
+          port: 8080
+    # API Gateway — audit API (YARP strips /audit-api prefix)
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /audit-api
+      backendRefs:
+        - name: {{ include "clustral.fullname" . }}-api-gateway
+          port: 8080
+    # Web UI — everything else
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "clustral.fullname" . }}-web
+          port: 3000
+{{- end }}

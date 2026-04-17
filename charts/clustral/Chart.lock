@@ -1,0 +1,9 @@
+dependencies:
+- name: mongodb
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 16.5.45
+- name: rabbitmq
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 15.5.3
+digest: sha256:c0ffc45167f66451df43f092e377e516a1d0f73108c5a3082f8df1ce4a04fa18
+generated: "2026-04-17T04:26:07.835242+02:00"

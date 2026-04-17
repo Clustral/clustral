@@ -1,0 +1,132 @@
+{{- include "clustral.validateExclusiveIngress" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clustral.fullname" . }}-controlplane
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 4 }}
+spec:
+  replicas: {{ .Values.controlplane.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clustral.labels" . | nindent 8 }}
+        {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: controlplane
+          image: "{{ .Values.controlplane.image.repository }}:{{ include "clustral.imageTag" (dict "tag" .Values.controlplane.image.tag "chartAppVersion" .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.controlplane.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 5100
+              protocol: TCP
+            - name: grpc
+              containerPort: 5443
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            - name: MongoDB__ConnectionString
+              value: {{ include "clustral.mongoConnectionString" . | quote }}
+            - name: MongoDB__DatabaseName
+              value: {{ .Values.controlplane.env.mongoDatabaseName | quote }}
+            - name: CertificateAuthority__CaCertPath
+              value: /etc/clustral/ca/ca.crt
+            - name: CertificateAuthority__CaKeyPath
+              value: /etc/clustral/ca/ca.key
+            - name: InternalJwt__PublicKeyPath
+              value: /etc/clustral/jwt/public.pem
+            - name: KubeconfigJwt__PrivateKeyPath
+              value: /etc/clustral/kubeconfig-jwt/private.pem
+            - name: RabbitMQ__Host
+              value: {{ include "clustral.rabbitmqHost" . | quote }}
+            - name: RabbitMQ__Port
+              value: {{ include "clustral.rabbitmqPort" . | quote }}
+            - name: RabbitMQ__User
+              value: {{ include "clustral.rabbitmqUser" . | quote }}
+            - name: RabbitMQ__Pass
+              value: {{ include "clustral.rabbitmqPass" . | quote }}
+            - name: Credential__DefaultKubeconfigCredentialTtl
+              value: {{ .Values.controlplane.env.credentialDefaultTtl | quote }}
+            - name: Credential__MaxKubeconfigCredentialTtl
+              value: {{ .Values.controlplane.env.credentialMaxTtl | quote }}
+            - name: Proxy__TunnelTimeout
+              value: {{ .Values.controlplane.env.proxyTunnelTimeout | quote }}
+            - name: Proxy__RateLimiting__Enabled
+              value: {{ .Values.controlplane.env.proxyRateLimiting.enabled | quote }}
+            - name: Proxy__RateLimiting__BurstSize
+              value: {{ .Values.controlplane.env.proxyRateLimiting.burstSize | quote }}
+            - name: Proxy__RateLimiting__RequestsPerSecond
+              value: {{ .Values.controlplane.env.proxyRateLimiting.requestsPerSecond | quote }}
+            - name: Proxy__RateLimiting__QueueSize
+              value: {{ .Values.controlplane.env.proxyRateLimiting.queueSize | quote }}
+            - name: Errors__DocsBaseUrl
+              value: {{ .Values.controlplane.env.errorsDocsBaseUrl | quote }}
+          volumeMounts:
+            - name: ca
+              mountPath: /etc/clustral/ca
+              readOnly: true
+            - name: internal-jwt-public
+              mountPath: /etc/clustral/jwt
+              readOnly: true
+            - name: kubeconfig-jwt-private
+              mountPath: /etc/clustral/kubeconfig-jwt
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.controlplane.resources | nindent 12 }}
+      volumes:
+        - name: ca
+          secret:
+            secretName: {{ .Values.secrets.ca }}
+            items:
+              - key: {{ include "clustral.caSecretCertKey" . }}
+                path: ca.crt
+              - key: {{ include "clustral.caSecretKeyKey" . }}
+                path: ca.key
+        - name: internal-jwt-public
+          secret:
+            secretName: {{ .Values.secrets.internalJwt }}
+            items:
+              - key: {{ include "clustral.jwtSecretPublicKey" . }}
+                path: public.pem
+        - name: kubeconfig-jwt-private
+          secret:
+            secretName: {{ .Values.secrets.kubeconfigJwt }}
+            items:
+              - key: {{ include "clustral.jwtSecretPrivateKey" . }}
+                path: private.pem
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

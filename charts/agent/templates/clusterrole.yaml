@@ -1,0 +1,30 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "clustral-agent.fullname" . }}
+  labels:
+    {{- include "clustral-agent.labels" . | nindent 4 }}
+rules:
+  # Full impersonation support.
+  # Using wildcard apiGroups to avoid conflicts with CRDs (e.g. Rancher's
+  # management.cattle.io which also defines 'users' and 'groups' resources).
+  - apiGroups: ["*"]
+    resources: ["users", "groups", "serviceaccounts"]
+    verbs: ["impersonate"]
+
+  # Extra field impersonation.
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["*"]
+    verbs: ["impersonate"]
+
+  # Agent's own operations.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+
+  # kubectl auth can-i support through the proxy.
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+    verbs: ["create"]
+{{- end }}

@@ -1,0 +1,30 @@
+apiVersion: v2
+name: clustral
+description: >-
+  Clustral platform — Kubernetes access proxy with OIDC authentication,
+  JIT access grants, and audit logging.
+type: application
+version: 0.0.0-dev
+appVersion: "0.0.0-dev"
+keywords:
+  - kubernetes
+  - access
+  - proxy
+  - oidc
+  - audit
+  - clustral
+home: https://github.com/Clustral/clustral
+sources:
+  - https://github.com/Clustral/clustral
+maintainers:
+  - name: Clustral
+    url: https://github.com/Clustral
+dependencies:
+  - name: mongodb
+    version: "~16.x"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: mongodb.enabled
+  - name: rabbitmq
+    version: "~15.x"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: rabbitmq.enabled

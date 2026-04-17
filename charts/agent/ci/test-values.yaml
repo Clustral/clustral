@@ -1,0 +1,3 @@
+controlPlaneUrl: "test.example.com:5443"
+clusterId: "00000000-0000-0000-0000-000000000000"
+bootstrapToken: "test-token"

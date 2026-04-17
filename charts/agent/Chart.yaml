@@ -1,0 +1,18 @@
+apiVersion: v2
+name: clustral-agent
+description: Clustral agent — deploys the Go binary that tunnels kubectl traffic from the control plane to the Kubernetes API server in this cluster.
+type: application
+version: 0.0.0-dev
+appVersion: "0.0.0-dev"
+keywords:
+  - kubernetes
+  - access
+  - proxy
+  - agent
+  - clustral
+home: https://github.com/Clustral/clustral
+sources:
+  - https://github.com/Clustral/clustral
+maintainers:
+  - name: Clustral
+    url: https://github.com/Clustral

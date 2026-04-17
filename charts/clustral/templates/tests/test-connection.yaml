@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "clustral.fullname" . }}-test
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: curlimages/curl:8.5.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Testing ControlPlane readiness..."
+          curl -sf http://{{ include "clustral.fullname" . }}-controlplane:5100/healthz/ready
+          echo " OK"
+
+          echo "Testing API Gateway liveness..."
+          curl -sf http://{{ include "clustral.fullname" . }}-api-gateway:8080/gateway/healthz
+          echo " OK"
+
+          echo "Testing Audit Service..."
+          curl -sf http://{{ include "clustral.fullname" . }}-audit-service:5200/swagger
+          echo " OK"
+
+          echo "Testing Web UI..."
+          curl -sf http://{{ include "clustral.fullname" . }}-web:3000/
+          echo " OK"
+
+          echo "All components healthy"
+  restartPolicy: Never

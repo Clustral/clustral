@@ -1,0 +1,74 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "clustral.fullname" . }}
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.global.domain }}
+      secretName: {{ .Values.secrets.tls }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.global.domain }}
+      http:
+        paths:
+          # NextAuth server-side callbacks — must come before /api catch-all
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clustral.fullname" . }}-web
+                port:
+                  number: 3000
+          # Web UI SSR audit page — must come before /api catch-all
+          - path: /api/audit
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clustral.fullname" . }}-web
+                port:
+                  number: 3000
+          # API Gateway — ControlPlane REST API
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clustral.fullname" . }}-api-gateway
+                port:
+                  number: 8080
+          # API Gateway — health checks
+          - path: /healthz
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clustral.fullname" . }}-api-gateway
+                port:
+                  number: 8080
+          # API Gateway — audit API
+          - path: /audit-api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clustral.fullname" . }}-api-gateway
+                port:
+                  number: 8080
+          # Web UI — everything else (pages, discovery, static assets)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clustral.fullname" . }}-web
+                port:
+                  number: 3000
+{{- end }}

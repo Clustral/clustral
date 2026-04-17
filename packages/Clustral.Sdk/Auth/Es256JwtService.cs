@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Clustral.Sdk.Auth;
@@ -98,6 +99,17 @@ public sealed class Es256JwtService
 
     private static ECDsa LoadKey(string pem)
     {
+        // cert-manager outputs X.509 certificates (-----BEGIN CERTIFICATE-----).
+        // Extract the ECDSA key from the certificate so both raw PEM keys and
+        // cert-manager Secrets work without template-side hacks.
+        if (pem.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
+        {
+            var cert = X509Certificate2.CreateFromPem(pem);
+            return cert.GetECDsaPublicKey()
+                   ?? throw new InvalidOperationException(
+                       "Certificate does not contain an ECDSA public key.");
+        }
+
         var key = ECDsa.Create();
         key.ImportFromPem(pem);
         return key;
