@@ -1,0 +1,74 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "clustral.fullname" . }}
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: clustral.rules
+      rules:
+        # Fires when any Clustral component health probe fails for > 2 minutes.
+        - alert: ClustralComponentUnhealthy
+          expr: |
+            up{job=~".*clustral.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Clustral component {{ "{{" }} $labels.job {{ "}}" }} is unhealthy"
+            description: "The probe for {{ "{{" }} $labels.job {{ "}}" }} has been failing for more than 2 minutes."
+
+        # Fires when no agent heartbeat has been seen for a cluster.
+        # Requires a metric exported by the ControlPlane (e.g., clustral_agent_connected).
+        - alert: ClustralAgentDisconnected
+          expr: |
+            clustral_agent_connected == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Agent for cluster {{ "{{" }} $labels.cluster {{ "}}" }} is disconnected"
+            description: "No agent heartbeat received for cluster {{ "{{" }} $labels.cluster {{ "}}" }} for more than 5 minutes."
+
+        # Fires when the API Gateway 5xx rate exceeds 1% over 5 minutes.
+        - alert: ClustralGateway5xxRate
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{job=~".*api-gateway.*", http_response_status_code=~"5.."}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{job=~".*api-gateway.*"}[5m]))
+            ) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Clustral API Gateway 5xx error rate is elevated"
+            description: "More than 1% of requests to the API Gateway returned 5xx over the last 5 minutes."
+
+        # Fires when the API Gateway readiness probe fails (OIDC provider unreachable).
+        - alert: ClustralOidcUnreachable
+          expr: |
+            up{job=~".*api-gateway.*"} == 0
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Clustral API Gateway is not ready (OIDC may be unreachable)"
+            description: "The API Gateway readiness probe has been failing for more than 3 minutes. This typically indicates the OIDC provider is unreachable."
+
+        # Fires when the RabbitMQ audit queue backlog is too large.
+        - alert: ClustralAuditBacklog
+          expr: |
+            rabbitmq_queue_messages{queue=~".*audit.*"} > 10000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Clustral audit event backlog is large"
+            description: "The audit event queue has more than 10,000 pending messages for over 10 minutes. The Audit Service may be unhealthy or overloaded."
+{{- end }}

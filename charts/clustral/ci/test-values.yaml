@@ -1,0 +1,31 @@
+# Minimal values for helm template / helm lint CI.
+# Disables subcharts and cert-manager to avoid external dependencies.
+
+oidc:
+  authority: "https://idp.example.com"
+  clientId: "test"
+  web:
+    clientId: "test-web"
+    clientSecret: "test-secret"
+
+web:
+  env:
+    authSecret: "dGVzdC1zZWNyZXQtMzItYnl0ZXMtbG9uZy1lbm91Z2g="
+
+certManager:
+  enabled: false
+
+mongodb:
+  enabled: false
+
+rabbitmq:
+  enabled: false
+
+externalMongodb:
+  connectionString: "mongodb://test:27017"
+
+externalRabbitmq:
+  host: "rabbitmq"
+  port: 5672
+  user: "test"
+  pass: "test"

@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clustral.fullname" . }}-web
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clustral.labels" . | nindent 8 }}
+        {{- include "clustral.selectorLabels" (dict "root" . "component" "web") | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: web
+          image: "{{ .Values.web.image.repository }}:{{ include "clustral.imageTag" (dict "tag" .Values.web.image.tag "chartAppVersion" .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NEXTAUTH_URL
+              value: "https://{{ .Values.global.domain }}"
+            - name: CONTROLPLANE_URL
+              value: "http://{{ include "clustral.fullname" . }}-api-gateway:8080"
+            - name: CONTROLPLANE_PUBLIC_URL
+              value: "https://{{ .Values.global.domain }}"
+            - name: AUTH_SECRET
+              value: {{ .Values.web.env.authSecret | quote }}
+            - name: OIDC_ISSUER
+              value: {{ .Values.oidc.web.issuer | default .Values.oidc.authority | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.oidc.web.clientId | quote }}
+            - name: OIDC_CLIENT_SECRET
+              value: {{ .Values.oidc.web.clientSecret | quote }}
+            - name: AUDIT_SERVICE_URL
+              value: "http://{{ include "clustral.fullname" . }}-api-gateway:8080/audit-api"
+            - name: AUDIT_SERVICE_PUBLIC_URL
+              value: "https://{{ .Values.global.domain }}/audit-api"
+            - name: NODE_ENV
+              value: production
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

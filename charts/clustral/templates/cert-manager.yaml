@@ -1,0 +1,117 @@
+{{- if .Values.certManager.enabled }}
+{{- $fullname := include "clustral.fullname" . -}}
+# ── Self-signed Issuer (bootstrap) ─────────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-selfsigned
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+# ── CA Certificate (ECDSA P-256, isCA: true) ──────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-ca
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: clustral-ca
+  secretName: {{ .Values.secrets.ca }}
+  duration: {{ .Values.certManager.ca.duration }}
+  renewBefore: {{ .Values.certManager.ca.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ $fullname }}-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+# ── CA Issuer (signs leaf certificates) ────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-ca
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ .Values.secrets.ca }}
+---
+# ── Internal JWT Certificate (ES256 keypair) ──────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-internal-jwt
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  commonName: clustral-internal-jwt
+  secretName: {{ .Values.secrets.internalJwt }}
+  duration: {{ .Values.certManager.jwt.duration }}
+  renewBefore: {{ .Values.certManager.jwt.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - digital signature
+  issuerRef:
+    name: {{ $fullname }}-ca
+    kind: Issuer
+    group: cert-manager.io
+---
+# ── Kubeconfig JWT Certificate (ES256 keypair) ────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-kubeconfig-jwt
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  commonName: clustral-kubeconfig-jwt
+  secretName: {{ .Values.secrets.kubeconfigJwt }}
+  duration: {{ .Values.certManager.jwt.duration }}
+  renewBefore: {{ .Values.certManager.jwt.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - digital signature
+  issuerRef:
+    name: {{ $fullname }}-ca
+    kind: Issuer
+    group: cert-manager.io
+---
+# ── TLS Certificate ───────────────────────────────────────────────────────
+# Uses the configured external issuer if set, otherwise falls back to the
+# self-signed issuer for dev/testing.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-tls
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  commonName: {{ .Values.global.domain }}
+  secretName: {{ .Values.secrets.tls }}
+  duration: {{ .Values.certManager.tls.duration }}
+  renewBefore: {{ .Values.certManager.tls.renewBefore }}
+  dnsNames:
+    - {{ .Values.global.domain }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    {{- if .Values.certManager.issuerRef.name }}
+    name: {{ .Values.certManager.issuerRef.name }}
+    kind: {{ .Values.certManager.issuerRef.kind }}
+    {{- else }}
+    name: {{ $fullname }}-selfsigned
+    kind: Issuer
+    {{- end }}
+    group: cert-manager.io
+{{- end }}
