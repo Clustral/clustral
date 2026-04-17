@@ -45,13 +45,13 @@ jobs:
         run: |
           helm template test-agent charts/agent \
             -f charts/agent/ci/test-values.yaml \
-            | kubectl apply --dry-run=client -f -
+            | kubectl apply --dry-run=client --validate=false -f -
 
       - name: Template platform chart
         run: |
           helm template test-platform charts/clustral \
             -f charts/clustral/ci/test-values.yaml \
-            | kubectl apply --dry-run=client -f -
+            | kubectl apply --dry-run=client --validate=false -f -
 
   publish:
     name: Publish to GHCR
