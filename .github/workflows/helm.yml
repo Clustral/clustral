@@ -16,6 +16,9 @@ on:
       - ".github/workflows/helm.yml"
       - "ct.yaml"
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint & template
