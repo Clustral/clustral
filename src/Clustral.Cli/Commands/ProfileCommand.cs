@@ -272,7 +272,20 @@ internal static class ProfileCommand
 
     private static string ActiveProfilePath => Path.Combine(ClustralDir, "active-profile");
 
-    internal static string GetProfileDir(string name) => Path.Combine(ProfilesDir, name);
+    internal static string GetProfileDir(string name) => SafeCombine(ProfilesDir, name);
+
+    /// <summary>
+    /// Combines a base directory with a user-supplied name, preventing path
+    /// traversal via <c>../</c> or absolute-path overrides in the input.
+    /// </summary>
+    private static string SafeCombine(string baseDir, string userSegment)
+    {
+        var fullPath = Path.GetFullPath(Path.Combine(baseDir, userSegment));
+        var fullBase = Path.GetFullPath(baseDir) + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(fullBase, StringComparison.Ordinal))
+            throw new ArgumentException($"Invalid name '{userSegment}' — path traversal is not allowed.");
+        return fullPath;
+    }
 
     internal static string? GetActiveProfile()
     {

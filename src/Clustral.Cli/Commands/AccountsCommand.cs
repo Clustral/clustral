@@ -207,8 +207,14 @@ internal static class AccountsCommand
             .ToList();
     }
 
-    internal static string GetAccountTokenPath(string email) =>
-        Path.Combine(AccountsDir, $"{email}.token");
+    internal static string GetAccountTokenPath(string email)
+    {
+        var fullPath = Path.GetFullPath(Path.Combine(AccountsDir, $"{email}.token"));
+        var fullBase = Path.GetFullPath(AccountsDir) + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(fullBase, StringComparison.Ordinal))
+            throw new ArgumentException($"Invalid email '{email}' — path traversal is not allowed.");
+        return fullPath;
+    }
 
     internal static string? ReadAccountToken(string email)
     {
