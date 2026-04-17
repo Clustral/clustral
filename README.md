@@ -998,8 +998,12 @@ docker compose up -d
 Deploy Clustral on Kubernetes with Helm. Requires [cert-manager](https://cert-manager.io) (installed on the cluster).
 
 ```bash
+# Add the Helm repository
+helm repo add clustral https://clustral.github.io/clustral
+helm repo update
+
 # Platform (all components + MongoDB + RabbitMQ)
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   --set global.domain=clustral.example.com \
   --set oidc.authority=https://idp.example.com \
@@ -1009,7 +1013,7 @@ helm install clustral oci://ghcr.io/clustral/helm/clustral \
   --set web.env.authSecret=$(openssl rand -base64 32)
 
 # Agent (per target cluster)
-helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+helm install clustral-agent clustral/clustral-agent \
   --namespace clustral-system --create-namespace \
   --set controlPlaneUrl=clustral.example.com:5443 \
   --set clusterId=<id> --set bootstrapToken=<token>

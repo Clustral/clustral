@@ -117,7 +117,7 @@ When Gateway API is enabled, `gateway-grpcroute.yaml` provides an alternative GR
 
 ## Testing
 
-- **CI:** `.github/workflows/helm.yml` runs `helm lint` + `helm template | kubectl apply --dry-run=client` on PRs touching `charts/`.
+- **CI:** `.github/workflows/helm.yml` runs `helm lint` + `helm template | kubeconform` on PRs touching `charts/`. On `v*` tags, `chart-releaser-action` publishes to GitHub Pages (`https://clustral.github.io/clustral`).
 - **chart-testing:** `ct.yaml` at repo root configures `ct lint`.
 - **Helm test:** `helm test <release>` runs `tests/test-connection.yaml` — a pod that curls each healthz endpoint from inside the cluster.
 - **Test values:** `ci/test-values.yaml` in each chart provides the minimum required values for CI rendering (mock URLs, disabled deps).
@@ -126,7 +126,7 @@ When Gateway API is enabled, `gateway-grpcroute.yaml` provides an alternative GR
 
 ## Versioning
 
-`version` and `appVersion` in each `Chart.yaml` are stamped by CI from the git tag (`v1.2.3` → `1.2.3`). **Do not bump them manually** — they ship as `0.0.0-dev` in source and are overwritten at publish time.
+`version` and `appVersion` in each `Chart.yaml` are stamped by `chart-releaser-action` from the git tag (`v1.2.3` → `1.2.3`). **Do not bump them manually** — they ship as `0.0.0-dev` in source and are overwritten at publish time.
 
 Docker image tags default to `appVersion` (via `{{ .Values.image.tag | default .Chart.AppVersion }}`), so the chart and images release together on the same tag.
 

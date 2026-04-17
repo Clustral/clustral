@@ -21,10 +21,17 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/do
 kubectl -n cert-manager wait --for=condition=Available deployment --all --timeout=120s
 ```
 
+## Add the Helm repository
+
+```bash
+helm repo add clustral https://clustral.github.io/clustral
+helm repo update
+```
+
 ## Install
 
 ```bash
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   --set global.domain=clustral.example.com \
   --set oidc.authority=https://idp.example.com/realms/clustral \
@@ -39,7 +46,7 @@ The `global.domain` value controls the Ingress hostname and the URLs that all co
 For a production deployment, you likely want to pin the chart version:
 
 ```bash
-helm install clustral oci://ghcr.io/clustral/helm/clustral --version 1.0.0 \
+helm install clustral clustral/clustral --version 1.0.0 \
   --namespace clustral --create-namespace \
   # ... values as above ...
 ```
@@ -47,9 +54,9 @@ helm install clustral oci://ghcr.io/clustral/helm/clustral --version 1.0.0 \
 To customize further, extract the default values and create a values file:
 
 ```bash
-helm show values oci://ghcr.io/clustral/helm/clustral > my-values.yaml
+helm show values clustral/clustral > my-values.yaml
 # Edit my-values.yaml, then:
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   -f my-values.yaml
 ```
@@ -99,7 +106,7 @@ clustral clusters register my-cluster
 Install the agent chart in the target cluster:
 
 ```bash
-helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+helm install clustral-agent clustral/clustral-agent \
   --namespace clustral-system --create-namespace \
   --set controlPlaneUrl=clustral.example.com:5443 \
   --set clusterId=a3f7c1e0-... \
@@ -120,7 +127,7 @@ See [Agent Deployment — Helm Chart](../agent-deployment/helm-chart.md) for the
 By default the chart creates an `Ingress` resource for HTTP traffic. If your cluster uses the Kubernetes Gateway API instead, disable Ingress and enable Gateway API:
 
 ```bash
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   --set ingress.enabled=false \
   --set gatewayApi.enabled=true \
@@ -145,7 +152,7 @@ cd charts/clustral
 ./generate-secrets.sh --namespace clustral
 
 # Install with cert-manager disabled
-helm install clustral oci://ghcr.io/clustral/helm/clustral \
+helm install clustral clustral/clustral \
   --namespace clustral --create-namespace \
   --set certManager.enabled=false \
   --set global.domain=clustral.example.com \
@@ -166,7 +173,7 @@ The `generate-secrets.sh` script creates four Kubernetes Secrets:
 View all available values:
 
 ```bash
-helm show values oci://ghcr.io/clustral/helm/clustral
+helm show values clustral/clustral
 ```
 
 See [charts/README.md](https://github.com/Clustral/clustral/blob/main/charts/README.md) for the full values reference with descriptions and defaults.
@@ -184,7 +191,7 @@ See [charts/README.md](https://github.com/Clustral/clustral/blob/main/charts/REA
 ## Upgrading
 
 ```bash
-helm upgrade clustral oci://ghcr.io/clustral/helm/clustral \
+helm upgrade clustral clustral/clustral \
   --namespace clustral --reuse-values \
   --set image.tag=v1.1.0
 ```

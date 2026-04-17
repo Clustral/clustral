@@ -27,10 +27,12 @@ clustral clusters register my-cluster
 #   bootstrapToken:  bst_ey...
 ```
 
-Install the agent in the target cluster:
+Add the Helm repository (once per machine) and install the agent:
 
 ```bash
-helm install clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+helm repo add clustral https://clustral.github.io/clustral
+helm repo update
+helm install clustral-agent clustral/clustral-agent \
   --namespace clustral-system --create-namespace \
   --set controlPlaneUrl=clustral.example.com:5443 \
   --set clusterId=a3f7c1e0-2b4d-4a3f-8c9e-1b2d3f4a5c6d \
@@ -70,7 +72,7 @@ The bootstrap token is single-use. The first successful `RegisterAgent` consumes
 | `tolerations` | no | `[]` | |
 | `affinity` | no | `{}` | |
 
-Run `helm show values oci://ghcr.io/clustral/helm/clustral-agent` to see the full values file. See `src/clustral-agent/CLAUDE.md` for the full `AGENT_*` environment-variable reference the binary consumes.
+Run `helm show values clustral/clustral-agent` to see the full values file. See `src/clustral-agent/CLAUDE.md` for the full `AGENT_*` environment-variable reference the binary consumes.
 
 ## RBAC
 
@@ -126,7 +128,7 @@ kubectl get pods -A
 ## Upgrading
 
 ```bash
-helm upgrade clustral-agent oci://ghcr.io/clustral/helm/clustral-agent \
+helm upgrade clustral-agent clustral/clustral-agent \
   --namespace clustral-system \
   --reuse-values \
   --set image.tag=v0.4.0
