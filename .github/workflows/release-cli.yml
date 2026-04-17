@@ -5,6 +5,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build CLI (${{ matrix.artifact }})
@@ -105,6 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,14 +124,17 @@ jobs:
           OUTPUT: CHANGELOG.md
           GITHUB_REPO: ${{ github.repository }}
 
-      - name: Commit changelog
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git diff --staged --quiet && exit 0
-          git commit -m "docs: update CHANGELOG.md for ${{ github.ref_name }}"
-          git push
+      - name: Create changelog PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "docs: update CHANGELOG.md for ${{ github.ref_name }}"
+          branch: chore/changelog-${{ github.ref_name }}
+          title: "docs: update CHANGELOG.md for ${{ github.ref_name }}"
+          body: |
+            Auto-generated changelog update from the release pipeline.
+            Triggered by tag `${{ github.ref_name }}`.
+          labels: documentation
+          delete-branch: true
 
   homebrew:
     name: Update Homebrew Formula

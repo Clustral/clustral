@@ -14,6 +14,9 @@ on:
       - ".github/workflows/release.yml"
     tags: ["v*"]
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
 

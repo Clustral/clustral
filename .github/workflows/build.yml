@@ -29,6 +29,10 @@ on:
       - "Directory.Packages.props"
       - ".github/workflows/build.yml"
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   changes:
     name: Detect changes
