@@ -1,3 +1,61 @@
 apiVersion: v1
-entries: {}
-generated: "2026-04-18T06:19:38Z"
+entries:
+  clustral:
+  - apiVersion: v2
+    appVersion: 0.1.0-alpha.2
+    created: "2026-04-18T06:27:04.066828928Z"
+    dependencies:
+    - condition: mongodb.enabled
+      name: mongodb
+      repository: oci://registry-1.docker.io/bitnamicharts
+      version: ~16.x
+    - condition: rabbitmq.enabled
+      name: rabbitmq
+      repository: oci://registry-1.docker.io/bitnamicharts
+      version: ~15.x
+    description: Clustral platform — Kubernetes access proxy with OIDC authentication,
+      JIT access grants, and audit logging.
+    digest: 906a07b51b3bb07d8890ae5f68885fd692bb06b0a47fafa1ab247b7fba2b0f1b
+    home: https://github.com/Clustral/clustral
+    keywords:
+    - kubernetes
+    - access
+    - proxy
+    - oidc
+    - audit
+    - clustral
+    maintainers:
+    - name: Clustral
+      url: https://github.com/Clustral
+    name: clustral
+    sources:
+    - https://github.com/Clustral/clustral
+    type: application
+    urls:
+    - https://github.com/Clustral/clustral/releases/download/clustral-0.1.0-alpha.2/clustral-0.1.0-alpha.2.tgz
+    version: 0.1.0-alpha.2
+  clustral-agent:
+  - apiVersion: v2
+    appVersion: 0.1.0-alpha.2
+    created: "2026-04-18T06:27:04.431272904Z"
+    description: Clustral agent — deploys the Go binary that tunnels kubectl traffic
+      from the control plane to the Kubernetes API server in this cluster.
+    digest: bb99d487b9f7bf911c709533b27384a16c3d1095b73335291342b82a666ea2a4
+    home: https://github.com/Clustral/clustral
+    keywords:
+    - kubernetes
+    - access
+    - proxy
+    - agent
+    - clustral
+    maintainers:
+    - name: Clustral
+      url: https://github.com/Clustral
+    name: clustral-agent
+    sources:
+    - https://github.com/Clustral/clustral
+    type: application
+    urls:
+    - https://github.com/Clustral/clustral/releases/download/clustral-agent-0.1.0-alpha.2/clustral-agent-0.1.0-alpha.2.tgz
+    version: 0.1.0-alpha.2
+generated: "2026-04-18T06:27:04.431278484Z"
