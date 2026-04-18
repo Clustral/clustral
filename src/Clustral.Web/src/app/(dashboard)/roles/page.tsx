@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchRoles, createRole, updateRole, deleteRole } from "@/lib/api";
 import type { Role } from "@/types/api";
-import { NavHeader } from "@/components/NavHeader";
 import { Plus, Trash2, Shield, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +49,6 @@ export default function RolesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavHeader />
       <div className="mx-auto max-w-4xl px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Roles</h2>

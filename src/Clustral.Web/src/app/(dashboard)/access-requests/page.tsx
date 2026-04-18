@@ -15,13 +15,19 @@ import {
   fetchUsers,
 } from "@/lib/api";
 import type { AccessRequest, AccessRequestStatus } from "@/types/api";
-import { NavHeader } from "@/components/NavHeader";
 import { Shield, Clock, Plus, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -130,7 +136,6 @@ export default function AccessRequestsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavHeader />
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -453,36 +458,34 @@ function CreateRequestDialog({
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-2">
             <Label>Role</Label>
-            <select
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              value={roleId}
-              onChange={(e) => setRoleId(e.target.value)}
-              required
-            >
-              <option value="">Select a role...</option>
-              {roles?.roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} — {r.description}
-                </option>
-              ))}
-            </select>
+            <Select value={roleId || undefined} onValueChange={(val) => setRoleId(val as string)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a role..." />
+              </SelectTrigger>
+              <SelectContent>
+                {roles?.roles.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name} — {r.description}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
             <Label>Cluster</Label>
-            <select
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              value={clusterId}
-              onChange={(e) => setClusterId(e.target.value)}
-              required
-            >
-              <option value="">Select a cluster...</option>
-              {clusters?.clusters.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select value={clusterId || undefined} onValueChange={(val) => setClusterId(val as string)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a cluster..." />
+              </SelectTrigger>
+              <SelectContent>
+                {clusters?.clusters.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">

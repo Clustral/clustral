@@ -7,11 +7,19 @@ import { useClusters, clusterKeys } from "@/hooks/useClusters";
 import { ClusterCard } from "@/components/ClusterCard";
 import { ConnectSteps } from "@/components/ConnectSteps";
 import { RegisterClusterDialog } from "@/components/RegisterClusterDialog";
-import { NavHeader } from "@/components/NavHeader";
 import { deleteCluster } from "@/lib/api";
 import type { Cluster } from "@/types/api";
 import { RefreshCw, Server, Plus } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function ClustersPage() {
   const { data: session, status } = useSession();
@@ -46,31 +54,29 @@ export default function ClustersPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavHeader />
 
       {/* Body */}
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Clusters</h2>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() =>
                 queryClient.invalidateQueries({ queryKey: clusterKeys.all })
               }
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent transition-colors"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              size="sm"
               onClick={() => setRegisterOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               Register Cluster
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -90,14 +96,10 @@ export default function ClustersPage() {
             <p className="text-sm text-muted-foreground mb-4">
               No clusters registered yet.
             </p>
-            <button
-              type="button"
-              onClick={() => setRegisterOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
+            <Button onClick={() => setRegisterOpen(true)}>
               <Plus className="h-4 w-4" />
               Register your first cluster
-            </button>
+            </Button>
           </div>
         )}
 
@@ -135,53 +137,52 @@ export default function ClustersPage() {
       />
 
       {/* Delete confirmation */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-foreground/20"
-            onClick={() => setDeleteTarget(null)}
-          />
-          <div className="relative w-full max-w-sm rounded-lg border bg-background p-6 shadow-lg mx-4">
-            <h3 className="text-lg font-semibold mb-2">Delete cluster</h3>
-            <p className="text-sm text-muted-foreground mb-1">
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            deleteMutation.reset();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete cluster</DialogTitle>
+            <DialogDescription>
               Are you sure you want to delete{" "}
               <span className="font-medium text-foreground">
-                {deleteTarget.name}
+                {deleteTarget?.name}
               </span>
-              ?
-            </p>
-            <p className="text-xs text-muted-foreground mb-5">
-              This will remove the cluster registration and revoke all associated
+              ? This will remove the cluster registration and revoke all associated
               credentials. Connected agents will be disconnected.
-            </p>
-            {deleteMutation.isError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive mb-4">
-                {(deleteMutation.error as Error).message}
-              </div>
-            )}
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteTarget(null);
-                  deleteMutation.reset();
-                }}
-                className="rounded-md border px-4 py-2 text-sm hover:bg-accent transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(deleteTarget)}
-                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 transition-colors disabled:opacity-50"
-              >
-                {deleteMutation.isPending ? "Deleting..." : "Delete"}
-              </button>
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMutation.isError && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+              {(deleteMutation.error as Error).message}
             </div>
-          </div>
-        </div>
-      )}
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTarget(null);
+                deleteMutation.reset();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
