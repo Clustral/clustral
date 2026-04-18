@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Outer hexagon ring -->
+  <path d="M256 32l194 112v224L256 480 62 368V144z" stroke="url(#grad1)" stroke-width="16" fill="none" stroke-linejoin="round"/>
+
+  <!-- Inner hexagon -->
+  <path d="M256 112l113 65v130l-113 65-113-65V177z" fill="url(#grad2)" opacity="0.15"/>
+  <path d="M256 112l113 65v130l-113 65-113-65V177z" stroke="url(#grad2)" stroke-width="10" fill="none" stroke-linejoin="round"/>
+
+  <!-- Center node -->
+  <circle cx="256" cy="256" r="28" fill="url(#grad1)"/>
+
+  <!-- Top node + connection -->
+  <line x1="256" y1="228" x2="256" y2="148" stroke="url(#grad1)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="256" cy="140" r="14" fill="url(#grad2)"/>
+
+  <!-- Bottom-left node + connection -->
+  <line x1="236" y1="272" x2="180" y2="330" stroke="url(#grad1)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="174" cy="336" r="14" fill="url(#grad2)"/>
+
+  <!-- Bottom-right node + connection -->
+  <line x1="276" y1="272" x2="332" y2="330" stroke="url(#grad1)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="338" cy="336" r="14" fill="url(#grad2)"/>
+
+  <!-- Top-left diagonal connection -->
+  <line x1="236" y1="240" x2="176" y2="200" stroke="url(#grad2)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="170" cy="196" r="10" fill="url(#grad1)" opacity="0.7"/>
+
+  <!-- Top-right diagonal connection -->
+  <line x1="276" y1="240" x2="336" y2="200" stroke="url(#grad2)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="342" cy="196" r="10" fill="url(#grad1)" opacity="0.7"/>
+
+  <!-- Bottom center connection -->
+  <line x1="256" y1="284" x2="256" y2="356" stroke="url(#grad2)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="256" cy="362" r="10" fill="url(#grad1)" opacity="0.7"/>
+
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+</svg>

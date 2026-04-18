@@ -15,13 +15,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import Image from "next/image"
 import {
   ServerIcon,
   UsersIcon,
   ShieldCheckIcon,
   KeyIcon,
   ScrollTextIcon,
-  NetworkIcon,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 
@@ -79,7 +79,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<Link href="/clusters" />}
             >
-              <NetworkIcon className="size-5!" />
+              <Image src="/logo.svg" alt="Clustral" width={20} height={20} className="size-5!" />
               <span className="text-base font-semibold">Clustral</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -10,6 +10,9 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 export const metadata: Metadata = {
   title: "Clustral",
   description: "Kubernetes access proxy",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
