@@ -85,6 +85,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Stamp chart versions from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for chart in charts/*/Chart.yaml; do
+            sed -i "s/^version:.*/version: $VERSION/" "$chart"
+            sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" "$chart"
+            echo "Stamped $chart → $VERSION"
+          done
+
+      - name: Build chart dependencies
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm dependency build charts/clustral
+
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.7.0
         with:
