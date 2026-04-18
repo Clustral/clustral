@@ -1,44 +1,69 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
-import { useClusters, clusterKeys } from "@/hooks/useClusters";
+import { useClusters } from "@/hooks/useClusters";
 import { ClusterCard } from "@/components/ClusterCard";
-import { ConnectSteps } from "@/components/ConnectSteps";
-import { RegisterClusterDialog } from "@/components/RegisterClusterDialog";
-import { deleteCluster } from "@/lib/api";
+import { ClusterCardSkeleton } from "@/components/ClusterCardSkeleton";
+import { ClusterEmptyState } from "@/components/ClusterEmptyState";
+import { ClusterToolbar } from "@/components/ClusterToolbar";
+import { ClusterDetailSheet } from "@/components/ClusterDetailSheet";
+import { RegisterClusterStepper } from "@/components/RegisterClusterStepper";
+import { DeleteClusterDialog } from "@/components/DeleteClusterDialog";
 import type { Cluster } from "@/types/api";
-import { RefreshCw, Server, Plus } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { clusterKeys } from "@/hooks/useClusters";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Alert } from "@/components/ui/alert";
 
 export default function ClustersPage() {
-  const { data: session, status } = useSession();
-  const token = (session as any)?.accessToken as string | undefined;
+  const { status } = useSession();
   const queryClient = useQueryClient();
-  const { data, isLoading, isError, error } = useClusters();
 
-  const [selected, setSelected] = useState<Cluster | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name");
+  const [selectedClusterId, setSelectedClusterId] = useState<string | null>(
+    null,
+  );
   const [registerOpen, setRegisterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Cluster | null>(null);
 
-  const deleteMutation = useMutation({
-    mutationFn: (cluster: Cluster) => deleteCluster(token!, cluster.id),
-    onSuccess: (_data, cluster) => {
-      if (selected?.id === cluster.id) setSelected(null);
-      queryClient.invalidateQueries({ queryKey: clusterKeys.all });
-      setDeleteTarget(null);
-    },
-  });
+  const apiStatusFilter =
+    statusFilter === "all" ? undefined : statusFilter;
+  const { data, isLoading, isError, error } = useClusters(apiStatusFilter);
+
+  const filtered = useMemo(() => {
+    if (!data) return [];
+    let clusters = data.clusters;
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      clusters = clusters.filter((c) =>
+        c.name.toLowerCase().includes(q),
+      );
+    }
+
+    clusters = [...clusters].sort((a, b) => {
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      // "recent" — sort by lastSeenAt descending, nulls last
+      const aTime = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
+      const bTime = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return clusters;
+  }, [data, searchQuery, sortBy]);
+
+  const selectedCluster =
+    data?.clusters.find((c) => c.id === selectedClusterId) ?? null;
+
+  const hasAnyClusters = data && data.clusters.length > 0;
+  const hasFilteredResults = filtered.length > 0;
 
   if (status === "loading") {
     return (
@@ -54,135 +79,115 @@ export default function ClustersPage() {
 
   return (
     <div className="min-h-screen bg-background">
-
-      {/* Body */}
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Clusters</h2>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                queryClient.invalidateQueries({ queryKey: clusterKeys.all })
-              }
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setRegisterOpen(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Register Cluster
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: clusterKeys.all })
+            }
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+        </div>
+
+        <div className="mb-6">
+          <ClusterToolbar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            onRegister={() => setRegisterOpen(true)}
+          />
         </div>
 
         {isLoading && (
-          <p className="text-sm text-muted-foreground">Loading clusters...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <ClusterCardSkeleton />
+            <ClusterCardSkeleton />
+            <ClusterCardSkeleton />
+          </div>
         )}
 
         {isError && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive">
-            Failed to load clusters: {(error as Error).message}
-          </div>
+          <Alert variant="destructive">
+            <div className="flex items-center justify-between w-full">
+              <span>
+                Failed to load clusters: {(error as Error).message}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  queryClient.invalidateQueries({
+                    queryKey: clusterKeys.all,
+                  })
+                }
+              >
+                Retry
+              </Button>
+            </div>
+          </Alert>
         )}
 
-        {data && data.clusters.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Server className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-sm text-muted-foreground mb-4">
-              No clusters registered yet.
-            </p>
-            <Button onClick={() => setRegisterOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Register your first cluster
-            </Button>
-          </div>
+        {data && !hasAnyClusters && (
+          <ClusterEmptyState onRegister={() => setRegisterOpen(true)} />
         )}
 
-        {data && data.clusters.length > 0 && (
-          <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-            <div className="space-y-3">
-              {data.clusters.map((c) => (
-                <ClusterCard
-                  key={c.id}
-                  cluster={c}
-                  selected={selected?.id === c.id}
-                  onSelect={setSelected}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </div>
-            <div>
-              {selected ? (
-                <ConnectSteps cluster={selected} />
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-lg border border-dashed p-12">
-                  <p className="text-sm text-muted-foreground">
-                    Select a cluster to see connection instructions.
-                  </p>
-                </div>
-              )}
-            </div>
+        {data && hasAnyClusters && !hasFilteredResults && (
+          <p className="text-sm text-muted-foreground text-center py-12">
+            No clusters match your search or filter criteria.
+          </p>
+        )}
+
+        {data && hasAnyClusters && hasFilteredResults && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map((c) => (
+              <ClusterCard
+                key={c.id}
+                cluster={c}
+                onSelect={(cluster) => setSelectedClusterId(cluster.id)}
+                onDelete={setDeleteTarget}
+              />
+            ))}
           </div>
         )}
       </main>
 
-      <RegisterClusterDialog
-        open={registerOpen}
-        onClose={() => setRegisterOpen(false)}
+      <ClusterDetailSheet
+        cluster={selectedCluster}
+        open={!!selectedClusterId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedClusterId(null);
+        }}
       />
 
-      {/* Delete confirmation */}
-      <Dialog
+      <RegisterClusterStepper
+        open={registerOpen}
+        onOpenChange={setRegisterOpen}
+        onRegistered={() => {
+          queryClient.invalidateQueries({ queryKey: clusterKeys.all });
+        }}
+      />
+
+      <DeleteClusterDialog
+        cluster={deleteTarget}
         open={!!deleteTarget}
         onOpenChange={(open) => {
-          if (!open) {
-            setDeleteTarget(null);
-            deleteMutation.reset();
-          }
+          if (!open) setDeleteTarget(null);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete cluster</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete{" "}
-              <span className="font-medium text-foreground">
-                {deleteTarget?.name}
-              </span>
-              ? This will remove the cluster registration and revoke all associated
-              credentials. Connected agents will be disconnected.
-            </DialogDescription>
-          </DialogHeader>
-          {deleteMutation.isError && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
-              {(deleteMutation.error as Error).message}
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeleteTarget(null);
-                deleteMutation.reset();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deleteMutation.isPending}
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onDeleted={() => {
+          if (selectedClusterId === deleteTarget?.id) {
+            setSelectedClusterId(null);
+          }
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

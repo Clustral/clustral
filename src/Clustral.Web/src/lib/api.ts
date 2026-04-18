@@ -92,6 +92,16 @@ export function registerCluster(
   });
 }
 
+export function fetchCluster(
+  token: string,
+  clusterId: string,
+): Promise<import("@/types/api").Cluster> {
+  return apiFetch<import("@/types/api").Cluster>(
+    `/clusters/${clusterId}`,
+    token,
+  );
+}
+
 // ── Roles ────────────────────────────────────────────────────────────────────
 
 export function fetchRoles(token: string): Promise<RoleListResponse> {

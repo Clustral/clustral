@@ -1,7 +1,8 @@
+"use client";
+
 import type { Cluster } from "@/types/api";
-import { Copy, Check, Terminal, Key, ArrowRight } from "lucide-react";
-import { useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Key, Terminal, ArrowRight } from "lucide-react";
+import { CopyBlock } from "@/components/CopyBlock";
 
 interface ConnectStepsProps {
   cluster: Cluster;
@@ -40,11 +41,20 @@ export function ConnectSteps({ cluster }: ConnectStepsProps) {
           command="kubectl get namespaces"
         />
       </ol>
+
+      <a
+        href="https://github.com/Clustral/clustral#readme"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-6 block text-xs text-muted-foreground hover:underline"
+      >
+        View CLI docs
+      </a>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 interface StepProps {
   number: number;
@@ -55,15 +65,6 @@ interface StepProps {
 }
 
 function Step({ number, icon, title, description, command }: StepProps) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = useCallback(() => {
-    navigator.clipboard.writeText(command).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [command]);
-
   return (
     <li className="flex gap-3">
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium">
@@ -77,23 +78,8 @@ function Step({ number, icon, title, description, command }: StepProps) {
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
 
-        <div className="mt-2 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 font-mono text-sm">
-          <code className="flex-1 truncate text-secondary-foreground">
-            $ {command}
-          </code>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={copy}
-            aria-label="Copy command"
-            className="shrink-0 h-6 w-6"
-          >
-            {copied ? (
-              <Check className="h-4 w-4 text-connected" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </Button>
+        <div className="mt-2">
+          <CopyBlock value={`$ ${command}`} />
         </div>
       </div>
     </li>
