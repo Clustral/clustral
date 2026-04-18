@@ -11,7 +11,8 @@ authentication via NextAuth.js. UI built with shadcn/ui + Tailwind CSS 4.
 |---|---|
 | Framework | Next.js 14 (App Router) |
 | UI | React 18, TypeScript |
-| Components | shadcn/ui (Radix UI primitives + Tailwind) |
+| Components | shadcn/ui (preset `b5J5UIRQQ`, Radix UI primitives + Tailwind) |
+| Layout | dashboard-01 sidebar block (SidebarProvider + AppSidebar + SiteHeader) |
 | Styling | Tailwind CSS 4, `class-variance-authority`, `clsx`, `tailwind-merge` |
 | Icons | Lucide React |
 | Auth | NextAuth.js v5 (server-side OIDC) |
@@ -30,31 +31,36 @@ Clustral.Web/
 │
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx                 ← Root layout + Providers + Inter font
-│   │   ├── globals.css                ← Tailwind v4 @theme (design tokens)
+│   │   ├── layout.tsx                 ← Root layout + Providers + Inter font + TooltipProvider
+│   │   ├── globals.css                ← Tailwind v4 @theme (design tokens, preset b5J5UIRQQ)
 │   │   ├── page.tsx                   ← Redirect → /clusters
 │   │   ├── login/page.tsx             ← SSO login (Card + Button)
-│   │   ├── clusters/page.tsx          ← Cluster list + connect panel
-│   │   ├── users/page.tsx             ← User list + role assignments
-│   │   ├── roles/page.tsx             ← Role management (CRUD)
-│   │   ├── access-requests/page.tsx  ← Access request management (My Requests, Pending Reviews, Active Grants tabs)
+│   │   ├── (dashboard)/
+│   │   │   ├── layout.tsx             ← Sidebar layout (SidebarProvider + AppSidebar + SiteHeader)
+│   │   │   ├── clusters/page.tsx      ← Cluster list + connect panel
+│   │   │   ├── users/page.tsx         ← User list + role assignments
+│   │   │   ├── roles/page.tsx         ← Role management (CRUD)
+│   │   │   ├── access-requests/page.tsx ← Access request management
+│   │   │   └── audit/page.tsx         ← Audit log with filters + table
 │   │   ├── api/auth/[...nextauth]/    ← NextAuth route handler
 │   │   ├── api/v1/[...path]/          ← ControlPlane REST proxy (Web UI only)
 │   │   └── .well-known/clustral-*/    ← CLI service discovery endpoint
 │   │
 │   ├── components/
 │   │   ├── ui/                        ← shadcn/ui components (DO NOT import from packages)
-│   │   │   ├── button.tsx
-│   │   │   ├── input.tsx
-│   │   │   ├── badge.tsx
-│   │   │   ├── card.tsx
-│   │   │   ├── dialog.tsx
-│   │   │   ├── alert.tsx
-│   │   │   ├── select.tsx
-│   │   │   ├── separator.tsx
-│   │   │   └── label.tsx
+│   │   │   ├── button.tsx, input.tsx, badge.tsx, card.tsx, dialog.tsx
+│   │   │   ├── alert.tsx, select.tsx, separator.tsx, label.tsx
+│   │   │   ├── table.tsx, tabs.tsx, tooltip.tsx, popover.tsx
+│   │   │   ├── dropdown-menu.tsx, sidebar.tsx, sheet.tsx, drawer.tsx
+│   │   │   ├── avatar.tsx, breadcrumb.tsx, skeleton.tsx, sonner.tsx
+│   │   │   ├── chart.tsx, checkbox.tsx, toggle.tsx, toggle-group.tsx
+│   │   │   └── (+ more — run `ls src/components/ui/` for full list)
 │   │   │
-│   │   ├── NavHeader.tsx              ← Top navigation (Clusters / Users / Roles / Access Requests + sign out)
+│   │   ├── app-sidebar.tsx            ← Sidebar navigation (Clusters / Users / Roles / Access Requests / Audit)
+│   │   ├── nav-main.tsx               ← Sidebar nav item list
+│   │   ├── nav-user.tsx               ← Sidebar user footer (session-aware)
+│   │   ├── site-header.tsx            ← Top header with sidebar trigger + page title
+│   │   ├── NavHeader.tsx              ← (legacy, kept for reference — sidebar replaces it)
 │   │   ├── ClusterCard.tsx            ← Cluster row (Card + Badge + Button)
 │   │   ├── ConnectSteps.tsx           ← CLI connection instructions
 │   │   ├── RegisterClusterDialog.tsx  ← Dialog for cluster registration
@@ -82,12 +88,21 @@ Clustral.Web/
 Components are in `src/components/ui/`. They are **owned by us** — not a
 package dependency. Modify them directly when needed.
 
+### Preset
+
+The project uses shadcn preset `b5J5UIRQQ`. To regenerate or reinitialize:
+
+```bash
+cd src/Clustral.Web
+npx shadcn@latest init --preset b5J5UIRQQ --force
+```
+
 ### Adding a new component
 
 ```bash
 cd src/Clustral.Web
 bunx shadcn@latest add <component-name>
-# e.g. bunx shadcn@latest add table tooltip popover
+# e.g. bunx shadcn@latest add accordion collapsible
 ```
 
 This downloads the component source into `src/components/ui/` and installs
@@ -121,13 +136,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 ### Guidelines
 
+- **Never** use raw `<button>`, `<select>`, `<input>`, `<label>`, `<table>`, or hand-rolled modal `<div>`s. Always import from `@/components/ui/*`.
 - **Always** use shadcn Button instead of raw `<button>` elements
+- **Always** use shadcn Select (with SelectTrigger/SelectContent/SelectItem) instead of raw `<select>`
 - **Always** use shadcn Input/Label instead of raw `<input>/<label>`
+- **Always** use shadcn Table (with TableHeader/TableBody/TableRow/TableHead/TableCell) instead of raw `<table>`
 - **Always** use shadcn Dialog for modals — it handles focus trap, escape key, overlay
 - Use Badge for status indicators and tags
 - Use Card for content containers
 - Use Alert for error/warning messages
 - Keep customizations in the component files, not via className overrides
+
+### Layout
+
+All authenticated pages live in the `(dashboard)` route group. The layout
+provides the sidebar (`AppSidebar`), header (`SiteHeader`), and content area.
+
+To add a new page to the sidebar:
+1. Create `src/app/(dashboard)/<page>/page.tsx`
+2. Add a nav item to the `navItems` array in `src/components/app-sidebar.tsx`
+3. Add a title entry to `pageTitles` in `src/components/site-header.tsx`
 
 ---
 
