@@ -102,40 +102,6 @@ jobs:
             artifacts/clustral-darwin-amd64/clustral-darwin-amd64
             artifacts/clustral-windows-amd64.exe/clustral-windows-amd64.exe
 
-  update-changelog:
-    name: Update CHANGELOG.md
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Generate full changelog
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --verbose
-        env:
-          OUTPUT: CHANGELOG.md
-          GITHUB_REPO: ${{ github.repository }}
-
-      - name: Create changelog PR
-        uses: peter-evans/create-pull-request@v7
-        with:
-          commit-message: "docs: update CHANGELOG.md for ${{ github.ref_name }}"
-          branch: chore/changelog-${{ github.ref_name }}
-          title: "docs: update CHANGELOG.md for ${{ github.ref_name }}"
-          body: |
-            Auto-generated changelog update from the release pipeline.
-            Triggered by tag `${{ github.ref_name }}`.
-          labels: documentation
-          delete-branch: true
-
   homebrew:
     name: Update Homebrew Formula
     needs: release
