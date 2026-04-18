@@ -5,11 +5,26 @@ import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { useAudit, useAuditDetail } from "@/hooks/useAudit";
 import type { AuditEvent, AuditSeverity, AuditFilters } from "@/types/api";
-import { NavHeader } from "@/components/NavHeader";
 import { ScrollText, ChevronLeft, ChevronRight, RefreshCw, Eye, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -57,7 +72,7 @@ function formatTimestamp(dateStr: string): string {
 }
 
 const categories = [
-  { value: "", label: "All categories" },
+  { value: "all", label: "All categories" },
   { value: "access_requests", label: "Access Requests" },
   { value: "credentials", label: "Credentials" },
   { value: "clusters", label: "Clusters" },
@@ -67,7 +82,7 @@ const categories = [
 ];
 
 const severities = [
-  { value: "", label: "All severities" },
+  { value: "all", label: "All severities" },
   { value: "Info", label: "Info" },
   { value: "Warning", label: "Warning" },
   { value: "Error", label: "Error" },
@@ -103,7 +118,6 @@ export default function AuditPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavHeader />
       <main className="mx-auto max-w-7xl px-6 py-8">
         {/* ── Header ──────────────────────────────────────────── */}
         <div className="mb-4 flex items-center justify-between">
@@ -120,35 +134,41 @@ export default function AuditPage() {
         {/* ── Filter bar ──────────────────────────────────────── */}
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
           <div className="min-w-[140px]">
-            <label htmlFor="category" className="mb-1 block text-xs text-muted-foreground">Category</label>
-            <select
-              id="category"
-              className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm"
-              value={filters.category ?? ""}
-              onChange={(e) => updateFilter("category", e.target.value)}
+            <Label htmlFor="category" className="mb-1 text-xs text-muted-foreground">Category</Label>
+            <Select
+              value={filters.category ?? "all"}
+              onValueChange={(val) => updateFilter("category", val === "all" ? "" : val as string)}
             >
-              {categories.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="min-w-[120px]">
-            <label htmlFor="severity" className="mb-1 block text-xs text-muted-foreground">Severity</label>
-            <select
-              id="severity"
-              className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm"
-              value={filters.severity ?? ""}
-              onChange={(e) => updateFilter("severity", e.target.value)}
+            <Label htmlFor="severity" className="mb-1 text-xs text-muted-foreground">Severity</Label>
+            <Select
+              value={filters.severity ?? "all"}
+              onValueChange={(val) => updateFilter("severity", val === "all" ? "" : val as string)}
             >
-              {severities.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All severities" />
+              </SelectTrigger>
+              <SelectContent>
+                {severities.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="min-w-[160px]">
-            <label htmlFor="user" className="mb-1 block text-xs text-muted-foreground">User</label>
+            <Label htmlFor="user" className="mb-1 text-xs text-muted-foreground">User</Label>
             <Input
               id="user"
               placeholder="admin@corp.com"
@@ -159,7 +179,7 @@ export default function AuditPage() {
           </div>
 
           <div className="min-w-[100px]">
-            <label htmlFor="code" className="mb-1 block text-xs text-muted-foreground">Event Code</label>
+            <Label htmlFor="code" className="mb-1 text-xs text-muted-foreground">Event Code</Label>
             <Input
               id="code"
               placeholder="CAR002I"
@@ -170,7 +190,7 @@ export default function AuditPage() {
           </div>
 
           <div className="min-w-[130px]">
-            <label htmlFor="from" className="mb-1 block text-xs text-muted-foreground">From</label>
+            <Label htmlFor="from" className="mb-1 text-xs text-muted-foreground">From</Label>
             <Input
               id="from"
               type="date"
@@ -181,7 +201,7 @@ export default function AuditPage() {
           </div>
 
           <div className="min-w-[130px]">
-            <label htmlFor="to" className="mb-1 block text-xs text-muted-foreground">To</label>
+            <Label htmlFor="to" className="mb-1 text-xs text-muted-foreground">To</Label>
             <Input
               id="to"
               type="date"
@@ -226,20 +246,20 @@ export default function AuditPage() {
         {data && data.events.length > 0 && (
           <>
             <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">Code</th>
-                    <th className="px-4 py-3 text-left font-medium">Event</th>
-                    <th className="px-4 py-3 text-left font-medium">Severity</th>
-                    <th className="px-4 py-3 text-left font-medium">User</th>
-                    <th className="px-4 py-3 text-left font-medium">Cluster</th>
-                    <th className="px-4 py-3 text-left font-medium">Time</th>
-                    <th className="px-4 py-3 text-left font-medium">Message</th>
-                    <th className="w-10" />
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Code</TableHead>
+                    <TableHead>Event</TableHead>
+                    <TableHead>Severity</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Cluster</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Message</TableHead>
+                    <TableHead className="w-10" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {data.events.map((event) => (
                     <AuditRow
                       key={event.uid}
@@ -247,8 +267,8 @@ export default function AuditPage() {
                       onViewDetails={() => setSelectedUid(event.uid)}
                     />
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             {/* ── Pagination ──────────────────────────────── */}
@@ -305,22 +325,22 @@ function AuditRow({
   onViewDetails: () => void;
 }) {
   return (
-    <tr className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-      <td className="px-4 py-3 font-mono text-xs">{event.code}</td>
-      <td className="px-4 py-3 text-muted-foreground">{event.event}</td>
-      <td className="px-4 py-3">{severityBadge(event.severity)}</td>
-      <td className="px-4 py-3">{event.user ?? <span className="text-muted-foreground">—</span>}</td>
-      <td className="px-4 py-3">{event.clusterName ?? <span className="text-muted-foreground">—</span>}</td>
-      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{timeAgo(event.time)}</td>
-      <td className="px-4 py-3 max-w-xs truncate text-muted-foreground" title={event.message ?? ""}>
+    <TableRow>
+      <TableCell className="font-mono text-xs">{event.code}</TableCell>
+      <TableCell className="text-muted-foreground">{event.event}</TableCell>
+      <TableCell>{severityBadge(event.severity)}</TableCell>
+      <TableCell>{event.user ?? <span className="text-muted-foreground">—</span>}</TableCell>
+      <TableCell>{event.clusterName ?? <span className="text-muted-foreground">—</span>}</TableCell>
+      <TableCell className="text-muted-foreground whitespace-nowrap">{timeAgo(event.time)}</TableCell>
+      <TableCell className="max-w-xs truncate text-muted-foreground" title={event.message ?? ""}>
         {event.message ?? "—"}
-      </td>
-      <td className="px-2 py-3">
+      </TableCell>
+      <TableCell>
         <Button variant="ghost" size="icon-xs" onClick={onViewDetails} title="View details">
           <Eye className="h-4 w-4" />
         </Button>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 

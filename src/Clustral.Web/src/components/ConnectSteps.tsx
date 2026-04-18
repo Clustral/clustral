@@ -1,6 +1,7 @@
 import type { Cluster } from "@/types/api";
 import { Copy, Check, Terminal, Key, ArrowRight } from "lucide-react";
 import { useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
 
 interface ConnectStepsProps {
   cluster: Cluster;
@@ -80,18 +81,19 @@ function Step({ number, icon, title, description, command }: StepProps) {
           <code className="flex-1 truncate text-secondary-foreground">
             $ {command}
           </code>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={copy}
-            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Copy command"
+            className="shrink-0 h-6 w-6"
           >
             {copied ? (
               <Check className="h-4 w-4 text-connected" />
             ) : (
               <Copy className="h-4 w-4" />
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </li>
