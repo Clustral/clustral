@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package clustral.internal.v1;
+
+option csharp_namespace = "Clustral.Internal.V1";
+option go_package = "github.com/clustral/clustral/proto/internal/v1";
+
+import "tunnel.proto";
+
+// TunnelProxy is an internal gRPC service that the stateless ControlPlane
+// API calls to forward kubectl HTTP requests through a specific
+// TunnelService pod that holds the agent's persistent tunnel stream.
+//
+// Flow:
+//   1. ControlPlane receives a kubectl proxy request.
+//   2. ControlPlane queries Redis for the tunnel pod that owns the
+//      target cluster's session (e.g., "tunnel-0").
+//   3. ControlPlane calls TunnelProxy.ProxyRequest on that pod's
+//      internal gRPC endpoint (:50051).
+//   4. TunnelProxy looks up the local TunnelSession, sends the HTTP
+//      request frame to the Agent, waits for the response, returns it.
+service TunnelProxy {
+  // Forward an HTTP request through an agent tunnel session.
+  // Returns the agent's HTTP response or an error if the session
+  // is not found or the tunnel times out.
+  rpc ProxyRequest (TunnelProxyRequest) returns (TunnelProxyResponse);
+}
+
+message TunnelProxyRequest {
+  // The cluster whose agent should receive this request.
+  string cluster_id = 1;
+
+  // The HTTP request to forward through the tunnel.
+  clustral.v1.HttpRequestFrame frame = 2;
+}
+
+message TunnelProxyResponse {
+  // The HTTP response from the agent (via the k8s API server).
+  clustral.v1.HttpResponseFrame frame = 1;
+}
