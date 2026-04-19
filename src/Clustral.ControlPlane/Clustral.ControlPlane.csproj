@@ -17,8 +17,9 @@
     <PackageReference Include="AspNetCore.HealthChecks.Uris" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
-    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="MassTransit" />
+    <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="MediatR" />
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />

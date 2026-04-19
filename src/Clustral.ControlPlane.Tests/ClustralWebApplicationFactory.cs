@@ -1,6 +1,7 @@
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
+using Clustral.ControlPlane.Infrastructure.Redis;
+using Clustral.ControlPlane.Infrastructure.Tunnel;
 using Clustral.ControlPlane.Tests.Helpers;
+using Clustral.V1;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -24,28 +25,11 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
         .WithImage("mongo:8")
         .Build();
 
-    private string? _caCertPath;
-    private string? _caKeyPath;
-    private string? _tempCaDir;
-
     public string MongoConnectionString => _mongo.GetConnectionString();
-
-    /// <summary>Path to the test CA certificate PEM file.</summary>
-    public string CaCertPath => _caCertPath ?? throw new InvalidOperationException("Factory not initialized");
-
-    /// <summary>Path to the test CA private key PEM file.</summary>
-    public string CaKeyPath => _caKeyPath ?? throw new InvalidOperationException("Factory not initialized");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-
-        // Generate a test CA for mTLS tests.
-        _tempCaDir = Path.Combine(Path.GetTempPath(), $"clustral-test-ca-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_tempCaDir);
-        _caCertPath = Path.Combine(_tempCaDir, "ca.crt");
-        _caKeyPath = Path.Combine(_tempCaDir, "ca.key");
-        GenerateTestCA(_caCertPath, _caKeyPath);
 
         // Provide required config values so StartupConfigValidator doesn't abort.
         builder.ConfigureAppConfiguration((_, config) =>
@@ -54,8 +38,6 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
             {
                 ["MongoDB:ConnectionString"] = "mongodb://localhost:27017",
                 ["MongoDB:DatabaseName"] = "clustral-test",
-                ["CertificateAuthority:CaCertPath"] = _caCertPath,
-                ["CertificateAuthority:CaKeyPath"] = _caKeyPath,
             });
         });
 
@@ -82,6 +64,12 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
                 System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
             services.AddSingleton(Clustral.Sdk.Auth.KubeconfigJwtService.ForSigning(
                 testKey.ExportECPrivateKeyPem()));
+
+            // Replace Redis + TunnelProxy with no-op stubs for tests.
+            services.RemoveAll<IRedisSessionRegistry>();
+            services.AddSingleton<IRedisSessionRegistry>(new NoOpRedisSessionRegistry());
+            services.RemoveAll<ITunnelProxyClient>();
+            services.AddSingleton<ITunnelProxyClient>(new NoOpTunnelProxyClient());
 
             // Remove MassTransit's hosted service so bus startup doesn't
             // block waiting for a RabbitMQ connection that doesn't exist.
@@ -127,42 +115,20 @@ public sealed class ClustralWebApplicationFactory : WebApplicationFactory<Progra
     async Task IAsyncLifetime.DisposeAsync()
     {
         await _mongo.DisposeAsync();
-
-        if (_tempCaDir is not null)
-        {
-            try { Directory.Delete(_tempCaDir, recursive: true); }
-            catch { /* cleanup best-effort */ }
-        }
     }
 
-    private static void GenerateTestCA(string certPath, string keyPath)
+    /// <summary>No-op Redis registry — always returns null (no tunnel session found).</summary>
+    private sealed class NoOpRedisSessionRegistry : IRedisSessionRegistry
     {
-        using var caKey = RSA.Create(2048);
-        var request = new CertificateRequest(
-            "CN=Clustral Test CA",
-            caKey,
-            HashAlgorithmName.SHA256,
-            RSASignaturePadding.Pkcs1);
+        public Task<string?> LookupSessionAsync(Guid clusterId, CancellationToken ct = default)
+            => Task.FromResult<string?>(null);
+    }
 
-        request.CertificateExtensions.Add(
-            new X509BasicConstraintsExtension(
-                certificateAuthority: true,
-                hasPathLengthConstraint: false,
-                pathLengthConstraint: 0,
-                critical: true));
-
-        request.CertificateExtensions.Add(
-            new X509KeyUsageExtension(
-                X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign,
-                critical: true));
-
-        request.CertificateExtensions.Add(
-            new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
-
-        using var caCert = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(10));
-
-        File.WriteAllText(certPath, caCert.ExportCertificatePem());
-        File.WriteAllText(keyPath, caKey.ExportPkcs8PrivateKeyPem());
+    /// <summary>No-op tunnel proxy client — throws if called (should not be reached in tests).</summary>
+    private sealed class NoOpTunnelProxyClient : ITunnelProxyClient
+    {
+        public Task<HttpResponseFrame> ProxyRequestAsync(
+            string tunnelPod, Guid clusterId, HttpRequestFrame frame, CancellationToken ct)
+            => throw new InvalidOperationException("TunnelProxy should not be called in tests");
     }
 }
