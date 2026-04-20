@@ -41,23 +41,23 @@ spec:
               value: {{ .Values.tunnelService.env.internalPort | quote }}
             - name: TUNNEL_HEALTH_PORT
               value: {{ .Values.tunnelService.env.healthPort | quote }}
-            - name: REDIS_URL
-              value: {{ include "clustral.redisUrl" . | quote }}
-            - name: MONGO_CONNECTION_STRING
+            - name: TUNNEL_REDIS_URL
+              value: {{ include "clustral.redisConnectionString" . | quote }}
+            - name: TUNNEL_MONGO_URI
               value: {{ include "clustral.mongoConnectionString" . | quote }}
-            - name: MONGO_DATABASE_NAME
+            - name: TUNNEL_MONGO_DATABASE
               value: {{ .Values.controlplane.env.mongoDatabaseName | quote }}
-            - name: CA_CERT_PATH
+            - name: TUNNEL_CA_CERT_PATH
               value: /etc/clustral/ca/ca.crt
-            - name: CA_KEY_PATH
+            - name: TUNNEL_CA_KEY_PATH
               value: /etc/clustral/ca/ca.key
-            - name: JWT_SIGNING_KEY_PATH
-              value: /etc/clustral/ca/ca.key
-            - name: CERT_VALIDITY_DAYS
+            - name: TUNNEL_CERT_VALIDITY_DAYS
               value: {{ .Values.tunnelService.env.certValidityDays | quote }}
-            - name: SESSION_TTL_SECONDS
-              value: {{ .Values.tunnelService.env.sessionTtlSeconds | quote }}
-            - name: POD_NAME
+            - name: TUNNEL_SESSION_TTL
+              value: "5m"
+            - name: TUNNEL_JWT_VALIDITY_DAYS
+              value: "90"
+            - name: TUNNEL_POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
