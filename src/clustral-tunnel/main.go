@@ -100,7 +100,7 @@ func main() {
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.RequireAnyClientCert,
+		ClientAuth:   tls.RequestClientCert, // Optional — bootstrap (RegisterAgent) has no cert yet; the auth interceptor enforces per-RPC
 		ClientCAs:    caCertPool,
 		MinVersion:   tls.VersionTLS12,
 	}
