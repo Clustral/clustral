@@ -85,13 +85,24 @@ func main() {
 	authInterceptor := auth.NewAuthInterceptor(jwtValidator, clusterSvc.GetTokenVersion, logger)
 
 	// --- Agent-facing gRPC server (mTLS) ---
+	// Load the CA cert+key as the server's TLS certificate. The .NET
+	// ControlPlane did the same: Kestrel used the CA keypair as the
+	// server identity on :5443. Agents validate this cert against the
+	// CA they received at bootstrap.
+	serverCert, err := tls.LoadX509KeyPair(cfg.CACertPath, cfg.CAKeyPath)
+	if err != nil {
+		logger.Error("Failed to load server TLS certificate", "error", err)
+		os.Exit(1)
+	}
+
 	caCertPool := x509.NewCertPool()
 	caCertPool.AddCert(ca.Certificate())
 
 	tlsConfig := &tls.Config{
-		ClientAuth: tls.RequireAnyClientCert,
-		ClientCAs:  caCertPool,
-		MinVersion: tls.VersionTLS12,
+		Certificates: []tls.Certificate{serverCert},
+		ClientAuth:   tls.RequireAnyClientCert,
+		ClientCAs:    caCertPool,
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	agentLis, err := net.Listen("tcp", ":"+cfg.AgentPort)
