@@ -37,12 +37,12 @@ Clustral has been installed.
 5. Deploy your first agent:
 
    helm install my-agent charts/agent \
-     --set controlPlane.url=<CONTROLPLANE_GRPC_URL>:{{ .Values.controlplane.grpcService.port }} \
+     --set controlPlane.url=<TUNNEL_SERVICE_GRPC_URL>:{{ .Values.tunnelService.grpcService.port }} \
      --set controlPlane.bootstrapToken=<TOKEN_FROM_REGISTER>
 
-   The ControlPlane gRPC endpoint for agents:
-{{- if eq .Values.controlplane.grpcService.type "LoadBalancer" }}
-   kubectl get svc {{ include "clustral.fullname" . }}-controlplane-grpc -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+   The Tunnel Service gRPC endpoint for agents:
+{{- if eq .Values.tunnelService.grpcService.type "LoadBalancer" }}
+   kubectl get svc {{ include "clustral.fullname" . }}-tunnel-service-grpc -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 {{- else }}
-   kubectl get svc {{ include "clustral.fullname" . }}-controlplane-grpc -n {{ .Release.Namespace }}
+   kubectl get svc {{ include "clustral.fullname" . }}-tunnel-service-grpc -n {{ .Release.Namespace }}
 {{- end }}

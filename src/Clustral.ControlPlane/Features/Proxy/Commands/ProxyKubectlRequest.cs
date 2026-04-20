@@ -3,7 +3,8 @@ using Clustral.ControlPlane.Domain.Events;
 using Clustral.ControlPlane.Domain.Services;
 using Clustral.ControlPlane.Features.Shared;
 using Clustral.ControlPlane.Infrastructure;
-using Clustral.ControlPlane.Protos;
+using Clustral.ControlPlane.Infrastructure.Redis;
+using Clustral.ControlPlane.Infrastructure.Tunnel;
 using Clustral.Sdk.Results;
 using Clustral.V1;
 using Google.Protobuf;
@@ -46,7 +47,8 @@ public sealed record ProxyKubectlResponse(
 public sealed class ProxyKubectlRequestHandler(
     ProxyAuthService proxyAuth,
     ImpersonationResolver impersonation,
-    TunnelSessionManager sessions,
+    IRedisSessionRegistry redis,
+    ITunnelProxyClient tunnelProxy,
     IOptions<ProxyOptions> proxyOptions,
     IMediator mediator,
     ILogger<ProxyKubectlRequestHandler> logger)
@@ -79,9 +81,9 @@ public sealed class ProxyKubectlRequestHandler(
 
         var imp = impResult.Value;
 
-        // ── 3. Find tunnel session ─────────────────────────────────────────
-        var session = sessions.GetSession(request.ClusterId);
-        if (session is null)
+        // ── 3. Look up tunnel pod via Redis ────────────────────────────────
+        var tunnelPod = await redis.LookupSessionAsync(request.ClusterId, ct);
+        if (tunnelPod is null)
             return ResultErrors.AgentNotConnected(request.ClusterId);
 
         // ── 4. Build HttpRequestFrame ──────────────────────────────────────
@@ -110,13 +112,14 @@ public sealed class ProxyKubectlRequestHandler(
             EndOfBody = true,
         };
 
-        // ── 5. Proxy through tunnel with timeout ───────────────────────────
+        // ── 5. Proxy through TunnelService with timeout ──────────────────
         HttpResponseFrame responseFrame;
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(proxyOptions.Value.TunnelTimeout);
-            responseFrame = await session.ProxyAsync(frame, cts.Token);
+            responseFrame = await tunnelProxy.ProxyRequestAsync(
+                tunnelPod, request.ClusterId, frame, cts.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

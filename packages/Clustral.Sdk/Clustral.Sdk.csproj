@@ -45,6 +45,9 @@
     <Protobuf Include="../../packages/proto/auth.proto"
               GrpcServices="Both"
               ProtoRoot="../../packages/proto" />
+    <Protobuf Include="../../packages/proto/tunnel_proxy.proto"
+              GrpcServices="Client"
+              ProtoRoot="../../packages/proto" />
   </ItemGroup>
 
 </Project>

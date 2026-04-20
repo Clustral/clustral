@@ -5,5 +5,8 @@ dependencies:
 - name: rabbitmq
   repository: oci://registry-1.docker.io/bitnamicharts
   version: 15.5.3
-digest: sha256:c0ffc45167f66451df43f092e377e516a1d0f73108c5a3082f8df1ce4a04fa18
-generated: "2026-04-17T04:26:07.835242+02:00"
+- name: redis
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 20.13.4
+digest: sha256:7a7e8d37508617600a9bfa2abd0c0a7e9be97e0b9653b38998d87331323c0fb6
+generated: "2026-04-19T10:00:54.865768+02:00"

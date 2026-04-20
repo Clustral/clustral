@@ -1,20 +1,20 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "clustral.fullname" . }}-controlplane-grpc
+  name: {{ include "clustral.fullname" . }}-tunnel-service-grpc
   labels:
     {{- include "clustral.labels" . | nindent 4 }}
-    {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 4 }}
-  {{- with .Values.controlplane.grpcService.annotations }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 4 }}
+  {{- with .Values.tunnelService.grpcService.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.controlplane.grpcService.type }}
+  type: {{ .Values.tunnelService.grpcService.type }}
   ports:
     - name: grpc
-      port: {{ .Values.controlplane.grpcService.port }}
+      port: {{ .Values.tunnelService.grpcService.port }}
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 4 }}

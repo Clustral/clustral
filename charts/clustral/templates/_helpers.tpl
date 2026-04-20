@@ -112,6 +112,30 @@ RabbitMQ password.
 {{- end }}
 
 {{/*
+Redis URL.
+If the Bitnami subchart is enabled, build from the release-named service.
+Otherwise, use the external URL.
+*/}}
+{{- define "clustral.redisUrl" -}}
+{{- if .Values.redis.enabled -}}
+redis://{{ .Release.Name }}-redis-master:6379
+{{- else -}}
+{{ .Values.externalRedis.url }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis connection string (host:port format for .NET StackExchange.Redis).
+*/}}
+{{- define "clustral.redisConnectionString" -}}
+{{- if .Values.redis.enabled -}}
+{{ .Release.Name }}-redis-master:6379
+{{- else -}}
+{{ .Values.externalRedis.url }}
+{{- end -}}
+{{- end }}
+
+{{/*
 OIDC authority.
 */}}
 {{- define "clustral.oidcAuthority" -}}

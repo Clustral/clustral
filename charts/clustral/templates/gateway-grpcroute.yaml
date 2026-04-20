@@ -18,6 +18,6 @@ spec:
       sectionName: {{ .Values.gatewayApi.grpcListenerName }}
   rules:
     - backendRefs:
-        - name: {{ include "clustral.fullname" . }}-controlplane-grpc
-          port: {{ .Values.controlplane.grpcService.port }}
+        - name: {{ include "clustral.fullname" . }}-tunnel-service-grpc
+          port: {{ .Values.tunnelService.grpcService.port }}
 {{- end }}

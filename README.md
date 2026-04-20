@@ -27,6 +27,8 @@ graph TB
         WEB[Web UI<br/>Next.js 14]
         GW[API Gateway<br/>YARP :8080]
         CP[ControlPlane<br/>ASP.NET Core]
+        TUNNEL[TunnelService<br/>Go :5443/:50051]
+        REDIS[(Redis :6379)]
         RMQ[RabbitMQ]
         AUDIT[AuditService<br/>ASP.NET Core]
         DB[(MongoDB)]
@@ -51,10 +53,13 @@ graph TB
     WEB -->|Server-side OIDC| OIDC
     WEB -->|"REST (SSR)"| GW
     CP --> DB
+    CP -->|session lookup| REDIS
+    CP -->|"internal gRPC"| TUNNEL
     CP -->|integration events| RMQ
     RMQ --> AUDIT
     AUDIT --> DB
-    AGENT ==>|"gRPC mTLS :5443<br/>(direct to ControlPlane)"| CP
+    TUNNEL -->|session registration| REDIS
+    AGENT ==>|"gRPC mTLS :5443<br/>(direct to TunnelService)"| TUNNEL
     AGENT -->|Impersonate-User<br/>Impersonate-Group| K8S
 ```
 
@@ -63,7 +68,9 @@ graph TB
 | **nginx**        | nginx 1.27                                  | TLS termination, routes API → Gateway, UI → Web |
 | **API Gateway**  | YARP, .NET 10                               | Auth, rate limiting, CORS, routes to services   |
 | **Web**          | Next.js 14, React 18, TypeScript, Tailwind  | Dashboard, server-side OIDC via NextAuth        |
-| **ControlPlane** | ASP.NET Core, MongoDB                       | REST + gRPC server, kubectl tunnel proxy        |
+| **ControlPlane** | ASP.NET Core, MongoDB                       | REST server, kubectl proxy (via TunnelService)  |
+| **TunnelService**| Go 1.23, gRPC, 16MB static binary           | Agent tunnel management, mTLS, session registry |
+| **Redis**        | Redis 7                                     | Tunnel session registry (which pod holds which agent) |
 | **AuditService** | ASP.NET Core, MongoDB                       | Consumes audit events, queryable REST API       |
 | **RabbitMQ**     | RabbitMQ 4                                  | Message broker — audit event pipeline           |
 | **Agent**        | Go 1.23, gRPC, 16MB static binary           | Deployed per cluster, tunnels kubectl traffic   |
@@ -114,10 +121,12 @@ sequenceDiagram
     participant NGX as nginx :443
     participant GW as API Gateway
     participant CP as ControlPlane
+    participant REDIS as Redis
+    participant TS as TunnelService
     participant Agent as Agent (Go)
     participant K8S as k8s API
 
-    Note over Agent,CP: Persistent gRPC tunnel direct to CP :5443 (mTLS)
+    Note over Agent,TS: Persistent gRPC tunnel direct to TunnelService :5443 (mTLS)
 
     kubectl->>NGX: GET /api/proxy/{clusterId}/api/v1/pods<br/>Authorization: Bearer {kubeconfig JWT}
     NGX->>GW: proxy /api/proxy/*
@@ -125,11 +134,14 @@ sequenceDiagram
     GW->>GW: Issue internal JWT
     GW->>CP: Forward + X-Internal-Token
     CP->>CP: Check revocation (jti → MongoDB)<br/>Resolve impersonation
-    CP->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
+    CP->>REDIS: Lookup tunnel pod for cluster
+    CP->>TS: TunnelProxy.ProxyRequest (internal gRPC :50051)
+    TS->>Agent: HttpRequestFrame via gRPC tunnel<br/>+ X-Clustral-Impersonate-User<br/>+ X-Clustral-Impersonate-Group
     Agent->>Agent: Translate to k8s Impersonate-* headers
     Agent->>K8S: GET /api/v1/pods<br/>Impersonate-User: admin@clustral.local<br/>Impersonate-Group: system:masters<br/>Authorization: Bearer {SA token}
     K8S-->>Agent: Pod list (JSON)
-    Agent-->>CP: HttpResponseFrame via gRPC tunnel
+    Agent-->>TS: HttpResponseFrame via gRPC tunnel
+    TS-->>CP: ProxyResponse
     CP-->>NGX: Pod list (JSON)
     NGX-->>kubectl: Pod list (JSON)
     Note over CP: CPR001I proxy.request (or CPR002W if denied)
@@ -140,37 +152,42 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Agent as Agent (Go)
-    participant CP as ControlPlane :5443
+    participant TS as TunnelService :5443
+    participant REDIS as Redis
+    participant CP as ControlPlane :5100
     participant DB as MongoDB
 
-    Note over Agent,CP: Agent connects directly to ControlPlane :5443 (gRPC mTLS, no gateway)
+    Note over Agent,TS: Agent connects directly to TunnelService :5443 (gRPC mTLS, no gateway)
 
-    Agent->>CP: ClusterService.RegisterAgent (bootstrap token)
-    CP->>CP: Verify token, issue cert + JWT
-    CP->>DB: Store certificate fingerprint
-    CP-->>Agent: client cert + key + CA cert + JWT
+    Agent->>TS: ClusterService.RegisterAgent (bootstrap token)
+    TS->>TS: Verify token, issue cert + JWT
+    TS->>CP: Store certificate fingerprint (via REST)
+    CP->>DB: Persist
+    TS-->>Agent: client cert + key + CA cert + JWT
     Agent->>Agent: Save to /etc/clustral/tls/
 
     loop Reconnect with backoff
-        Agent->>CP: TunnelService.OpenTunnel (mTLS + JWT)
-        CP->>CP: Verify cert chain, JWT, CN match, tokenVersion
-        Agent->>CP: AgentHello (cluster ID, agent version, k8s version)
-        CP-->>Agent: TunnelHello (ack)
+        Agent->>TS: TunnelService.OpenTunnel (mTLS + JWT)
+        TS->>TS: Verify cert chain, JWT, CN match, tokenVersion
+        Agent->>TS: AgentHello (cluster ID, agent version, k8s version)
+        TS-->>Agent: TunnelHello (ack)
+        TS->>REDIS: Register session (cluster → tunnel pod)
         CP->>DB: Set cluster status = Connected
         Note over CP: CCL002I cluster.connected
 
         par Frame dispatch
-            CP->>Agent: HttpRequestFrame
+            TS->>Agent: HttpRequestFrame
             Agent->>Agent: Proxy to k8s API
-            Agent->>CP: HttpResponseFrame
+            Agent->>TS: HttpResponseFrame
         and Heartbeat (every 30s)
-            Agent->>CP: ClusterService.UpdateStatus
+            Agent->>TS: ClusterService.UpdateStatus
         and Ping/Pong
-            CP->>Agent: PingFrame
-            Agent->>CP: PongFrame
+            TS->>Agent: PingFrame
+            Agent->>TS: PongFrame
         end
 
-        Note over Agent,CP: On disconnect
+        Note over Agent,TS: On disconnect
+        TS->>REDIS: Remove session
         CP->>DB: Set cluster status = Disconnected
         Note over CP: CCL003W cluster.disconnected
         Agent->>Agent: Backoff + jitter, retry
@@ -219,6 +236,7 @@ sequenceDiagram
     participant NGX as nginx :443
     participant WebUI as Web UI
     participant CP as ControlPlane
+    participant TS as TunnelService
     participant Agent as Agent
 
     Admin->>NGX: Register cluster
@@ -227,22 +245,22 @@ sequenceDiagram
     CP-->>WebUI: clusterId + bootstrap token
 
     Note over Agent: First boot with bootstrap token
-    Agent->>CP: ClusterService.RegisterAgent :5443
-    CP->>CP: Verify bootstrap token
-    CP->>CP: Issue client cert (RSA 2048, 395d, CN=agentId)
-    CP->>CP: Issue JWT (RS256, 30d, tokenVersion)
-    CP-->>Agent: cert + key + CA cert + JWT
+    Agent->>TS: ClusterService.RegisterAgent :5443
+    TS->>TS: Verify bootstrap token
+    TS->>TS: Issue client cert (RSA 2048, 395d, CN=agentId)
+    TS->>TS: Issue JWT (RS256, 30d, tokenVersion)
+    TS-->>Agent: cert + key + CA cert + JWT
     Agent->>Agent: Save credentials to disk
 
     Note over Agent: Normal operation (mTLS + JWT)
-    Agent->>CP: TunnelService.OpenTunnel :5443 (mTLS + JWT)
-    CP->>CP: Verify cert chain, JWT, CN match, tokenVersion
-    Note over CP: CAG001W agent.auth_failed (on any failure)
-    CP-->>Agent: TunnelHello
+    Agent->>TS: TunnelService.OpenTunnel :5443 (mTLS + JWT)
+    TS->>TS: Verify cert chain, JWT, CN match, tokenVersion
+    Note over TS: CAG001W agent.auth_failed (on any failure)
+    TS-->>Agent: TunnelHello
 
     Note over Agent: Auto-renewal (every 6h check)
-    Agent->>CP: RenewCertificate (cert expiry < 30d)
-    Agent->>CP: RenewToken (JWT expiry < 7d)
+    Agent->>TS: RenewCertificate (cert expiry < 30d)
+    Agent->>TS: RenewToken (JWT expiry < 7d)
 ```
 
 ### Security Model
@@ -253,10 +271,10 @@ sequenceDiagram
 | User → API Gateway | OIDC JWT validated at gateway, internal JWT (ES256) issued |
 | API Gateway → ControlPlane | Internal JWT (ES256, 30s TTL), forwarded via X-Internal-Token |
 | kubectl → API Gateway | Kubeconfig JWT (ES256, 8h TTL, ControlPlane-signed), validated at gateway |
-| Agent → ControlPlane | mTLS client certificate (RSA 2048, 395d) + RS256 JWT (30d), direct to Kestrel :5443 |
+| Agent → TunnelService | mTLS client certificate (RSA 2048, 395d) + RS256 JWT (30d), direct to TunnelService :5443 |
 | Agent credential revocation | tokenVersion increment invalidates all agent JWTs instantly |
 | Agent → k8s API | In-cluster ServiceAccount token + k8s Impersonation API |
-| Tunnel transport | gRPC over mTLS — agents connect directly to Kestrel :5443 (no nginx) |
+| Tunnel transport | gRPC over mTLS — agents connect directly to TunnelService :5443 (no nginx) |
 | Agent connectivity | Outbound only — no inbound firewall rules needed |
 | Per-user k8s access | Role assignments with k8s group impersonation (system:masters, etc.) |
 | Proxy rate limiting | Per-credential token bucket (100 QPS sustained, 200 burst) |
@@ -279,7 +297,9 @@ flowchart TB
         subgraph app ["Application Zone"]
             GW["API Gateway (YARP)\n:8080"]
             WEB["Web UI\n:3000"]
-            CP["ControlPlane\nREST :5100 | gRPC mTLS :5443"]
+            CP["ControlPlane\nREST :5100"]
+            TUNNEL["TunnelService\ngRPC mTLS :5443 | internal :50051"]
+            REDIS[("Redis\n:6379")]
             RMQ["RabbitMQ\n:5672"]
             AUDIT["AuditService\n:5200"]
             DB[("MongoDB\n:27017")]
@@ -313,8 +333,11 @@ flowchart TB
     WEB -. "Server OIDC" .-> OIDC
     GW -. "OIDC JWKS" .-> OIDC
 
-    AGENT_A == "gRPC mTLS :5443\n(direct)" ==> CP
-    AGENT_B == "gRPC mTLS :5443\n(direct)" ==> CP
+    CP -- "session lookup" --> REDIS
+    CP -- "internal gRPC :50051" --> TUNNEL
+    TUNNEL -- "session registration" --> REDIS
+    AGENT_A == "gRPC mTLS :5443\n(direct)" ==> TUNNEL
+    AGENT_B == "gRPC mTLS :5443\n(direct)" ==> TUNNEL
     AGENT_A --> K8S_A
     AGENT_B --> K8S_B
 
@@ -322,6 +345,8 @@ flowchart TB
     style OIDC fill:#ce93d8,stroke:#7b1fa2,color:#000
     style DB fill:#a5d6a7,stroke:#388e3c,color:#000
     style CP fill:#90caf9,stroke:#1565c0,color:#000
+    style TUNNEL fill:#80deea,stroke:#00838f,color:#000
+    style REDIS fill:#ef9a9a,stroke:#c62828,color:#000
     style WEB fill:#90caf9,stroke:#1565c0,color:#000
     style AGENT_A fill:#ffcc80,stroke:#ef6c00,color:#000
     style AGENT_B fill:#ffcc80,stroke:#ef6c00,color:#000
@@ -342,13 +367,16 @@ flowchart TB
 | **nginx HTTPS** | 443 | HTTPS | Inbound | TLS termination — REST, kubectl proxy, Web UI |
 | **API Gateway REST** | 8080 | HTTP/1.1 | Internal | YARP routes API + audit (proxied by nginx) |
 | **ControlPlane REST** | 5100 | HTTP/1.1 | Internal | REST API (proxied by gateway) |
-| **ControlPlane gRPC mTLS** | 5443 | gRPC/mTLS | **Inbound** | Agent tunnel — mTLS + JWT (direct, no gateway) |
+| **TunnelService gRPC mTLS** | 5443 | gRPC/mTLS | **Inbound** | Agent tunnel — mTLS + JWT (direct, no gateway) |
+| **TunnelService internal gRPC** | 50051 | gRPC | Internal | TunnelProxy — ControlPlane forwards proxy requests |
+| **TunnelService health** | 9090 | HTTP | Internal | Health checks |
+| **Redis** | 6379 | Redis wire | Internal | Tunnel session registry (TunnelService, ControlPlane) |
 | **Web UI** | 3000 | HTTP | Internal | Next.js dashboard (proxied by nginx) |
 | **RabbitMQ** | 5672 | AMQP | Internal | Message broker — audit event pipeline |
 | **AuditService REST** | 5200 | HTTP/1.1 | Internal | Audit event queries (proxied by Web UI) |
 | **MongoDB** | 27017 | TCP | Internal | Database (never exposed publicly) |
 | **OIDC Provider** | 8080/443 | HTTPS | Varies | Keycloak, Auth0, Okta — browser + server flows |
-| **Agent → ControlPlane** | 5443 | gRPC/mTLS | **Outbound only** | Direct to Kestrel, no inbound rules needed |
+| **Agent → TunnelService** | 5443 | gRPC/mTLS | **Outbound only** | Direct to TunnelService, no inbound rules needed |
 | **Agent → k8s API** | 6443 | HTTPS | In-cluster | ServiceAccount token + impersonation headers |
 
 #### nginx Routing
@@ -362,17 +390,17 @@ flowchart TB
 | `:443` | `/audit-api/*` | API Gateway `:8080` | Audit event queries |
 | `:443` | `/*` | Web UI `:3000` | Dashboard, NextAuth, CLI discovery |
 
-> gRPC traffic (`:5443`) is **not** routed through nginx. Agents connect directly to Kestrel to avoid tunnel drops caused by nginx restarts.
+> gRPC traffic (`:5443`) is **not** routed through nginx. Agents connect directly to TunnelService to avoid tunnel drops caused by nginx restarts.
 
 #### Network Requirements
 
-- **Agents connect outbound** to the ControlPlane gRPC port (`:5443`) directly (mTLS) — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
+- **Agents connect outbound** to the TunnelService gRPC port (`:5443`) directly (mTLS) — no inbound firewall rules, VPNs, or bastion hosts needed on the cluster side
 - **gRPC :5443 is NOT proxied through nginx** — persistent bidirectional tunnels must not be interrupted by nginx restarts or timeouts
 - **ControlPlane REST and Web UI are internal only** — not exposed publicly; nginx handles all HTTPS traffic on :443
-- **MongoDB** must never be exposed outside the application zone
-- **TLS**: nginx terminates TLS on :443 for REST/Web UI; Kestrel handles mTLS on :5443 for agent gRPC
+- **MongoDB and Redis** must never be exposed outside the application zone
+- **TLS**: nginx terminates TLS on :443 for REST/Web UI; TunnelService handles mTLS on :5443 for agent gRPC
 - **OIDC provider** must be reachable from the browser (PKCE flow), the Web UI server (token exchange), and the API Gateway (JWKS key fetch)
-- **kubectl traffic** flows: kubectl → nginx `:443` → ControlPlane → gRPC tunnel → Agent → k8s API
+- **kubectl traffic** flows: kubectl → nginx `:443` → ControlPlane → Redis (session lookup) → TunnelService (internal gRPC) → Agent → k8s API
 
 ### Proxy Configuration
 
@@ -440,7 +468,7 @@ User credentials (OIDC + kubeconfig JWT):
 sequenceDiagram
     participant RM as RenewalManager
     participant Store as Credential Store
-    participant CP as ControlPlane :5443
+    participant TS as TunnelService :5443
     participant JWT as JWTCredentials
 
     loop Every 6 hours
@@ -448,9 +476,9 @@ sequenceDiagram
         RM->>RM: Check cert.NotAfter
 
         alt Cert expires within 30 days
-            RM->>CP: ClusterService.RenewCertificate (mTLS + JWT)
-            CP->>CP: Issue new cert (RSA 2048, 395d)
-            CP-->>RM: new cert PEM + key PEM
+            RM->>TS: ClusterService.RenewCertificate (mTLS + JWT)
+            TS->>TS: Issue new cert (RSA 2048, 395d)
+            TS-->>RM: new cert PEM + key PEM
             RM->>Store: Save new cert + key to disk
             Note over RM: Next tunnel reconnect uses new cert
         end
@@ -459,9 +487,9 @@ sequenceDiagram
         RM->>RM: Decode JWT exp claim
 
         alt JWT expires within 7 days
-            RM->>CP: ClusterService.RenewToken (mTLS + JWT)
-            CP->>CP: Issue new JWT (same tokenVersion)
-            CP-->>RM: new JWT
+            RM->>TS: ClusterService.RenewToken (mTLS + JWT)
+            TS->>TS: Issue new JWT (same tokenVersion)
+            TS-->>RM: new JWT
             RM->>Store: Save JWT to disk
             RM->>JWT: Update (hot-swap via RWMutex)
             Note over JWT: No reconnect needed — next RPC uses new JWT
@@ -474,22 +502,22 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Agent
-    participant CP as ControlPlane :5443
+    participant TS as TunnelService :5443
 
-    Agent->>CP: TunnelService.OpenTunnel (mTLS + JWT)
+    Agent->>TS: TunnelService.OpenTunnel (mTLS + JWT)
 
     alt Unauthenticated (expired JWT)
-        CP-->>Agent: StatusCode.Unauthenticated
-        Note over CP: CAG001W agent.auth_failed
+        TS-->>Agent: StatusCode.Unauthenticated
+        Note over TS: CAG001W agent.auth_failed
         Agent->>Agent: Trigger immediate JWT renewal
-        Agent->>CP: ClusterService.RenewToken
-        CP-->>Agent: new JWT
+        Agent->>TS: ClusterService.RenewToken
+        TS-->>Agent: new JWT
         Agent->>Agent: Hot-swap JWT + reconnect
-        Agent->>CP: TunnelService.OpenTunnel (retry)
+        Agent->>TS: TunnelService.OpenTunnel (retry)
     end
 
     alt PermissionDenied (revoked credentials)
-        CP-->>Agent: StatusCode.PermissionDenied
+        TS-->>Agent: StatusCode.PermissionDenied
         Agent->>Agent: Log ERROR — credentials revoked
         Note over Agent: Agent STOPS — no retry<br/>Admin must re-register with new bootstrap token
     end
@@ -503,6 +531,7 @@ sequenceDiagram
     participant NGX as nginx :443
     participant CP as ControlPlane
     participant DB as MongoDB
+    participant TS as TunnelService
     participant Agent
 
     Admin->>NGX: Revoke agent credentials
@@ -512,17 +541,17 @@ sequenceDiagram
     CP-->>Admin: Credentials revoked
 
     Note over Agent: Next RPC call...
-    Agent->>CP: ClusterService.UpdateStatus (mTLS + JWT)
-    CP->>CP: AgentAuthInterceptor:<br/>JWT tokenVersion=1 < stored=2
-    CP-->>Agent: StatusCode.Unauthenticated
-    Note over CP: CAG001W agent.auth_failed (revoked)
+    Agent->>TS: ClusterService.UpdateStatus (mTLS + JWT)
+    TS->>TS: AgentAuthInterceptor:<br/>JWT tokenVersion=1 < stored=2
+    TS-->>Agent: StatusCode.Unauthenticated
+    Note over TS: CAG001W agent.auth_failed (revoked)
     Agent->>Agent: Attempt JWT renewal
-    Agent->>CP: ClusterService.RenewToken
-    CP->>CP: Issue new JWT with tokenVersion=2
-    CP-->>Agent: New JWT
+    Agent->>TS: ClusterService.RenewToken
+    TS->>TS: Issue new JWT with tokenVersion=2
+    TS-->>Agent: New JWT
     Agent->>Agent: Hot-swap JWT + reconnect
-    Agent->>CP: TunnelService.OpenTunnel (new JWT)
-    CP-->>Agent: TunnelHello ✓
+    Agent->>TS: TunnelService.OpenTunnel (new JWT)
+    TS-->>Agent: TunnelHello ✓
 ```
 
 ### JIT Access Request Flow
@@ -623,12 +652,12 @@ Additional arrays (set in `appsettings.json` when needed — not `.env`):
 | `AUDIT_SERVICE_URL` | `http://api-gateway:8080/audit-api` | Internal AuditService URL (Web UI proxy). |
 | `AUDIT_SERVICE_PUBLIC_URL` | `https://${HOST_IP}/audit-api` | Public AuditService URL returned to CLI via `.well-known`. |
 
-#### Certificate Authority (agent mTLS)
+#### Certificate Authority (agent mTLS — TunnelService)
 
 | Variable | Default | Description |
 |---|---|---|
-| `CA_CERT_PATH` | `/etc/clustral/ca/ca.crt` | Inside-container path to CA certificate (mounted from `infra/ca/ca.crt`). |
-| `CA_KEY_PATH` | `/etc/clustral/ca/ca.key` | Inside-container path to CA private key. |
+| `CA_CERT_PATH` | `/etc/clustral/ca/ca.crt` | Inside-container path to CA certificate (mounted from `infra/ca/ca.crt`). Used by TunnelService. |
+| `CA_KEY_PATH` | `/etc/clustral/ca/ca.key` | Inside-container path to CA private key. Used by TunnelService. |
 
 #### Error documentation (all services)
 
@@ -1535,9 +1564,10 @@ graph TB
 Clustral/clustral (monorepo)
 ├── src/
 │   ├── Clustral.ApiGateway/      # YARP API Gateway — auth, rate limiting, routing
-│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC + kubectl proxy
+│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + kubectl proxy (via TunnelService)
 │   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
-│   ├── clustral-agent/          # Go — gRPC tunnel + kubectl proxy (16MB binary)
+│   ├── clustral-tunnel/         # Go TunnelService — agent gRPC tunnel, mTLS, Redis sessions
+│   ├── clustral-agent/          # Go — gRPC tunnel client + kubectl proxy (16MB binary)
 │   ├── Clustral.Cli/            # .NET NativeAOT — login, kubeconfig, self-update
 │   └── Clustral.Web/            # Next.js 14 — dashboard, OIDC, access management
 ├── packages/
@@ -1685,7 +1715,7 @@ dotnet test src/Clustral.E2E.Tests
 > 2. **Integration tests** — `WebApplicationFactory` + Testcontainers MongoDB, exercising
 >    the ControlPlane in-process. Docker must be running.
 > 3. **End-to-end tests** (`src/Clustral.E2E.Tests`) — the full production path:
->    `kubectl → ControlPlane → gRPC tunnel → Go Agent → real Kubernetes API`,
+>    `kubectl → ControlPlane → Redis → TunnelService → gRPC tunnel → Go Agent → real Kubernetes API`,
 >    with K3s, Keycloak, MongoDB, ControlPlane (built from Dockerfile), and the
 >    Go agent (built from Dockerfile) all running on a shared Docker network.
 >    The Go agent runs as the real binary so multi-value k8s impersonation
@@ -1878,9 +1908,9 @@ openssl ec -in infra/kubeconfig-jwt/private.pem -pubout -out infra/kubeconfig-jw
 
 ## Certificate Authority Setup
 
-The ControlPlane acts as an internal Certificate Authority (CA) that signs agent client certificates for mTLS and agent JWTs (RS256) for authorization. The CA cert is also used as the Kestrel TLS server certificate on port `:5443`.
+The TunnelService acts as an internal Certificate Authority (CA) that signs agent client certificates for mTLS and agent JWTs (RS256) for authorization. The CA cert is also used as the TLS server certificate on port `:5443`.
 
-**Important**: The CA certificate must include **Subject Alternative Names (SANs)** for every hostname and IP address that agents will use to connect to the ControlPlane. Without matching SANs, the Go agent's TLS client will reject the server certificate.
+**Important**: The CA certificate must include **Subject Alternative Names (SANs)** for every hostname and IP address that agents will use to connect to the TunnelService. Without matching SANs, the Go agent's TLS client will reject the server certificate.
 
 ### Development
 

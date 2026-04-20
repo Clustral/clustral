@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clustral.fullname" . }}-tunnel-service
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: internal
+      port: {{ .Values.tunnelService.env.internalPort }}
+      targetPort: internal
+      protocol: TCP
+  selector:
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 4 }}

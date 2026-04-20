@@ -20,14 +20,6 @@ controlplane:
     limits:
       cpu: 500m
       memory: 256Mi
-  # -- gRPC mTLS service for agent connections (direct, not through gateway)
-  grpcService:
-    # -- Service type — LoadBalancer exposes the port externally for agents
-    type: LoadBalancer
-    # -- Port for agent gRPC mTLS connections
-    port: 5443
-    # -- Annotations (e.g., cloud LB config, external-dns)
-    annotations: {}
   env:
     # -- MongoDB database name for the ControlPlane
     mongoDatabaseName: clustral
@@ -102,6 +94,39 @@ web:
   env:
     # -- (required) Random 32-byte base64 string for NextAuth session encryption
     authSecret: ""
+
+# ── Tunnel Service ──────────────────────────────────────────────────────────
+tunnelService:
+  image:
+    repository: ghcr.io/clustral/clustral-tunnel-service
+    # -- Overrides appVersion from Chart.yaml
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # -- gRPC mTLS service for agent connections (direct, not through gateway)
+  grpcService:
+    # -- Service type — LoadBalancer exposes the port externally for agents
+    type: LoadBalancer
+    # -- Port for agent gRPC mTLS connections
+    port: 5443
+    # -- Annotations (e.g., cloud LB config, external-dns)
+    annotations: {}
+  env:
+    # -- Internal gRPC port for ControlPlane communication
+    internalPort: 50051
+    # -- Health check HTTP port
+    healthPort: 9090
+    # -- Certificate validity in days for agent mTLS certs
+    certValidityDays: 395
+    # -- Session TTL in seconds for tunnel sessions in Redis
+    sessionTtlSeconds: 60
 
 # ── OIDC ────────────────────────────────────────────────────────────────────
 oidc:
@@ -188,6 +213,16 @@ externalRabbitmq:
   port: 5672
   user: ""
   pass: ""
+
+# ── Redis (Bitnami subchart) ───────────────────────────────────────────────
+redis:
+  enabled: true
+  auth:
+    enabled: false
+
+# -- External Redis URL (used when redis.enabled=false)
+externalRedis:
+  url: ""
 
 # ── Security ────────────────────────────────────────────────────────────────
 podSecurityContext:

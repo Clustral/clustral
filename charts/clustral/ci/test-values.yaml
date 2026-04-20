@@ -21,6 +21,9 @@ mongodb:
 rabbitmq:
   enabled: false
 
+redis:
+  enabled: false
+
 externalMongodb:
   connectionString: "mongodb://test:27017"
 
@@ -29,3 +32,6 @@ externalRabbitmq:
   port: 5672
   user: "test"
   pass: "test"
+
+externalRedis:
+  url: "redis://test:6379"

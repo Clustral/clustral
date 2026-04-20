@@ -1,6 +1,6 @@
 {{- if .Values.podDisruptionBudget.enabled }}
 {{- $fullname := include "clustral.fullname" . -}}
-{{- $components := list "controlplane" "api-gateway" "audit-service" "web" -}}
+{{- $components := list "controlplane" "api-gateway" "audit-service" "tunnel-service" "web" -}}
 {{- range $component := $components }}
 ---
 apiVersion: policy/v1

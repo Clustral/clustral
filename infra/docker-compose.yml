@@ -125,9 +125,26 @@ services:
     networks:
       - clustral
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # Redis 7 (session store for tunnel-service)
+  # ──────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - clustral
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
 volumes:
   mongo_data:
   certs:
+  redis-data:
 
 networks:
   clustral:

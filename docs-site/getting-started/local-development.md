@@ -62,7 +62,7 @@ cd src/Clustral.ControlPlane
 dotnet run
 ```
 
-The ControlPlane listens on HTTP `:5100` (REST, via the gateway) and gRPC mTLS `:5443` (direct to agents).
+The ControlPlane listens on HTTP `:5100` (REST, via the gateway). Agent gRPC mTLS connections go to the TunnelService on `:5443`.
 
 ## 5. Start the API Gateway
 
@@ -110,7 +110,7 @@ export AGENT_KUBE_CONTEXT=kind-clustral-dev
 go run .
 ```
 
-The agent opens an outbound gRPC mTLS tunnel to `:5443` and registers itself with the ControlPlane. Check the ControlPlane logs — you should see `AgentConnected cluster=<id>`.
+The agent opens an outbound gRPC mTLS tunnel to `:5443` and registers itself with the TunnelService. Check the TunnelService logs — you should see `AgentConnected cluster=<id>`.
 
 ## 9. Use the CLI
 

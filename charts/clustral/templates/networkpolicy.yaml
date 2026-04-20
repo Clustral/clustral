@@ -22,10 +22,6 @@ spec:
       ports:
         - port: 5100
           protocol: TCP
-    # Allow gRPC from agents (any source — agents are external)
-    - ports:
-        - port: 5443
-          protocol: TCP
   egress:
     # MongoDB
     - ports:
@@ -34,6 +30,61 @@ spec:
     # RabbitMQ
     - ports:
         - port: 5672
+          protocol: TCP
+    # Redis
+    - ports:
+        - port: 6379
+          protocol: TCP
+    # Tunnel Service (internal gRPC)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 14 }}
+      ports:
+        - port: {{ .Values.tunnelService.env.internalPort }}
+          protocol: TCP
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ── Tunnel Service NetworkPolicy ──────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "clustral.fullname" . }}-tunnel-service
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow internal gRPC from ControlPlane
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "clustral.selectorLabels" (dict "root" . "component" "controlplane") | nindent 14 }}
+      ports:
+        - port: {{ .Values.tunnelService.env.internalPort }}
+          protocol: TCP
+    # Allow gRPC mTLS from agents (any source — agents are external)
+    - ports:
+        - port: 5443
+          protocol: TCP
+  egress:
+    # MongoDB
+    - ports:
+        - port: 27017
+          protocol: TCP
+    # Redis
+    - ports:
+        - port: 6379
           protocol: TCP
     # DNS
     - ports:

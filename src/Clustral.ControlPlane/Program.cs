@@ -6,7 +6,8 @@ using Clustral.ControlPlane.Infrastructure;
 using Clustral.ControlPlane.Infrastructure.Auth;
 using Clustral.Sdk.Auth;
 using Clustral.Sdk.Messaging;
-using Clustral.ControlPlane.Protos;
+using Clustral.ControlPlane.Infrastructure.Redis;
+using Clustral.ControlPlane.Infrastructure.Tunnel;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -45,8 +46,6 @@ builder.Services.AddOptionsWithValidation<MongoDbOptions, MongoDbOptionsValidato
 
 builder.Services.AddOptionsWithValidation<ProxyOptions, ProxyOptionsValidator>(ProxyOptions.SectionName);
 
-builder.Services.AddOptionsWithValidation<Clustral.Sdk.Crypto.CertificateAuthorityOptions,
-    CertificateAuthorityOptionsValidator>(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MongoDB — resolved lazily via IOptions<MongoDbOptions>.
@@ -86,13 +85,6 @@ if (!string.IsNullOrEmpty(internalJwtPublicKeyPath) && File.Exists(internalJwtPu
             {
                 OnMessageReceived = context =>
                 {
-                    // Skip for gRPC port — agent auth handled by AgentAuthInterceptor
-                    if (context.HttpContext.Connection.LocalPort == 5443)
-                    {
-                        context.NoResult();
-                        return Task.CompletedTask;
-                    }
-
                     var internalToken = context.HttpContext.Request.Headers["X-Internal-Token"].FirstOrDefault();
                     if (!string.IsNullOrEmpty(internalToken))
                         context.Token = internalToken;
@@ -141,86 +133,14 @@ builder.Services.AddSwaggerGen(opts =>
     });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Certificate Authority + JWT Issuer (agent mTLS + JWT auth)
-// ─────────────────────────────────────────────────────────────────────────────
-
-builder.Services.AddSingleton<Clustral.Sdk.Crypto.CertificateAuthority>(sp =>
-{
-    var opts = sp.GetRequiredService<IOptions<Clustral.Sdk.Crypto.CertificateAuthorityOptions>>().Value;
-    return new Clustral.Sdk.Crypto.CertificateAuthority(opts.CaCertPath, opts.CaKeyPath, opts);
-});
-builder.Services.AddSingleton<Clustral.Sdk.Crypto.JwtIssuer>(sp =>
-{
-    var ca = sp.GetRequiredService<Clustral.Sdk.Crypto.CertificateAuthority>();
-    var opts = sp.GetRequiredService<IOptions<Clustral.Sdk.Crypto.CertificateAuthorityOptions>>().Value;
-    return new Clustral.Sdk.Crypto.JwtIssuer(ca, opts);
-});
 builder.Services.AddMemoryCache();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Kestrel mTLS endpoint (:5443) for agent gRPC
+// Redis session registry + TunnelProxy gRPC client
 // ─────────────────────────────────────────────────────────────────────────────
 
-builder.WebHost.ConfigureKestrel((ctx, kestrel) =>
-{
-    var caOpts = ctx.Configuration
-        .GetSection(Clustral.Sdk.Crypto.CertificateAuthorityOptions.SectionName)
-        .Get<Clustral.Sdk.Crypto.CertificateAuthorityOptions>();
-
-    var env = ctx.HostingEnvironment;
-    if (caOpts is not null
-        && !string.IsNullOrEmpty(caOpts.CaCertPath) && File.Exists(caOpts.CaCertPath)
-        && !string.IsNullOrEmpty(caOpts.CaKeyPath) && File.Exists(caOpts.CaKeyPath)
-        && !env.IsEnvironment("Testing"))
-    {
-        // Pre-load the CA cert + key for server TLS and client cert validation.
-        var certPem = File.ReadAllText(caOpts.CaCertPath);
-        var keyPem = File.ReadAllText(caOpts.CaKeyPath);
-        var serverCert = System.Security.Cryptography.X509Certificates.X509Certificate2
-            .CreateFromPem(certPem, keyPem);
-        var caCertForValidation = new System.Security.Cryptography.X509Certificates.X509Certificate2(
-            System.Security.Cryptography.X509Certificates.X509Certificate2
-                .CreateFromPem(certPem));
-
-        kestrel.ListenAnyIP(5443, listenOptions =>
-        {
-            listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
-            listenOptions.UseHttps(httpsOptions =>
-            {
-                httpsOptions.ServerCertificate = serverCert;
-                // AllowCertificate (not Require) so bootstrap RPCs like RegisterAgent
-                // can connect without a client cert. The AgentAuthInterceptor enforces
-                // cert requirement at the RPC level for all non-bootstrap calls.
-                httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
-                httpsOptions.ClientCertificateValidation = (cert, chain, errors) =>
-                {
-                    if (cert is null) return true; // No client cert — allowed for bootstrap RPCs
-
-                    using var customChain = new System.Security.Cryptography.X509Certificates.X509Chain();
-                    customChain.ChainPolicy.RevocationMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
-                    customChain.ChainPolicy.TrustMode = System.Security.Cryptography.X509Certificates.X509ChainTrustMode.CustomRootTrust;
-                    customChain.ChainPolicy.CustomTrustStore.Add(caCertForValidation);
-                    return customChain.Build(new System.Security.Cryptography.X509Certificates.X509Certificate2(cert));
-                };
-            });
-        });
-    }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// gRPC
-// ─────────────────────────────────────────────────────────────────────────────
-
-builder.Services.AddSingleton<AgentAuthInterceptor>();
-builder.Services.AddGrpc(opts =>
-{
-    opts.Interceptors.Add<AgentAuthInterceptor>();
-    opts.EnableDetailedErrors = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
-});
-
-// Singleton session registry shared between TunnelServiceImpl instances.
-builder.Services.AddSingleton<TunnelSessionManager>();
+builder.Services.AddSingleton<IRedisSessionRegistry, RedisSessionRegistry>();
+builder.Services.AddSingleton<ITunnelProxyClient, TunnelProxyClient>();
 
 // Background cleanup: expire pending access requests past their TTL.
 builder.Services.AddHostedService<AccessRequestCleanupService>();
@@ -341,10 +261,6 @@ app.UseAuthorization();
 
 // REST endpoints
 app.MapControllers();
-
-// gRPC endpoints
-app.MapGrpcService<ClusterServiceImpl>();
-app.MapGrpcService<TunnelServiceImpl>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health check endpoints

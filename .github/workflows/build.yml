@@ -12,6 +12,7 @@ on:
       - "src/Clustral.Cli/**"
       - "src/Clustral.Web/**"
       - "src/clustral-agent/**"
+      - "src/clustral-tunnel/**"
       - "Clustral.slnx"
       - "Directory.Packages.props"
       - ".github/workflows/build.yml"
@@ -25,6 +26,7 @@ on:
       - "src/Clustral.Cli/**"
       - "src/Clustral.Web/**"
       - "src/clustral-agent/**"
+      - "src/clustral-tunnel/**"
       - "Clustral.slnx"
       - "Directory.Packages.props"
       - ".github/workflows/build.yml"
@@ -41,6 +43,7 @@ jobs:
       dotnet: ${{ steps.filter.outputs.dotnet }}
       web: ${{ steps.filter.outputs.web }}
       agent: ${{ steps.filter.outputs.agent }}
+      tunnel: ${{ steps.filter.outputs.tunnel }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -60,6 +63,9 @@ jobs:
               - "packages/**"
             agent:
               - "src/clustral-agent/**"
+              - "packages/proto/**"
+            tunnel:
+              - "src/clustral-tunnel/**"
               - "packages/proto/**"
 
   build-dotnet:
@@ -137,6 +143,31 @@ jobs:
           name: go-coverage
           path: src/clustral-agent/coverage.out
 
+  build-tunnel:
+    name: Build & Test (TunnelService/Go)
+    needs: changes
+    if: needs.changes.outputs.tunnel == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Build
+        working-directory: src/clustral-tunnel
+        run: go build ./...
+      - name: Test
+        working-directory: src/clustral-tunnel
+        run: go test -race -coverprofile=coverage.out -v ./...
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnel-coverage
+          path: src/clustral-tunnel/coverage.out
+
   build-web:
     name: Build (Web)
     needs: changes
@@ -165,13 +196,13 @@ jobs:
   ci-gate:
     name: CI Gate
     if: always()
-    needs: [build-dotnet, build-agent, build-web]
+    needs: [build-dotnet, build-agent, build-tunnel, build-web]
     runs-on: ubuntu-latest
     steps:
       - name: Check results
         run: |
           # Fail if any needed job failed (not just skipped).
-          results=("${{ needs.build-dotnet.result }}" "${{ needs.build-agent.result }}" "${{ needs.build-web.result }}")
+          results=("${{ needs.build-dotnet.result }}" "${{ needs.build-agent.result }}" "${{ needs.build-tunnel.result }}" "${{ needs.build-web.result }}")
           for r in "${results[@]}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "Job failed or was cancelled: $r"
