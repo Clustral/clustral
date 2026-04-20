@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clustral.fullname" . }}-tunnel-service
+  labels:
+    {{- include "clustral.labels" . | nindent 4 }}
+    {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.tunnelService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clustral.labels" . | nindent 8 }}
+        {{- include "clustral.selectorLabels" (dict "root" . "component" "tunnel-service") | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: tunnel-service
+          image: "{{ .Values.tunnelService.image.repository }}:{{ include "clustral.imageTag" (dict "tag" .Values.tunnelService.image.tag "chartAppVersion" .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.tunnelService.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: grpc
+              containerPort: 5443
+              protocol: TCP
+            - name: internal
+              containerPort: {{ .Values.tunnelService.env.internalPort }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.tunnelService.env.healthPort }}
+              protocol: TCP
+          env:
+            - name: TUNNEL_AGENT_PORT
+              value: "5443"
+            - name: TUNNEL_INTERNAL_PORT
+              value: {{ .Values.tunnelService.env.internalPort | quote }}
+            - name: TUNNEL_HEALTH_PORT
+              value: {{ .Values.tunnelService.env.healthPort | quote }}
+            - name: REDIS_URL
+              value: {{ include "clustral.redisUrl" . | quote }}
+            - name: MONGO_CONNECTION_STRING
+              value: {{ include "clustral.mongoConnectionString" . | quote }}
+            - name: MONGO_DATABASE_NAME
+              value: {{ .Values.controlplane.env.mongoDatabaseName | quote }}
+            - name: CA_CERT_PATH
+              value: /etc/clustral/ca/ca.crt
+            - name: CA_KEY_PATH
+              value: /etc/clustral/ca/ca.key
+            - name: JWT_SIGNING_KEY_PATH
+              value: /etc/clustral/ca/ca.key
+            - name: CERT_VALIDITY_DAYS
+              value: {{ .Values.tunnelService.env.certValidityDays | quote }}
+            - name: SESSION_TTL_SECONDS
+              value: {{ .Values.tunnelService.env.sessionTtlSeconds | quote }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: ca
+              mountPath: /etc/clustral/ca
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.tunnelService.resources | nindent 12 }}
+      volumes:
+        - name: ca
+          secret:
+            secretName: {{ .Values.secrets.ca }}
+            items:
+              - key: {{ include "clustral.caSecretCertKey" . }}
+                path: ca.crt
+              - key: {{ include "clustral.caSecretKeyKey" . }}
+                path: ca.key
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

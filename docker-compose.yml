@@ -65,8 +65,6 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       MongoDB__ConnectionString: "${MONGO_CONNECTION_STRING}"
       MongoDB__DatabaseName: "${MONGO_DATABASE_NAME}"
-      CertificateAuthority__CaCertPath: "${CA_CERT_PATH}"
-      CertificateAuthority__CaKeyPath: "${CA_KEY_PATH}"
       InternalJwt__PublicKeyPath: "/etc/clustral/jwt/public.pem"
       KubeconfigJwt__PrivateKeyPath: "/etc/clustral/kubeconfig-jwt/private.pem"
       RabbitMQ__Host: "${RABBITMQ_HOST}"
@@ -81,11 +79,9 @@ services:
       Proxy__RateLimiting__RequestsPerSecond: "${PROXY_RATE_LIMITING_REQUESTS_PER_SECOND}"
       Proxy__RateLimiting__QueueSize: "${PROXY_RATE_LIMITING_QUEUE_SIZE}"
       Errors__DocsBaseUrl: "${ERRORS_DOCS_BASE_URL}"
-    ports:
-      # gRPC mTLS — agents connect directly (not through gateway)
-      - "5443:5443"
+      Redis__ConnectionString: "redis:6379"
+      TunnelService__Url: "http://tunnel-service:50051"
     volumes:
-      - ./infra/ca:/etc/clustral/ca:ro
       - ./infra/internal-jwt/public.pem:/etc/clustral/jwt/public.pem:ro
       - ./infra/kubeconfig-jwt/private.pem:/etc/clustral/kubeconfig-jwt/private.pem:ro
     healthcheck:
@@ -94,6 +90,43 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Clustral Tunnel Service (Go — gRPC tunnel for agents)
+  # ──────────────────────────────────────────────────────────────────────────
+  tunnel-service:
+    build:
+      context: src/clustral-tunnel
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    labels:
+      - "service=tunnel-service"
+    networks:
+      - clustral
+    environment:
+      TUNNEL_AGENT_PORT: "5443"
+      TUNNEL_INTERNAL_PORT: "50051"
+      TUNNEL_HEALTH_PORT: "9090"
+      REDIS_URL: "redis://redis:6379/0"
+      MONGO_CONNECTION_STRING: "${MONGO_CONNECTION_STRING}"
+      MONGO_DATABASE_NAME: "${MONGO_DATABASE_NAME}"
+      CA_CERT_PATH: "/etc/clustral/ca/ca.crt"
+      CA_KEY_PATH: "/etc/clustral/ca/ca.key"
+      JWT_SIGNING_KEY_PATH: "/etc/clustral/ca/ca.key"
+      CERT_VALIDITY_DAYS: "395"
+      SESSION_TTL_SECONDS: "60"
+      POD_NAME: "tunnel-0"
+    ports:
+      # gRPC mTLS — agents connect directly
+      - "5443:5443"
+    volumes:
+      - ./infra/ca:/etc/clustral/ca:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # ──────────────────────────────────────────────────────────────────────────
   # Clustral Web UI (Next.js)

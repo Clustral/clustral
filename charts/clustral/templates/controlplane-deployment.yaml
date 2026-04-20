@@ -29,9 +29,6 @@ spec:
             - name: http
               containerPort: 5100
               protocol: TCP
-            - name: grpc
-              containerPort: 5443
-              protocol: TCP
           env:
             - name: ASPNETCORE_ENVIRONMENT
               value: Production
@@ -39,10 +36,6 @@ spec:
               value: {{ include "clustral.mongoConnectionString" . | quote }}
             - name: MongoDB__DatabaseName
               value: {{ .Values.controlplane.env.mongoDatabaseName | quote }}
-            - name: CertificateAuthority__CaCertPath
-              value: /etc/clustral/ca/ca.crt
-            - name: CertificateAuthority__CaKeyPath
-              value: /etc/clustral/ca/ca.key
             - name: InternalJwt__PublicKeyPath
               value: /etc/clustral/jwt/public.pem
             - name: KubeconfigJwt__PrivateKeyPath
@@ -71,10 +64,11 @@ spec:
               value: {{ .Values.controlplane.env.proxyRateLimiting.queueSize | quote }}
             - name: Errors__DocsBaseUrl
               value: {{ .Values.controlplane.env.errorsDocsBaseUrl | quote }}
+            - name: Redis__ConnectionString
+              value: {{ include "clustral.redisConnectionString" . | quote }}
+            - name: TunnelService__Url
+              value: "http://{{ include "clustral.fullname" . }}-tunnel-service:{{ .Values.tunnelService.env.internalPort }}"
           volumeMounts:
-            - name: ca
-              mountPath: /etc/clustral/ca
-              readOnly: true
             - name: internal-jwt-public
               mountPath: /etc/clustral/jwt
               readOnly: true
@@ -98,14 +92,6 @@ spec:
           resources:
             {{- toYaml .Values.controlplane.resources | nindent 12 }}
       volumes:
-        - name: ca
-          secret:
-            secretName: {{ .Values.secrets.ca }}
-            items:
-              - key: {{ include "clustral.caSecretCertKey" . }}
-                path: ca.crt
-              - key: {{ include "clustral.caSecretKeyKey" . }}
-                path: ca.key
         - name: internal-jwt-public
           secret:
             secretName: {{ .Values.secrets.internalJwt }}
