@@ -132,7 +132,7 @@ The kubeconfig JWT is a bearer token. Anyone with the token file can run `kubect
 
 ## `kubectl` — proxy auth chain
 
-Once the kubeconfig is written, `kubectl` sends every request with the kubeconfig JWT in the `Authorization` header. The full auth chain involves five hops.
+Once the kubeconfig is written, `kubectl` sends every request with the kubeconfig JWT in the `Authorization` header. The full auth chain involves six hops (including Redis lookup and TunnelService).
 
 ```mermaid
 sequenceDiagram
@@ -140,7 +140,8 @@ sequenceDiagram
     participant NG as nginx :443
     participant GW as API Gateway :8080
     participant CP as ControlPlane :5100
-    participant TS as TunnelSession
+    participant REDIS as Redis
+    participant TS as TunnelService
     participant AG as Agent
     participant API as k8s API Server
 
@@ -153,13 +154,14 @@ sequenceDiagram
     CP->>CP: Validate internal JWT (ES256)
     CP->>CP: ProxyAuthService: check TokenHash not revoked<br/>verify cluster_id matches path
     CP->>CP: ImpersonationResolver: resolve user → groups<br/>(AccessSpecifications: static → JIT fallback)
-    CP->>TS: Get tunnel session for cluster
-    TS->>AG: HttpRequestFrame<br/>X-Clustral-Impersonate-User: alice<br/>X-Clustral-Impersonate-Group: dev, oncall
+    CP->>REDIS: Lookup tunnel pod for cluster
+    CP->>TS: TunnelProxy.ProxyRequest (internal gRPC :50051)<br/>X-Clustral-Impersonate-User: alice<br/>X-Clustral-Impersonate-Group: dev, oncall
+    TS->>AG: HttpRequestFrame
     AG->>AG: Translate X-Clustral-Impersonate-* → Impersonate-*<br/>Attach SA token for k8s API
     AG->>API: GET /api/v1/pods<br/>Authorization: Bearer <sa_token><br/>Impersonate-User: alice<br/>Impersonate-Group: dev<br/>Impersonate-Group: oncall
     API->>AG: 200 OK + body
     AG->>TS: HttpResponseFrame
-    TS->>CP: Response
+    TS->>CP: ProxyResponse
     CP->>GW: Response
     GW->>NG: Response
     NG->>K: 200 OK + body

@@ -53,7 +53,7 @@ The bootstrap token is single-use. The first successful `RegisterAgent` consumes
 | `image.repository` | no | `ghcr.io/clustral/clustral-agent` | |
 | `image.tag` | no | `main` | Pin to a specific version for production (e.g. `v0.4.0`). |
 | `image.pullPolicy` | no | `Always` | |
-| `replicaCount` | no | `1` | `>1` provides failover, but each replica maintains its own tunnel session and `TunnelSessionManager` evicts all but the newest. Keep at `1` unless you need fast failover. |
+| `replicaCount` | no | `1` | `>1` provides failover, but each replica maintains its own tunnel session and the TunnelService evicts all but the newest. Keep at `1` unless you need fast failover. |
 | `resources.requests.cpu` | no | `50m` | |
 | `resources.requests.memory` | no | `32Mi` | |
 | `resources.limits.cpu` | no | `200m` | |

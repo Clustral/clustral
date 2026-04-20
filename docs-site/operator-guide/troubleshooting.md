@@ -159,7 +159,7 @@ kubectl -n clustral-system get pods -l app=clustral-agent
 kubectl -n clustral-system logs -l app=clustral-agent --tail=200
 ```
 
-**How to fix.** Get the agent back up — `kubectl rollout restart` usually does it. If the agent can't reach the ControlPlane's gRPC port (`:5443` direct, not through the gateway), check egress firewall rules from the target cluster.
+**How to fix.** Get the agent back up — `kubectl rollout restart` usually does it. If the agent can't reach the TunnelService's gRPC port (`:5443` direct, not through the gateway), check egress firewall rules from the target cluster.
 
 ### 10. Helm upgrade rolled out, then clusters went offline
 

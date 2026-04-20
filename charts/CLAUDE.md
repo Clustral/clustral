@@ -109,7 +109,7 @@ Helpers in `_helpers.tpl` resolve the correct key names (`tls.key` vs `private.p
 
 ### gRPC port — separate from Ingress
 
-The ControlPlane's gRPC mTLS port (5443) is exposed via its own Service (`controlplane-grpc-service.yaml`, default `LoadBalancer`). Agents connect directly to it — persistent gRPC streams break on L7 proxies. This Service is always rendered regardless of the Ingress/Gateway API choice.
+The TunnelService's gRPC mTLS port (5443) is exposed via its own Service (default `LoadBalancer`). Agents connect directly to it — persistent gRPC streams break on L7 proxies. This Service is always rendered regardless of the Ingress/Gateway API choice.
 
 When Gateway API is enabled, `gateway-grpcroute.yaml` provides an alternative GRPCRoute for clusters whose Gateway implementations handle gRPC natively (Envoy Gateway, Istio). Operators choose one or the other.
 

@@ -10,8 +10,9 @@ Clustral is an open-source Kubernetes access proxy (Teleport alternative) built 
 clustral/
 ├── src/
 │   ├── Clustral.ApiGateway/      # YARP API Gateway — auth, rate limiting, routing
-│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST + gRPC server, MongoDB
+│   ├── Clustral.ControlPlane/   # ASP.NET Core — REST server, MongoDB, Redis session lookup
 │   ├── Clustral.AuditService/   # ASP.NET Core — audit event consumer + REST API
+│   ├── clustral-tunnel/         # Go TunnelService — agent gRPC tunnel, mTLS, Redis sessions
 │   ├── clustral-agent/          # Go 1.23 service — gRPC client, kubectl reverse proxy, Helm-deployed
 │   ├── Clustral.Cli/            # System.CommandLine, NativeAOT — clustral login / clustral kube login
 │   └── Clustral.Web/            # Next.js 14 + React 18 + TypeScript, shadcn/ui, TanStack Query
@@ -51,7 +52,7 @@ clustral/
       │  :443 HTTPS  — /api/*, /healthz, /audit-api/* → API Gateway :8080
       │                /api/auth/*, /api/audit/* → Web UI :3000
       │                /* → Web UI :3000
-      │  (gRPC NOT proxied — agents connect directly to ControlPlane :5443)
+      │  (gRPC NOT proxied — agents connect directly to TunnelService :5443)
       ▼
   API Gateway  (YARP, .NET)
       │  :8080 HTTP   — REST routing (behind nginx)
@@ -62,11 +63,23 @@ clustral/
       ▼
   ControlPlane  (ASP.NET Core)
       │  REST :5100   — CLI + Web UI calls (via gateway)
-      │  gRPC :5443   — mTLS + JWT — agent tunnel (direct, no gateway)
       │  MongoDB (clusters, users, credentials)
       │  Validates internal JWT (ES256 public key) from X-Internal-Token
       │  Signs kubeconfig JWTs (ES256 private key) via KubeconfigJwtService
+      │  Queries Redis for tunnel session → calls TunnelProxy on TunnelService
       │  Publishes integration events → RabbitMQ
+      ▼
+  Redis  (session registry)
+      │  :6379 — maps clusterId → tunnel pod address
+      │  Written by TunnelService on session open/close
+      │  Read by ControlPlane on proxy requests
+      ▼
+  TunnelService  (Go service)
+      │  :5443 gRPC mTLS — agent tunnel (direct, no nginx)
+      │  :50051 internal gRPC — TunnelProxy.ProxyRequest (ControlPlane only)
+      │  :9090 HTTP — health checks
+      │  Registers sessions in Redis
+      │  CA keypair for mTLS certificate issuance
       ▼
   RabbitMQ → AuditService  (ASP.NET Core :5200)
       │  Consumes integration events via MassTransit
@@ -75,7 +88,7 @@ clustral/
       │  Protected with internal JWT auth (X-Internal-Token)
       ▼
   Agent  (Go service, runs in-cluster via Helm)
-      │  gRPC client → ControlPlane :5443 directly (mTLS + JWT, no gateway)
+      │  gRPC client → TunnelService :5443 directly (mTLS + JWT, no gateway)
       │  Receives proxied kubectl HTTP traffic over the tunnel
       │  Forwards locally to the Kubernetes API server
       ▼
@@ -85,7 +98,7 @@ clustral/
 Key flows:
 - **clustral login** — discovers ControlPlane URL and OIDC settings via Web UI's `/.well-known/clustral-configuration` (through nginx), then runs OIDC PKCE flow, writes token to `~/.clustral/token`. All subsequent CLI calls go through nginx to the ControlPlane.
 - **clustral kube login** — exchanges the OIDC token for a kubeconfig JWT (ES256, 8h TTL) that routes through the API Gateway → ControlPlane tunnel. The gateway validates the kubeconfig JWT alongside OIDC JWTs.
-- **Tunnel** — agent opens a persistent gRPC stream directly to Kestrel :5443 (mTLS + JWT, no nginx) to ControlPlane; kubectl traffic is multiplexed over that stream so no inbound firewall rules are needed on the cluster side.
+- **Tunnel** — agent opens a persistent gRPC stream directly to TunnelService :5443 (mTLS + JWT, no nginx); the ControlPlane queries Redis to find the tunnel pod, then calls TunnelProxy.ProxyRequest on TunnelService :50051 to forward kubectl traffic over the stream. No inbound firewall rules are needed on the cluster side.
 - **clustral access request** — creates a JIT (just-in-time) access request for a role on a cluster. Admin approves or denies via CLI or Web UI. On approval, `clustral kube login` works with a time-limited credential. Access is automatically expired/revoked when the grant window closes.
 
 ---
@@ -119,7 +132,7 @@ This starts:
 ```bash
 cd src/Clustral.ControlPlane
 dotnet run
-# Listens: HTTP :5100, gRPC mTLS :5443
+# Listens: HTTP :5100 (REST only)
 ```
 
 ### Agent (local, targeting kind)
@@ -129,7 +142,7 @@ dotnet run
 kind create cluster --config infra/k8s/kind-config.yaml
 
 cd src/clustral-agent
-export AGENT_CONTROL_PLANE_URL=https://localhost:5443
+export AGENT_CONTROL_PLANE_URL=https://localhost:5443  # points to TunnelService
 go run .
 ```
 
@@ -210,8 +223,9 @@ dotnet build packages/Clustral.Sdk
 ```
 
 Services:
-- **ClusterService** — agent bootstrap, heartbeat, credential renewal (gRPC, used by agents)
-- **TunnelService** — bidirectional streaming; agent ↔ ControlPlane kubectl tunnel
+- **ClusterService** — agent bootstrap, heartbeat, credential renewal (gRPC, hosted by TunnelService, used by agents)
+- **TunnelService** — bidirectional streaming; agent ↔ TunnelService kubectl tunnel
+- **TunnelProxy** — internal gRPC; ControlPlane → TunnelService proxy request forwarding
 
 ---
 
@@ -227,7 +241,7 @@ Two Helm charts live in `charts/`: `agent/` (Go agent for target clusters) and `
 - **Ingress vs Gateway API** are mutually exclusive, validated in `_helpers.tpl` with `fail`.
 - **Secrets:** the chart never generates cryptographic material in templates. cert-manager generates Secrets when enabled (default); `generate-secrets.sh` is the manual fallback.
 - **cert-manager is enabled by default** — generates all 4 secrets (CA, internal JWT, kubeconfig JWT, TLS) automatically. `Es256JwtService.LoadKey` in `packages/Clustral.Sdk/Auth/Es256JwtService.cs` accepts both raw EC PEM and X.509 certificate PEM to support both paths.
-- **gRPC port 5443** is exposed via its own Service (not through Ingress/Gateway), because persistent gRPC streams break on L7 proxies.
+- **gRPC port 5443** on TunnelService is exposed via its own Service (not through Ingress/Gateway), because persistent gRPC streams break on L7 proxies.
 - **Versioning:** `version` and `appVersion` in Chart.yaml are stamped by CI from the git tag. Do not bump manually.
 - **Testing:** `helm lint` + `helm template --dry-run` in CI (`helm.yml`). `helm test` runs a health-check pod. `ci/test-values.yaml` provides minimum values.
 
@@ -311,7 +325,7 @@ Clustral uses a **path-aware split** for HTTP error bodies:
 
 - `/api/proxy/*` → **plain text** (self-speaking message). Write via `Clustral.Sdk.Http.PlainTextErrorWriter`. Machine-readable code is in the `X-Clustral-Error-Code` response header.
 - All other HTTP endpoints → RFC 7807 Problem Details. Write via `Clustral.Sdk.Http.ProblemDetailsWriter` or `result.ToActionResult()` from a controller.
-- gRPC → `RpcException(Status)`.
+- gRPC (agent-facing, on TunnelService) → `RpcException(Status)`.
 
 Every response (success and failure) echoes `X-Correlation-Id`. The Clustral-specific error code goes in `X-Clustral-Error-Code` on the proxy path and in `extensions.code` on RFC 7807 responses.
 
@@ -354,4 +368,4 @@ See the "Error Response Shapes" section of the root `README.md` for the full use
 - **Integration tests need Docker** running for Testcontainers.
 - **Event-driven architecture** — the ControlPlane publishes integration events to RabbitMQ via MassTransit 8.x (`packages/Clustral.Contracts/IntegrationEvents/`). The AuditService (`src/Clustral.AuditService/`) consumes them and persists audit logs to MongoDB. Shared MassTransit extensions live in `packages/Clustral.Sdk/Messaging/`. Event codes follow Teleport convention: `[PREFIX][NUMBER][SEVERITY]` (e.g. `CAR002I`). When adding new domain events, also add integration events + consumers + tests. Event handlers enrich domain events with user emails and cluster names via DB lookups before publishing integration events.
 - **Docker Compose `.env` files** — all environment variables (credentials, IPs, connection strings) are defined in `.env` (app stack) and `infra/.env` (infrastructure). Both files are committed with working defaults. Edit `HOST_IP` in `.env` for your environment.
-- **Every new feature must include tests.** Write both unit tests and integration tests for ControlPlane, CLI, and SDK changes. Integration tests use `WebApplicationFactory` + Testcontainers MongoDB. Cross-component changes (anything that touches the agent ↔ ControlPlane tunnel, kubectl proxy path, or credential lifecycle) should also have an end-to-end test in `src/Clustral.E2E.Tests/` so the real Go agent + real K3s exercise the change. Frontend (Web UI) tests are not yet required but will be added later.
+- **Every new feature must include tests.** Write both unit tests and integration tests for ControlPlane, CLI, and SDK changes. Integration tests use `WebApplicationFactory` + Testcontainers MongoDB. Cross-component changes (anything that touches the agent ↔ TunnelService tunnel, kubectl proxy path, or credential lifecycle) should also have an end-to-end test in `src/Clustral.E2E.Tests/` so the real Go agent + TunnelService + real K3s exercise the change. Frontend (Web UI) tests are not yet required but will be added later.

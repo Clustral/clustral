@@ -363,7 +363,7 @@ See [Security Model — Audit Log](../security-model/audit-log.md) for the event
 
 ## gRPC
 
-Clustral exposes two gRPC services on the ControlPlane's dedicated agent port (`:5443`, mTLS + RS256 JWT):
+Clustral exposes two gRPC services on the TunnelService's dedicated agent port (`:5443`, mTLS + RS256 JWT):
 
 | Service | Purpose |
 |---|---|
